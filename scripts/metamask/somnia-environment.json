@@ -1,0 +1,32 @@
+{
+  "chainId": 50312,
+  "rpcUrl": "https://api.infra.testnet.somnia.network",
+  "deployedAt": "2026-08-25T02:10:11.309Z",
+  "deployer": "0x481B210d927765133d55461c3EaCC96F41FdD6C3",
+  "sessionAddress": "0xE0588c9a06FB78f15D38785c654cDF6961697c4c",
+  "deployedContracts": {
+    "SimpleFactory": "0x476643261159d27d2ffe85cafd305c950648b317",
+    "DelegationManager": "0xf3f380e58d1742747338c46786cc7d5f9e71ef5c",
+    "EntryPoint": "0x0655b4ba58c1a914ea374f247538a036b50b1ab0",
+    "AllowedCalldataEnforcer": "0x97ac3443d446c2816924a28fe20a5350b297d561",
+    "AllowedTargetsEnforcer": "0x3d05aa6e494051991dd55eef4a544847ff64e24e",
+    "AllowedMethodsEnforcer": "0xcccd0b582412033239a12865b1542b4018dc5c19",
+    "TimestampEnforcer": "0x1d67e94309d70663628ada61acfedd633ddd20f9",
+    "NonceEnforcer": "0x1861fca876de5b3e0f3dbabf64102d4e59256273",
+    "ValueLteEnforcer": "0x2435a773fc8832c888d80473e403103d61bc15da",
+    "ERC20PeriodTransferEnforcer": "0x5c7733d28307a853735fa71c0bf52a2176b61d0e",
+    "SCL_RIP7212": "0xec7b23170effa7a9f79748c64cce366b8a378b44",
+    "HybridDeleGatorImpl": "0xed13f0d784b830057d8baa808bb9989bc0e1dd92"
+  },
+  "environment": {
+    "DelegationManager": "0xf3f380e58d1742747338c46786cc7d5f9e71ef5c",
+    "SimpleFactory": "0x476643261159d27d2ffe85cafd305c950648b317",
+    "HybridDeleGator": "0xed13f0d784b830057d8baa808bb9989bc0e1dd92",
+    "EntryPoint": "0x0655b4ba58c1a914ea374f247538a036b50b1ab0",
+    "implementations": {
+      "HybridDeleGatorImpl": "0xed13f0d784b830057d8baa808bb9989bc0e1dd92",
+      "MultiSigDeleGatorImpl": "",
+      "EIP7702StatelessDeleGatorImpl": ""
+    }
+  }
+}

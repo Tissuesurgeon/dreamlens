@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% load dreamlens_extras %}
+
+{% block title %}Dream Agent — DreamLens{% endblock %}
+
+{% block content %}
+<div class="dl-container dl-container--agent dl-agent-page dl-animate-in">
+  <header class="dl-page-header dl-page-header--split">
+    <div>
+      <h1 class="dl-page-header__title">Dream Agent</h1>
+      <p class="dl-page-header__subtitle">Copies traders you follow, inside limits you sign once.</p>
+    </div>
+    <div class="dl-page-header__actions">
+      <a href="{% url 'dream_agent_activate' %}" class="dl-btn dl-btn--primary dl-btn--sm">{% if agent %}Manage grant{% else %}Activate{% endif %}</a>
+      <a href="{% url 'dream_agent_skips' %}" class="dl-btn dl-btn--ghost dl-btn--sm">Skip log</a>
+    </div>
+  </header>
+
+  {% if not is_authenticated %}
+  <div class="dl-empty dl-empty--large">
+    <p class="dl-empty__title">Connect MetaMask to manage your Dream Agent</p>
+    <p>Your wallet stays the owner. DreamAgent only receives a bounded trade permission.</p>
+  </div>
+  {% elif not agent %}
+  <div class="dl-empty dl-empty--large dl-agent-empty">
+    <p class="dl-empty__title">No Dream Agent yet</p>
+    <p>Three steps. You stay owner of the Smart Account the whole time.</p>
+    <ol class="dl-agent-setup">
+      <li><strong>Create</strong> a Hybrid Smart Account on Shannon</li>
+      <li><strong>Deposit</strong> collateral and STT for agent gas</li>
+      <li><strong>Grant</strong> one EIP-712 permission — no withdraw, no limit changes</li>
+    </ol>
+    <a href="{% url 'dream_agent_activate' %}" class="dl-btn dl-btn--primary">Activate Dream Agent</a>
+  </div>
+  {% else %}
+  {% with sa_addr=smart_account.address|default:agent.smart_account.address %}
+  <section class="dl-agent-hero" id="agent-status-card" data-agent-id="{{ agent.pk }}">
+    <header class="dl-ta-head">
+      <div class="dl-ta-identity">
+        <div class="dl-trader-card__avatar" aria-hidden="true">DA</div>
+        <div>
+          <h2 class="dl-ta-identity__title">{{ agent.name }}</h2>
+          {% if sa_addr %}
+          <p class="dl-ta-identity__full">
+            <span class="dl-mono">{{ sa_addr|short_address }}</span>
+            <button type="button" class="dl-icon-btn" data-copy-text="{{ sa_addr }}" aria-label="Copy Smart Account address">Copy</button>
+            {% if dreamlens_network.explorerUrl %}
+            <a class="dl-icon-btn" href="{{ dreamlens_network.explorerUrl }}/address/{{ sa_addr }}" target="_blank" rel="noopener noreferrer">Explorer</a>
+            {% endif %}
+          </p>
+          {% endif %}
+          <p class="dl-ta-identity__meta">
+            {% if agent.status == "RUNNING" %}Copying approved traders on DreamDEX
+            {% elif agent.status == "PAUSED" %}Paused — no new copies until you resume
+            {% elif agent.status == "REVOKED" %}Permission revoked
+            {% else %}Grant a permission to start autonomous copy{% endif %}
+          </p>
+        </div>
+      </div>
+      <div class="dl-ta-actions">
+        {% if agent.status == "RUNNING" %}
+        <span class="dl-smart-pill is-on"><span class="dl-smart-pill__dot" aria-hidden="true"></span> AUTONOMOUS</span>
+        {% elif agent.status == "PAUSED" %}
+        <span class="dl-smart-pill is-paused">Paused</span>
+        {% elif agent.status == "REVOKED" %}
+        <span class="dl-smart-pill">Revoked</span>
+        {% elif agent.status == "AUTHORIZED" %}
+        <span class="dl-smart-pill">Ready</span>
+        {% elif agent.status == "EXPIRED" %}
+        <span class="dl-smart-pill is-paused">Expired</span>
+        {% else %}
+        <span class="dl-smart-pill">Needs grant</span>
+        {% endif %}
+      </div>
+    </header>
+
+    {% if agent.status == "RUNNING" %}
+    <div class="dl-smart-on-banner">
+      <p><strong>Autonomous copy is on.</strong> DreamAgent can place DreamDEX orders inside your signed limits. It cannot withdraw.</p>
+    </div>
+    {% endif %}
+
+    <div class="dl-ta-kpis" role="group" aria-label="Agent metrics">
+      <div class="dl-ta-kpi">
+        <span class="dl-ta-kpi__label">Collateral</span>
+        <span class="dl-ta-kpi__value">${{ performance.balance|default:"0" }}</span>
+      </div>
+      <div class="dl-ta-kpi">
+        <span class="dl-ta-kpi__label">Agent gas</span>
+        <span class="dl-ta-kpi__value">{% if agent_balance and agent_balance.native %}{{ agent_balance.native }} {{ agent_balance.native_symbol|default:"STT" }}{% else %}—{% endif %}</span>
+      </div>
+      <div class="dl-ta-kpi">
+        <span class="dl-ta-kpi__label">P&amp;L</span>
+        <span class="dl-ta-kpi__value{% if performance.pnl %}{% if '-' in performance.pnl %} is-neg{% else %} is-pos{% endif %}{% endif %}">{% if performance.pnl %}${{ performance.pnl }}{% else %}—{% endif %}</span>
+      </div>
+      <div class="dl-ta-kpi">
+        <span class="dl-ta-kpi__label">Win rate</span>
+        <span class="dl-ta-kpi__value">{{ performance.win_rate|default:"0" }}%</span>
+      </div>
+      <div class="dl-ta-kpi">
+        <span class="dl-ta-kpi__label">Copied</span>
+        <span class="dl-ta-kpi__value">{{ performance.trades_copied|default:0 }}</span>
+      </div>
+      <div class="dl-ta-kpi">
+        <span class="dl-ta-kpi__label">Skipped</span>
+        <span class="dl-ta-kpi__value">{{ performance.trades_skipped|default:0 }}</span>
+      </div>
+    </div>
+
+    <div class="dl-agent-dash">
+      <section class="dl-ta-panel" aria-labelledby="agent-limits-heading">
+        <h3 id="agent-limits-heading" class="dl-section__title">Limits</h3>
+        {% if performance.permission %}
+        <dl class="dl-agent-dl">
+          <div><dt>Per trade</dt><dd>${{ performance.permission.max_trade_amount }}</dd></div>
+          <div><dt>Per day</dt><dd>${{ performance.permission.max_daily_volume }}</dd></div>
+          <div><dt>Min copy score</dt><dd>{{ performance.permission.min_copy_score }}</dd></div>
+          <div><dt>Expires</dt><dd>{{ performance.permission.expires_at|slice:":10" }}</dd></div>
+        </dl>
+        <a href="{% url 'dream_agent_activate' %}" class="dl-btn dl-btn--ghost dl-btn--sm">Manage permissions</a>
+        {% else %}
+        <p class="dl-muted">No active grant. Sign a permission to let DreamAgent copy.</p>
+        <a href="{% url 'dream_agent_activate' %}" class="dl-btn dl-btn--primary dl-btn--sm">Grant permission</a>
+        {% endif %}
+      </section>
+
+      <section class="dl-ta-panel" aria-labelledby="agent-control-heading">
+        <h3 id="agent-control-heading" class="dl-section__title">Control</h3>
+        <p class="dl-muted">
+          {{ performance.trades_evaluated|default:0 }} evaluated
+          · {{ performance.trades_copied|default:0 }} copied
+          · {{ performance.trades_skipped|default:0 }} skipped
+        </p>
+        <div class="dl-agent-actions">
+          {% if agent.status == "RUNNING" %}
+          <button type="button" class="dl-btn dl-btn--ghost" data-agent-pause>Pause</button>
+          {% elif agent.status == "PAUSED" or agent.status == "AUTHORIZED" %}
+          <button type="button" class="dl-btn dl-btn--primary" data-agent-resume>Resume</button>
+          {% endif %}
+          <a href="{% url 'dream_agent_skips' %}" class="dl-btn dl-btn--ghost">Why skipped?</a>
+          {% if agent.status != "REVOKED" %}
+          <button type="button" class="dl-btn dl-btn--ghost dl-btn--danger" data-agent-revoke>Revoke</button>
+          {% endif %}
+        </div>
+      </section>
+    </div>
+  </section>
+  {% endwith %}
+
+  <section class="dl-section" id="agent-live-card" hidden>
+    <article class="dl-agent-live">
+      <h3>Dream Agent</h3>
+      <p class="dl-agent-live__status">Autonomous</p>
+      <p id="agent-live-summary"></p>
+      <div class="dl-agent-live__score" id="agent-live-score"></div>
+      <ul class="dl-agent-live__checks" id="agent-live-checks"></ul>
+      <p class="dl-agent-live__result" id="agent-live-result"></p>
+    </article>
+  </section>
+  {% endif %}
+</div>
+
+<dialog class="dl-modal" id="agent-revoke-modal">
+  <form method="dialog" class="dl-modal__panel">
+    <h2 class="dl-modal__title">Revoke Dream Agent?</h2>
+    <p>DreamAgent immediately loses permission to place new trades. Your Smart Account stays yours.</p>
+    <div class="dl-modal__footer">
+      <button value="cancel" class="dl-btn dl-btn--ghost">Cancel</button>
+      <button value="confirm" class="dl-btn dl-btn--primary" id="agent-revoke-confirm">Revoke Agent</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}

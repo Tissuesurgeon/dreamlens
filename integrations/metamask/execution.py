@@ -1,0 +1,114 @@
+"""Build execution payloads for delegated DreamDEX trades."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, replace
+from typing import Any
+
+from integrations.dreamdex.types import UnsignedTxDTO
+from integrations.metamask.delegation import encode_redeem_delegations_calldata
+from integrations.metamask.smart_account import (
+    SmartAccountConfigError,
+    mock_smart_account_enabled,
+    require_live_environment,
+)
+
+# 0.05 STT default cap if settings are unavailable (tests).
+_DEFAULT_GAS_PAYMENT_CAP_WEI = 5 * 10**16
+
+
+@dataclass
+class DelegatedExecution:
+    """Ready-to-broadcast redeem tx (from session EOA)."""
+
+    to: str
+    data: str
+    value: int
+    chain_id: int
+    mock: bool
+    inner_target: str
+    inner_data: str
+    inner_value: int = 0
+    signed_delegation: dict[str, Any] | None = None
+    gas_payment_wei: int = 0
+
+
+def compute_gas_reimbursement_wei(
+    *,
+    sa_balance_wei: int,
+    gas_limit: int,
+    gas_price_wei: int,
+    buffer_bps: int = 2500,
+    cap_wei: int = _DEFAULT_GAS_PAYMENT_CAP_WEI,
+) -> int:
+    """Native STT the Smart Account should send the session key for this redeem."""
+    if sa_balance_wei <= 0 or gas_limit <= 0 or gas_price_wei <= 0:
+        return 0
+    bps = max(0, int(buffer_bps))
+    payment = int(gas_limit) * int(gas_price_wei) * (10_000 + bps) // 10_000
+    if cap_wei > 0:
+        payment = min(payment, int(cap_wei))
+    return min(payment, int(sa_balance_wei))
+
+
+def with_gas_reimbursement(
+    execution: DelegatedExecution,
+    *,
+    recipient: str,
+    amount_wei: int,
+) -> DelegatedExecution:
+    """Append a native STT transfer from the Smart Account to the session EOA."""
+    if execution.mock or not execution.signed_delegation or amount_wei <= 0:
+        return execution
+    data = encode_redeem_delegations_calldata(
+        signed_delegation=execution.signed_delegation,
+        target=execution.inner_target,
+        call_data=execution.inner_data,
+        value=execution.inner_value,
+        extra_executions=[(recipient, int(amount_wei), "0x")],
+    )
+    return replace(execution, data=data, gas_payment_wei=int(amount_wei))
+
+
+def build_delegated_trade_execution(
+    *,
+    signed_delegation: dict[str, Any],
+    dreamdex_tx: UnsignedTxDTO,
+    chain_id: int | None = None,
+) -> DelegatedExecution:
+    """Wrap a DreamDEX placeBinaryOrder UnsignedTxDTO in redeemDelegations."""
+    cid = chain_id or dreamdex_tx.chain_id
+    if mock_smart_account_enabled():
+        return DelegatedExecution(
+            to=dreamdex_tx.to,
+            data=dreamdex_tx.data,
+            value=int(dreamdex_tx.value or 0),
+            chain_id=dreamdex_tx.chain_id,
+            mock=True,
+            inner_target=dreamdex_tx.to,
+            inner_data=dreamdex_tx.data,
+            inner_value=int(dreamdex_tx.value or 0),
+            signed_delegation=signed_delegation,
+        )
+
+    env = require_live_environment(chain_id=cid)
+    if not env.delegation_manager:
+        raise SmartAccountConfigError("DelegationManager address missing")
+
+    data = encode_redeem_delegations_calldata(
+        signed_delegation=signed_delegation,
+        target=dreamdex_tx.to,
+        call_data=dreamdex_tx.data,
+        value=int(dreamdex_tx.value or 0),
+    )
+    return DelegatedExecution(
+        to=env.delegation_manager,
+        data=data,
+        value=0,
+        chain_id=env.chain_id,
+        mock=False,
+        inner_target=dreamdex_tx.to,
+        inner_data=dreamdex_tx.data,
+        inner_value=int(dreamdex_tx.value or 0),
+        signed_delegation=signed_delegation,
+    )

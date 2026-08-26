@@ -1,0 +1,79 @@
+{% load dreamlens_extras %}
+<article
+  class="dl-event-card"
+  data-event-id="{{ event.pk }}"
+  data-asset="{{ event.underlying_asset|upper }}"
+  data-signals="{% if event.radar_types %}{% for t in event.radar_types %}{{ t }} {% endfor %}{% else %}{% for s in event.radar_signals.all %}{% if s.is_active %}{{ s.signal_type }} {% endif %}{% endfor %}{% endif %}"
+>
+  <div class="dl-event-card__top">
+    <span class="dl-event-card__asset">{{ event.underlying_asset|upper }}</span>
+    {% if event.card_signal %}
+    <span class="dl-event-card__radar">
+      <span aria-hidden="true">◆</span>
+      {{ event.card_signal.signal_type|signal_label }}{% if event.card_signal.score %} · {{ event.card_signal.score|floatformat:0 }}%{% endif %}
+    </span>
+    {% endif %}
+  </div>
+
+  <h3 class="dl-event-card__title">
+    <a href="{% url 'event_detail' event.pk %}">{{ event.title }}</a>
+  </h3>
+
+  <div class="dl-event-card__prices">
+    {% for o in event.outcomes.all %}
+      {% if o.outcome_type == "YES" %}
+      <button
+        type="button"
+        class="dl-event-card__price dl-event-card__price--yes"
+        data-trade
+        data-event-id="{{ event.pk }}"
+        data-event-title="{{ event.title }}"
+        data-outcome="YES"
+        data-price="{{ o.current_price }}"
+        aria-label="Buy Yes at {{ o.current_price|as_usd }}"
+      >
+        <span class="dl-event-card__side">YES</span>
+        <span class="dl-event-card__num">{{ o.current_price|as_usd }}</span>
+        <span class="dl-event-card__hint">{{ o.current_price|payout_mult }} payout</span>
+      </button>
+      {% endif %}
+    {% endfor %}
+    {% for o in event.outcomes.all %}
+      {% if o.outcome_type == "NO" %}
+      <button
+        type="button"
+        class="dl-event-card__price dl-event-card__price--no"
+        data-trade
+        data-event-id="{{ event.pk }}"
+        data-event-title="{{ event.title }}"
+        data-outcome="NO"
+        data-price="{{ o.current_price }}"
+        aria-label="Buy No at {{ o.current_price|as_usd }}"
+      >
+        <span class="dl-event-card__side">NO</span>
+        <span class="dl-event-card__num">{{ o.current_price|as_usd }}</span>
+        <span class="dl-event-card__hint">{{ o.current_price|payout_mult }} payout</span>
+      </button>
+      {% endif %}
+    {% endfor %}
+  </div>
+
+  {% for o in event.outcomes.all %}
+    {% if o.outcome_type == "YES" %}
+    <div class="dl-prob" role="img" aria-label="Market implies {{ o.current_price|pct_of }} percent Yes">
+      <div class="dl-prob-bar">
+        <div class="dl-prob-bar__yes" style="width: {% widthratio o.current_price 1 100 %}%"></div>
+      </div>
+      <div class="dl-prob__labels">
+        <span class="dl-text-yes">{{ o.current_price|pct_of }}% YES</span>
+        <span class="dl-text-no">{{ o.current_price|complement_pct }}% NO</span>
+      </div>
+    </div>
+    {% endif %}
+  {% endfor %}
+
+  <div class="dl-event-card__meta">
+    <span>{{ event.cumulative_quote_volume|usd_amount }} vol · {{ event.trade_count }} trade{{ event.trade_count|pluralize }} · <span class="dl-countdown" data-expiry="{{ event.expiry_time|date:'c' }}">—</span></span>
+    <a href="{% url 'event_detail' event.pk %}" class="dl-event-card__explore">Explore</a>
+  </div>
+</article>

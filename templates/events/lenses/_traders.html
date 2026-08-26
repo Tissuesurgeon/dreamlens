@@ -1,0 +1,47 @@
+{% load dreamlens_extras %}
+<div class="dl-lens-content">
+  {% if trader_count %}
+  <p class="dl-traders-lead">
+    {% if yes_position_share >= no_position_share %}
+    <strong>{{ yes_position_share|pct_of }}%</strong> of open positions are <span class="dl-text-yes">YES</span>
+    {% else %}
+    <strong>{{ no_position_share|pct_of }}%</strong> of open positions are <span class="dl-text-no">NO</span>
+    {% endif %}
+    <span class="dl-traders-lead__meta">· {{ trader_count }} trader{{ trader_count|pluralize }}{% if trade_count %} · {{ trade_count }} fill{{ trade_count|pluralize }}{% endif %}</span>
+  </p>
+  {% endif %}
+
+  {% if traders %}
+  <div class="dl-trader-list">
+    {% for trader in traders %}
+    <article class="dl-trader-row">
+      <div class="dl-trader-card__avatar" aria-hidden="true">{{ trader.wallet|slice:"2:4"|upper }}</div>
+      <div class="dl-trader-card__body">
+        {% if trader.profile %}
+        <h4 class="dl-trader-card__name"><a href="{% url 'trader_detail' trader.profile.pk %}" class="dl-addr-link dl-mono">{{ trader.wallet|short_address }}</a></h4>
+        {% else %}
+        <h4 class="dl-trader-card__name dl-mono">{{ trader.wallet|short_address }}</h4>
+        {% endif %}
+        <p class="dl-trader-card__wallet">
+          {% if trader.position_label %}{{ trader.position_label }}{% else %}No open size{% endif %}
+          {% if trader.position_amount %} · {{ trader.position_amount|usd_amount }}{% endif %}
+        </p>
+      </div>
+      <div class="dl-trader-card__actions">
+        {% if trader.profile %}
+        <a href="{% url 'trader_detail' trader.profile.pk %}" class="dl-btn dl-btn--ghost dl-btn--sm">View</a>
+        <button type="button" class="dl-btn dl-btn--ghost dl-btn--sm" data-follow-trader="{{ trader.profile.pk }}">Follow</button>
+        <button type="button" class="dl-btn dl-btn--primary dl-btn--sm" data-copy-trader="{{ trader.profile.pk }}" data-switch-lens="copy">Copy</button>
+        {% else %}
+        <button type="button" class="dl-btn dl-btn--ghost dl-btn--sm" disabled title="No indexed profile yet">Follow</button>
+        {% endif %}
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="dl-empty">
+    <p>No trader activity on this event yet.</p>
+  </div>
+  {% endif %}
+</div>

@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% load dreamlens_extras %}
+
+{% block title %}{{ trader.wallet_address|short_address }} — DreamLens{% endblock %}
+
+{% block content %}
+<div class="dl-container dl-container--analytics dl-trader-page dl-animate-in">
+  <p class="dl-breadcrumb">
+    <a href="{% url 'following' %}">Active traders</a>
+    <span aria-hidden="true">/</span>
+    <span class="dl-mono">{{ trader.wallet_address|short_address }}</span>
+  </p>
+
+  <header class="dl-ta-head">
+    <div class="dl-ta-identity">
+      <div class="dl-trader-card__avatar" aria-hidden="true">{{ trader.wallet_address|slice:"2:4"|upper }}</div>
+      <div>
+        <h1 class="dl-ta-identity__title dl-mono">{{ trader.wallet_address|short_address }}</h1>
+        <p class="dl-ta-identity__full">
+          <span class="dl-mono" id="trader-full-address">{{ trader.wallet_address }}</span>
+          <button type="button" class="dl-icon-btn" data-copy-text="{{ trader.wallet_address }}" aria-label="Copy address">Copy</button>
+          {% if dreamlens_network.explorerUrl %}
+          <a class="dl-icon-btn" href="{{ dreamlens_network.explorerUrl }}/address/{{ trader.wallet_address }}" target="_blank" rel="noopener noreferrer">Explorer</a>
+          {% endif %}
+        </p>
+        <p class="dl-ta-identity__meta">
+          {% if analytics.last_fill_at %}Last fill {{ analytics.last_fill_at|timesince }} ago{% else %}No indexed fills yet{% endif %}
+          · {{ analytics.unique_markets }} market{{ analytics.unique_markets|pluralize }}
+        </p>
+      </div>
+    </div>
+    <div class="dl-ta-actions">
+      {% if already_following %}
+      <span class="dl-followed-mark">Following</span>
+      {% else %}
+      <button type="button" class="dl-btn dl-btn--ghost" data-follow-trader="{{ trader.pk }}">Follow</button>
+      {% endif %}
+      {% if relationship and relationship.status == "ACTIVE" %}
+      <a href="{% url 'copy_settings' relationship.pk %}" class="dl-btn dl-btn--ghost">Manage copy</a>
+      <a href="{% url 'copy_activity' %}" class="dl-btn dl-btn--ghost">Activity</a>
+      {% elif relationship %}
+      <button type="button" class="dl-btn dl-btn--primary" data-copy-resume="{{ relationship.pk }}">Resume Smart Copy</button>
+      <a href="{% url 'copy_settings' relationship.pk %}" class="dl-btn dl-btn--ghost">Manage</a>
+      {% else %}
+      <button
+        type="button"
+        class="dl-btn dl-btn--primary"
+        id="start-smart-copy"
+        data-open-smart-copy
+        data-trader-id="{{ trader.pk }}"
+        data-trader-name="{{ trader.wallet_address|short_address }}"
+      >Smart Copy</button>
+      {% endif %}
+    </div>
+  </header>
+
+  <div class="dl-ta-kpis" role="group" aria-label="Trader metrics">
+    <div class="dl-ta-kpi">
+      <span class="dl-ta-kpi__label">Volume</span>
+      <span class="dl-ta-kpi__value">{{ trader.total_volume|usd_amount }}</span>
+    </div>
+    <div class="dl-ta-kpi">
+      <span class="dl-ta-kpi__label">Fills</span>
+      <span class="dl-ta-kpi__value">{% if analytics.indexed_count %}{{ analytics.indexed_count }}{% else %}{{ trader.total_trades }}{% endif %}</span>
+    </div>
+    <div class="dl-ta-kpi">
+      <span class="dl-ta-kpi__label">Win rate</span>
+      <span class="dl-ta-kpi__value">{{ win_pct|floatformat:0 }}%</span>
+    </div>
+    <div class="dl-ta-kpi">
+      <span class="dl-ta-kpi__label">Score</span>
+      <span class="dl-ta-kpi__value">{{ analytics.score_100|floatformat:0 }}</span>
+    </div>
+    <div class="dl-ta-kpi">
+      <span class="dl-ta-kpi__label">Avg fill</span>
+      <span class="dl-ta-kpi__value">{{ analytics.avg_fill|usd_amount }}</span>
+    </div>
+    <div class="dl-ta-kpi">
+      <span class="dl-ta-kpi__label">ROI</span>
+      <span class="dl-ta-kpi__value">{% if analytics.has_roi %}{% if trader.roi >= 0 %}+{% endif %}{{ trader.roi|floatformat:1 }}%{% else %}—{% endif %}</span>
+    </div>
+  </div>
+
+  <div class="dl-ta-grid">
+    <section class="dl-ta-panel" aria-labelledby="side-split-heading">
+      <h2 id="side-split-heading" class="dl-ta-panel__title">YES / NO split</h2>
+      <div class="dl-split-bar" role="img" aria-label="Yes {{ analytics.yes_share|pct_of }} percent, No {{ analytics.no_share|pct_of }} percent">
+        <span class="dl-split-bar__yes" style="width: {{ analytics.yes_share|pct_of }}%"></span>
+        <span class="dl-split-bar__no" style="width: {{ analytics.no_share|pct_of }}%"></span>
+      </div>
+      <dl class="dl-ta-dl">
+        <div>
+          <dt class="dl-text-yes">YES</dt>
+          <dd>{{ analytics.yes_count }} fills · {{ analytics.yes_volume|usd_amount }}</dd>
+        </div>
+        <div>
+          <dt class="dl-text-no">NO</dt>
+          <dd>{{ analytics.no_count }} fills · {{ analytics.no_volume|usd_amount }}</dd>
+        </div>
+      </dl>
+    </section>
+
+    <section class="dl-ta-panel" aria-labelledby="asset-mix-heading">
+      <h2 id="asset-mix-heading" class="dl-ta-panel__title">Markets</h2>
+      {% if analytics.assets %}
+      <ul class="dl-mix-list">
+        {% for row in analytics.assets %}
+        <li>
+          <div class="dl-mix-list__row">
+            <span>{{ row.asset }}</span>
+            <span class="dl-num">{{ row.volume|usd_amount }} · {{ row.count }}</span>
+          </div>
+          <div class="dl-mix-bar" aria-hidden="true"><span style="width: {{ row.share|pct_of }}%"></span></div>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="dl-muted">No market mix yet.</p>
+      {% endif %}
+    </section>
+  </div>
+
+  <section class="dl-ta-panel dl-ta-panel--chart" aria-labelledby="volume-heading">
+    <h2 id="volume-heading" class="dl-ta-panel__title">Fill volume by day</h2>
+    {% if analytics.chart.labels %}
+    {{ analytics.chart|json_script:"trader-volume-chart" }}
+    <div class="dl-ta-chart-wrap">
+      <canvas id="trader-volume-canvas" aria-label="Daily fill volume"></canvas>
+    </div>
+    {% else %}
+    <p class="dl-muted">Volume series appears after fills are indexed.</p>
+    {% endif %}
+  </section>
+
+  <section class="dl-ta-panel" aria-labelledby="fills-heading">
+    <div class="dl-section-head">
+      <h2 id="fills-heading" class="dl-ta-panel__title">Recent fills</h2>
+      {% if relationship and relationship.status == "ACTIVE" %}
+      <span class="dl-smart-pill is-on"><span class="dl-smart-pill__dot" aria-hidden="true"></span> Smart Copy on</span>
+      {% endif %}
+    </div>
+    {% if fills %}
+    <div class="dl-table-wrap">
+      <table class="dl-data-table">
+        <thead>
+          <tr>
+            <th scope="col">When</th>
+            <th scope="col">Market</th>
+            <th scope="col">Side</th>
+            <th scope="col" class="dl-num">Size</th>
+            <th scope="col" class="dl-num">Entry</th>
+            <th scope="col">Tx</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for fill in fills %}
+          <tr>
+            <td class="dl-muted">{{ fill.opened_at|timesince }} ago</td>
+            <td>
+              <a href="{% url 'event_detail' fill.event.pk %}">{{ fill.event.underlying_asset }} · {{ fill.event.title }}</a>
+            </td>
+            <td>
+              <span class="dl-badge dl-badge--{% if fill.outcome.outcome_type == 'YES' %}yes{% else %}no{% endif %}">{{ fill.outcome.outcome_type }}</span>
+            </td>
+            <td class="dl-num">{{ fill.amount|floatformat:2 }}</td>
+            <td class="dl-num">{{ fill.entry_price|as_usd }}</td>
+            <td>
+              {% if fill.transaction_hash and dreamlens_network.explorerUrl %}
+              <a class="dl-mono" href="{{ dreamlens_network.explorerUrl }}/tx/{{ fill.transaction_hash }}" target="_blank" rel="noopener noreferrer">{{ fill.transaction_hash|truncatechars:10 }}</a>
+              {% elif fill.transaction_hash %}
+              <span class="dl-mono">{{ fill.transaction_hash|truncatechars:10 }}</span>
+              {% else %}
+              —
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="dl-empty">
+      <p>No indexed fills for this wallet yet.</p>
+    </div>
+    {% endif %}
+  </section>
+</div>
+
+{% include "components/smart_copy_wizard.html" with trader_id=trader.pk %}
+{% endblock %}

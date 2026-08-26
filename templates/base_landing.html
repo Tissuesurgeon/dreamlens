@@ -1,0 +1,45 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#241b24">
+  <meta name="description" content="DreamLens — see DreamDEX Event Contracts differently. Discover, understand, trade.">
+  <title>{% block title %}DreamLens{% endblock %}</title>
+  <link rel="icon" href="{% static 'brand/favicon.svg' %}" type="image/svg+xml">
+  <link rel="icon" href="{% static 'brand/favicon.ico' %}" sizes="any">
+  <link rel="apple-touch-icon" href="{% static 'brand/apple-touch-icon.png' %}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,650;12..96,800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{% static 'css/dreamlens.css' %}?v=20260824e">
+  {% block extra_head %}{% endblock %}
+</head>
+<body class="dl-body dl-body--landing">
+  <a href="#main" class="dl-skip-link">Skip to content</a>
+
+  <header class="dl-landing-header">
+    <div class="dl-landing-header__inner">
+      <a href="{% url 'landing' %}" class="dl-brand dl-brand--landing">
+        <img class="dl-brand__logo" src="{% static 'brand/dreamlens-mark.svg' %}" alt="" width="28" height="28">
+        Dream<span>Lens</span>
+      </a>
+      <div class="dl-landing-header__right">
+        <a href="{% url 'explore' %}" class="dl-btn dl-btn--primary dl-btn--sm">Enter</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="dl-landing-main" id="main">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="dl-landing-footer">
+    <p>DreamDEX Event Contracts · Somnia Shannon</p>
+  </footer>
+
+  <script src="{% static 'js/landing.js' %}?v=20260824d" defer></script>
+  {% block extra_js %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,46 @@
+<div class="dl-modal" id="trade-modal" aria-hidden="true" role="dialog" aria-labelledby="trade-modal-title">
+  <div class="dl-modal__backdrop" data-modal-close></div>
+  <div class="dl-modal__panel dl-animate-slide-up">
+    <header class="dl-modal__header">
+      <h2 id="trade-modal-title" class="dl-modal__title">Confirm trade</h2>
+      <button type="button" class="dl-modal__close" data-modal-close aria-label="Close">&times;</button>
+    </header>
+
+    <div class="dl-modal__body">
+      <dl class="dl-trade-summary">
+        <div class="dl-trade-summary__row">
+          <dt>Event</dt>
+          <dd id="modal-event-title">—</dd>
+        </div>
+        <div class="dl-trade-summary__row">
+          <dt>Outcome</dt>
+          <dd id="modal-outcome">—</dd>
+        </div>
+        <div class="dl-trade-summary__row">
+          <dt>Entry price</dt>
+          <dd id="modal-entry">—</dd>
+        </div>
+        <div class="dl-trade-summary__row">
+          <dt>Amount (USD)</dt>
+          <dd>
+            <input type="number" id="modal-amount" class="dl-input" min="1" step="1" value="10" aria-label="Amount in USD">
+          </dd>
+        </div>
+        <div class="dl-trade-summary__row dl-trade-summary__row--highlight">
+          <dt>Potential payout</dt>
+          <dd id="modal-payout">—</dd>
+        </div>
+      </dl>
+
+      <details class="dl-tx-details">
+        <summary>Transaction details</summary>
+        <pre id="modal-tx-details" class="dl-tx-details__pre">Awaiting preparation…</pre>
+      </details>
+    </div>
+
+    <footer class="dl-modal__footer">
+      <button type="button" class="dl-btn dl-btn--ghost" data-modal-close>Cancel</button>
+      <button type="button" class="dl-btn dl-btn--primary" id="modal-confirm-trade">Confirm &amp; Trade</button>
+    </footer>
+  </div>
+</div>

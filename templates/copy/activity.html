@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% load dreamlens_extras %}
+
+{% block title %}Smart Copy Activity — DreamLens{% endblock %}
+
+{% block content %}
+<div class="dl-container dl-animate-in">
+  <p class="dl-breadcrumb">
+    <a href="{% url 'following' %}">Active traders</a>
+    <span aria-hidden="true">/</span>
+    <span>Activity</span>
+  </p>
+  <header class="dl-page-header">
+    <h1 class="dl-page-header__title">Smart Copy activity</h1>
+    <p class="dl-page-header__subtitle">Every COPY and SKIP — with reasons.</p>
+  </header>
+
+  {% if not is_authenticated %}
+  <div class="dl-empty"><p>Connect your wallet to see activity.</p></div>
+  {% elif executions %}
+  <div class="dl-activity-list">
+    {% for ex in executions %}
+    <article class="dl-activity-card dl-activity-card--{{ ex.status|lower }}">
+      <div class="dl-activity-card__time">{{ ex.created_at|timesince }} ago</div>
+      <div class="dl-activity-card__head">
+        <strong>{{ ex.relationship.trader.display_name|default:ex.relationship.trader.wallet_address|short_address }}</strong>
+        <span class="dl-badge dl-badge--{% if ex.status == 'SKIPPED' %}muted{% elif ex.status == 'FAILED' %}no{% else %}yes{% endif %}">{{ ex.get_status_display }}</span>
+      </div>
+      <p class="dl-activity-card__event">
+        <a href="{% url 'event_detail' ex.source_trade.event.pk %}">{{ ex.source_trade.event.title }}</a>
+        · {{ ex.source_trade.outcome.outcome_type }} @ {{ ex.source_trade.entry_price|as_usd }}
+      </p>
+      {% if ex.copy_score %}
+      <p class="dl-activity-card__score">Copy Score <strong>{{ ex.copy_score }}</strong> / 100</p>
+      {% endif %}
+      {% if ex.status == "SKIPPED" %}
+      <div class="dl-activity-card__why">
+        <span class="dl-activity-card__label">Why</span>
+        <p>{{ ex.reason|default:"DreamLens chose not to copy." }}</p>
+        {% if ex.risks_json %}
+        <ul>
+          {% for r in ex.risks_json %}
+          <li>{{ r }}</li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+      </div>
+      {% elif ex.why_json %}
+      <div class="dl-activity-card__why">
+        <span class="dl-activity-card__label">Why approved</span>
+        <ul>
+          {% for w in ex.why_json %}
+          <li>{{ w }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+      {% if ex.amount %}
+      <p class="dl-activity-card__amount">${{ ex.amount|floatformat:0 }}</p>
+      {% endif %}
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="dl-empty">
+    <p class="dl-empty__title">No activity yet</p>
+    <p>When traders you follow open positions, decisions appear here.</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

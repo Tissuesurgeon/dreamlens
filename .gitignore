@@ -1,0 +1,25 @@
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.env
+.env.local
+*.sqlite3
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+media/
+staticfiles/
+.DS_Store
+node_modules/
+celerybeat-schedule
+celerybeat.pid
+*.log
+.env.*
+!.env.example
+scripts/metamask/env.fragment
+scripts/metamask/node_modules/

@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% load dreamlens_extras %}
+
+{% block title %}Activate Dream Agent — DreamLens{% endblock %}
+
+{% block content %}
+<div class="dl-container dl-container--agent dl-agent-activate dl-animate-in">
+  <p class="dl-breadcrumb">
+    <a href="{% url 'dream_agent' %}">Dream Agent</a>
+    <span aria-hidden="true">/</span>
+    <span>Activate</span>
+  </p>
+
+  <header class="dl-page-header">
+    <h1 class="dl-page-header__title">Activate Dream Agent</h1>
+    <p class="dl-page-header__subtitle">Create the account, fund it, then sign one bounded permission on Somnia Shannon.</p>
+  </header>
+
+  {% if not is_authenticated %}
+  <div class="dl-empty dl-empty--large">
+    <p class="dl-empty__title">Connect MetaMask first</p>
+    <p>Your wallet remains the owner of the DreamLens Smart Account.</p>
+  </div>
+  {% elif grant.configured == False %}
+  <div class="dl-empty dl-empty--large">
+    <p class="dl-empty__title">Delegation Framework not configured</p>
+    <p>{{ grant.config_error|default:"Deploy the MetaMask Delegation Framework on Shannon before granting DreamAgent." }}</p>
+  </div>
+  {% else %}
+
+  {% with sa=grant.smart_account ag=grant.agent %}
+  <ol class="dl-agent-rail" aria-label="Activation steps">
+    <li class="dl-agent-rail__item {% if sa %}is-done{% else %}is-current{% endif %}">
+      <span class="dl-agent-rail__n" aria-hidden="true">{% if sa %}✓{% else %}1{% endif %}</span>
+      <span class="dl-agent-rail__label">Create</span>
+    </li>
+    <li class="dl-agent-rail__item {% if sa.status == 'FUNDED' %}is-done{% elif sa %}is-current{% endif %}">
+      <span class="dl-agent-rail__n" aria-hidden="true">{% if sa.status == 'FUNDED' %}✓{% else %}2{% endif %}</span>
+      <span class="dl-agent-rail__label">Deposit</span>
+    </li>
+    <li class="dl-agent-rail__item {% if ag.status == 'RUNNING' or ag.status == 'AUTHORIZED' %}is-done{% elif sa.status == 'FUNDED' %}is-current{% endif %}">
+      <span class="dl-agent-rail__n" aria-hidden="true">{% if ag.status == 'RUNNING' or ag.status == 'AUTHORIZED' %}✓{% else %}3{% endif %}</span>
+      <span class="dl-agent-rail__label">Grant</span>
+    </li>
+  </ol>
+
+  <ol class="dl-agent-steps">
+    <li class="dl-agent-step {% if sa %}is-done{% endif %}">
+      <div class="dl-agent-step__head">
+        <span class="dl-agent-step__n">1</span>
+        <div>
+          <strong>Create Smart Account</strong>
+          <p>Hybrid account owned by your MetaMask address, deployed on Shannon.</p>
+        </div>
+      </div>
+      {% if sa %}
+      <p class="dl-agent-step__body dl-agent-step__addr">
+        <span class="dl-mono">{{ sa.address }}</span>
+        <button type="button" class="dl-icon-btn" data-copy-text="{{ sa.address }}" aria-label="Copy Smart Account address">Copy</button>
+      </p>
+      {% else %}
+      <div class="dl-agent-step__body">
+        <button type="button" class="dl-btn dl-btn--primary dl-btn--sm" id="sa-create">Create Smart Account</button>
+      </div>
+      {% endif %}
+    </li>
+    <li class="dl-agent-step {% if sa.status == 'FUNDED' %}is-done{% endif %}">
+      <div class="dl-agent-step__head">
+        <span class="dl-agent-step__n">2</span>
+        <div>
+          <strong>Deposit</strong>
+          <p>Send DreamDEX collateral and Shannon STT. DreamAgent pays gas from the STT you deposit here.</p>
+        </div>
+      </div>
+      <div class="dl-agent-step__body dl-agent-deposit">
+        <div class="dl-form-row">
+          <label for="sa-deposit-amount">Collateral ($)</label>
+          <input id="sa-deposit-amount" type="number" min="1" step="1" value="50" class="dl-input" {% if not sa %}disabled{% endif %}>
+          <button type="button" class="dl-btn dl-btn--ghost dl-btn--sm" id="sa-deposit" {% if not sa %}disabled{% endif %}>Deposit collateral</button>
+        </div>
+        <div class="dl-form-row">
+          <label for="sa-gas-amount">Gas (STT)</label>
+          <input id="sa-gas-amount" type="number" min="0" step="0.01" value="0.5" class="dl-input" {% if not sa %}disabled{% endif %}>
+          <button type="button" class="dl-btn dl-btn--ghost dl-btn--sm" id="sa-deposit-gas" {% if not sa %}disabled{% endif %}>Deposit STT for gas</button>
+        </div>
+      </div>
+    </li>
+    <li class="dl-agent-step {% if ag.status == 'RUNNING' or ag.status == 'AUTHORIZED' %}is-done{% endif %}">
+      <div class="dl-agent-step__head">
+        <span class="dl-agent-step__n">3</span>
+        <div>
+          <strong>Grant permission</strong>
+          <p>One EIP-712 signature. DreamAgent cannot withdraw or change these limits.</p>
+        </div>
+      </div>
+    </li>
+  </ol>
+  {% endwith %}
+
+  <section class="dl-agent-grant-card" id="agent-grant-card">
+    <h2 class="dl-agent-grant-card__title">Permission</h2>
+    <p class="dl-muted">DreamAgent can trade Event Contracts for you. It cannot move funds off the Smart Account.</p>
+
+    <div class="dl-agent-grant-cols">
+      <div>
+        <h3>Can</h3>
+        <ul class="dl-agent-can">
+          {% for item in grant.agent_can %}
+          <li>{{ item }}</li>
+          {% empty %}
+          <li>Buy Event Contract outcomes</li>
+          <li>Sell/close supported positions</li>
+          <li>Trade only through DreamDEX</li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div>
+        <h3>Cannot</h3>
+        <ul class="dl-agent-cannot">
+          {% for item in grant.agent_cannot %}
+          <li>{{ item }}</li>
+          {% empty %}
+          <li>Withdraw your funds</li>
+          <li>Transfer funds to another address</li>
+          <li>Change your limits</li>
+          <li>Trade outside DreamDEX</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+
+    <div class="dl-form-grid">
+      <label>Max per trade ($)
+        <input type="number" id="grant-max-trade" class="dl-input" value="10" min="1" step="1">
+      </label>
+      <label>Max per day ($)
+        <input type="number" id="grant-max-daily" class="dl-input" value="50" min="1" step="1">
+      </label>
+      <label>Min copy score
+        <input type="number" id="grant-min-score" class="dl-input" value="75" min="0" max="100" step="1">
+      </label>
+      <label>Expiration (days)
+        <input type="number" id="grant-expires" class="dl-input" value="30" min="1" max="365" step="1">
+      </label>
+    </div>
+
+    <button type="button" class="dl-btn dl-btn--primary dl-btn--block" id="grant-permission">
+      Grant Permission
+    </button>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

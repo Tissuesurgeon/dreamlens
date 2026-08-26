@@ -1,0 +1,106 @@
+{# Smart Copy 3-step onboarding modal #}
+<div class="dl-modal" id="smart-copy-wizard" aria-hidden="true" role="dialog" aria-labelledby="smart-copy-wizard-title">
+  <div class="dl-modal__backdrop" data-smart-wizard-close></div>
+  <div class="dl-modal__panel dl-animate-slide-up">
+    <header class="dl-modal__header">
+      <h2 id="smart-copy-wizard-title" class="dl-modal__title">Start Smart Copy</h2>
+      <button type="button" class="dl-modal__close" data-smart-wizard-close aria-label="Close">&times;</button>
+    </header>
+
+    <form id="smart-copy-wizard-form" class="dl-wizard">
+      <input type="hidden" name="trader_id" id="scw-trader-id" value="{{ trader_id|default:'' }}">
+
+      <div class="dl-wizard-steps" aria-hidden="true">
+        <span class="dl-wizard-step is-active" data-scw-step-indicator="1">1</span>
+        <span class="dl-wizard-step" data-scw-step-indicator="2">2</span>
+        <span class="dl-wizard-step" data-scw-step-indicator="3">3</span>
+      </div>
+
+      <div class="dl-wizard-panel is-active" data-scw-step="1">
+        <h3 class="dl-lens-heading">How much should DreamLens copy?</h3>
+        <div class="dl-preset-group">
+          <button type="button" class="dl-preset" data-scw-amount="5">$5</button>
+          <button type="button" class="dl-preset is-active" data-scw-amount="10">$10</button>
+          <button type="button" class="dl-preset" data-scw-amount="25">$25</button>
+        </div>
+        <input type="hidden" id="scw-amount" value="10">
+        <div class="dl-form-row">
+          <label for="scw-max-trade" class="dl-label">Maximum per trade (USD)</label>
+          <input type="number" id="scw-max-trade" class="dl-input" min="1" step="1" value="10">
+        </div>
+        <div class="dl-form-row">
+          <label for="scw-max-daily" class="dl-label">Maximum per day (USD)</label>
+          <input type="number" id="scw-max-daily" class="dl-input" min="1" step="1" value="50">
+        </div>
+        <button type="button" class="dl-btn dl-btn--primary dl-btn--block" data-scw-next>Continue</button>
+      </div>
+
+      <div class="dl-wizard-panel" data-scw-step="2" hidden>
+        <h3 class="dl-lens-heading">What should DreamLens look for?</h3>
+        <div class="dl-check-group">
+          <label class="dl-check"><input type="checkbox" name="consider" value="trader_confidence" checked> Trader confidence</label>
+          <label class="dl-check"><input type="checkbox" name="consider" value="historical_performance" checked> Trader's historical performance</label>
+          <label class="dl-check"><input type="checkbox" name="consider" value="liquidity" checked> Event liquidity</label>
+          <label class="dl-check"><input type="checkbox" name="consider" value="market_movement" checked> Market movement</label>
+          <label class="dl-check"><input type="checkbox" name="consider" value="consensus" checked> Other trader consensus</label>
+          <label class="dl-check"><input type="checkbox" name="consider" value="copy_every"> Copy every trade</label>
+        </div>
+
+        <details class="dl-prefs">
+          <summary>Copy preferences</summary>
+          <div class="dl-form-row">
+            <label for="scw-min-wr" class="dl-label">Trader win rate ≥ (%)</label>
+            <input type="number" id="scw-min-wr" class="dl-input" min="0" max="100" value="65">
+          </div>
+          <div class="dl-form-row">
+            <label for="scw-min-events" class="dl-label">Minimum completed events</label>
+            <input type="number" id="scw-min-events" class="dl-input" min="0" value="30">
+          </div>
+          <div class="dl-form-row">
+            <label for="scw-min-liq" class="dl-label">Event liquidity ≥ (USD)</label>
+            <input type="number" id="scw-min-liq" class="dl-input" min="0" value="1000">
+          </div>
+          <div class="dl-form-row">
+            <label for="scw-min-score" class="dl-label">DreamLens Copy Score ≥</label>
+            <input type="number" id="scw-min-score" class="dl-input" min="0" max="100" value="70">
+          </div>
+          <div class="dl-form-row">
+            <label for="scw-min-cons" class="dl-label">Trader consensus ≥ (%)</label>
+            <input type="number" id="scw-min-cons" class="dl-input" min="0" max="100" value="60">
+          </div>
+        </details>
+
+        <div class="dl-wizard-nav">
+          <button type="button" class="dl-btn dl-btn--ghost" data-scw-back>Back</button>
+          <button type="button" class="dl-btn dl-btn--primary" data-scw-next>Continue</button>
+        </div>
+      </div>
+
+      <div class="dl-wizard-panel" data-scw-step="3" hidden>
+        <h3 class="dl-lens-heading">How should DreamLens handle trades?</h3>
+        <div class="dl-mode-group">
+          <label class="dl-mode">
+            <input type="radio" name="scw_mode" value="REVIEW" checked>
+            <span class="dl-mode__label">Review</span>
+            <span class="dl-mode__desc">DreamLens finds trades and asks you before every copy. Recommended.</span>
+          </label>
+          <label class="dl-mode">
+            <input type="radio" name="scw_mode" value="SMART_AUTO">
+            <span class="dl-mode__label">Smart Auto</span>
+            <span class="dl-mode__desc">Queues approved trades for you to confirm in your wallet.</span>
+          </label>
+          <label class="dl-mode">
+            <input type="radio" name="scw_mode" value="CONSENSUS">
+            <span class="dl-mode__label">Consensus</span>
+            <span class="dl-mode__desc">Only when multiple strong traders agree on the same outcome.</span>
+          </label>
+        </div>
+        <p class="dl-copy-note">DreamLens reviews trades before copying them. You always sign on DreamDEX.</p>
+        <div class="dl-wizard-nav">
+          <button type="button" class="dl-btn dl-btn--ghost" data-scw-back>Back</button>
+          <button type="submit" class="dl-btn dl-btn--primary">Start Smart Copy</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>

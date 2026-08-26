@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}Why skipped — Dream Agent{% endblock %}
+
+{% block content %}
+<div class="dl-container dl-container--agent dl-agent-skips dl-animate-in">
+  <p class="dl-breadcrumb">
+    <a href="{% url 'dream_agent' %}">Dream Agent</a>
+    <span aria-hidden="true">/</span>
+    <span>Skip log</span>
+  </p>
+
+  <header class="dl-page-header dl-page-header--split">
+    <div>
+      <h1 class="dl-page-header__title">Why your agent skipped</h1>
+      <p class="dl-page-header__subtitle">Every pass it watched the tape and did not copy.</p>
+    </div>
+    <a href="{% url 'dream_agent' %}" class="dl-btn dl-btn--ghost dl-btn--sm">Back to agent</a>
+  </header>
+
+  {% if not is_authenticated %}
+  <div class="dl-empty">
+    <p class="dl-empty__title">Connect MetaMask</p>
+    <p>Skip reasons are stored for your Dream Agent session.</p>
+  </div>
+  {% elif not evaluations %}
+  <div class="dl-empty dl-empty--large">
+    <p class="dl-empty__title">No skipped trades yet</p>
+    <p>When DreamAgent watches a fill but does not copy, the policy reason lands here.</p>
+  </div>
+  {% else %}
+  <div class="dl-skip-list">
+    {% for ev in evaluations %}
+    <article class="dl-skip-card">
+      <div class="dl-skip-card__header">
+        <h3>{{ ev.event_title|default:"Event" }}</h3>
+        <span class="dl-smart-pill is-paused">Skipped</span>
+      </div>
+      <p class="dl-skip-card__meta">
+        {{ ev.trader_name }} · {{ ev.outcome }}
+        {% if ev.copy_score != None %}· Score {{ ev.copy_score }}{% endif %}
+      </p>
+      <ul class="dl-skip-card__reasons">
+        {% for reason in ev.skip_reasons %}
+        <li>{{ reason }}</li>
+        {% empty %}
+        <li>Skipped by policy</li>
+        {% endfor %}
+      </ul>
+    </article>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

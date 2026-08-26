@@ -1,0 +1,19 @@
+{% load dreamlens_extras %}
+<article class="dl-insight-card dl-insight-card--compact">
+  <header class="dl-insight-card__header">
+    <span class="dl-insight-card__icon" aria-hidden="true">✦</span>
+    <h3 class="dl-insight-card__title">DreamLens estimate</h3>
+  </header>
+  <div class="dl-insight-compare">
+    <div class="dl-insight-compare__col">
+      <span class="dl-insight-compare__label">Estimate</span>
+      <span class="dl-insight-compare__value dl-insight-compare__value--estimate">{{ ai_insight.estimate_pct }}%</span>
+    </div>
+    <div class="dl-insight-compare__divider" aria-hidden="true">vs</div>
+    <div class="dl-insight-compare__col">
+      <span class="dl-insight-compare__label">Market</span>
+      <span class="dl-insight-compare__value">${{ ai_insight.market_price }}</span>
+    </div>
+  </div>
+  <p class="dl-insight-card__summary">{{ ai_insight.summary }}</p>
+</article>

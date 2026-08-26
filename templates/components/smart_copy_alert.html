@@ -1,0 +1,37 @@
+{# Smart Copy alert panel — polled from /api/copy/pending/ #}
+<div class="dl-copy-alert" id="smart-copy-alert" hidden aria-live="polite">
+  <div class="dl-copy-alert__panel">
+    <header class="dl-copy-alert__header">
+      <span class="dl-copy-alert__icon" aria-hidden="true">✦</span>
+      <h2 class="dl-copy-alert__title">DreamLens alert</h2>
+      <button type="button" class="dl-modal__close" id="smart-copy-alert-close" aria-label="Dismiss">&times;</button>
+    </header>
+    <p class="dl-copy-alert__lead" id="sca-lead">A trader you follow just opened a position.</p>
+    <p class="dl-copy-alert__event" id="sca-event">—</p>
+    <p class="dl-copy-alert__side" id="sca-side">—</p>
+
+    <div class="dl-copy-alert__score" id="sca-score-block">
+      <button type="button" class="dl-copy-score" id="sca-score-btn" aria-expanded="false">
+        <span class="dl-copy-score__label">Copy Score</span>
+        <span class="dl-copy-score__value" id="sca-score">—</span>
+        <span class="dl-copy-score__max">/100</span>
+        <span class="dl-copy-score__tag" id="sca-score-label">—</span>
+      </button>
+      <div class="dl-copy-score__breakdown" id="sca-breakdown" hidden>
+        <div><span>Trader</span><strong id="sca-p-trader">—</strong></div>
+        <div><span>Event</span><strong id="sca-p-event">—</strong></div>
+        <div><span>Market</span><strong id="sca-p-market">—</strong></div>
+        <div><span>Consensus</span><strong id="sca-p-consensus">—</strong></div>
+        <div><span>Risk</span><strong id="sca-p-risk">—</strong></div>
+      </div>
+    </div>
+
+    <ul class="dl-copy-alert__why" id="sca-why"></ul>
+    <ul class="dl-copy-alert__risks" id="sca-risks"></ul>
+
+    <div class="dl-copy-alert__actions">
+      <button type="button" class="dl-btn dl-btn--primary" id="sca-copy">Copy</button>
+      <button type="button" class="dl-btn dl-btn--ghost" id="sca-skip">Skip</button>
+    </div>
+  </div>
+</div>

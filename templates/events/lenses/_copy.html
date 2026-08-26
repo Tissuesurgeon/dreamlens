@@ -1,0 +1,75 @@
+<div class="dl-lens-content">
+  {% if active_copy_trader_ids %}
+  <div class="dl-smart-on-banner" id="smart-copy-on-banner">
+    <span class="dl-smart-pill is-on"><span class="dl-smart-pill__dot" aria-hidden="true"></span> Smart Copy ON</span>
+    <p>DreamLens is reviewing trades from traders you follow on this event. Manage from <a href="{% url 'following' %}">Active traders</a>.</p>
+  </div>
+  {% endif %}
+
+  <form class="dl-copy-wizard" id="copy-form" {% if active_copy_trader_ids %}hidden{% endif %}>
+    <div class="dl-wizard-steps" aria-hidden="true">
+      <span class="dl-wizard-step is-active" data-step-indicator="1">1</span>
+      <span class="dl-wizard-step" data-step-indicator="2">2</span>
+      <span class="dl-wizard-step" data-step-indicator="3">3</span>
+    </div>
+
+    <div class="dl-wizard-panel is-active" data-wizard-step="1">
+      <h3 class="dl-lens-heading">How much per copy?</h3>
+      <p class="dl-wizard-hint">Each mirrored trade uses this size — you can change it later.</p>
+      <div class="dl-preset-group">
+        <button type="button" class="dl-preset" data-amount="5">$5</button>
+        <button type="button" class="dl-preset is-active" data-amount="10">$10</button>
+        <button type="button" class="dl-preset" data-amount="25">$25</button>
+      </div>
+      <input type="hidden" name="amount" id="copy-amount" value="10">
+      <button type="button" class="dl-btn dl-btn--primary dl-btn--block" data-wizard-next>Continue</button>
+    </div>
+
+    <div class="dl-wizard-panel" data-wizard-step="2" hidden>
+      <h3 class="dl-lens-heading">How should we copy?</h3>
+      <div class="dl-mode-group">
+        <label class="dl-mode">
+          <input type="radio" name="copy_mode" value="SMART" checked>
+          <span class="dl-mode__label">Review first</span>
+          <span class="dl-mode__desc">DreamLens scores each trade — you confirm before signing.</span>
+        </label>
+        <label class="dl-mode">
+          <input type="radio" name="copy_mode" value="SMART_AUTO">
+          <span class="dl-mode__label">Smart Auto</span>
+          <span class="dl-mode__desc">Queue high-score trades; you still sign in your wallet.</span>
+        </label>
+        <label class="dl-mode">
+          <input type="radio" name="copy_mode" value="CONSENSUS">
+          <span class="dl-mode__label">Only with the crowd</span>
+          <span class="dl-mode__desc">Copy when tracked traders lean the same way.</span>
+        </label>
+      </div>
+      <div class="dl-wizard-nav">
+        <button type="button" class="dl-btn dl-btn--ghost" data-wizard-back>Back</button>
+        <button type="button" class="dl-btn dl-btn--primary" data-wizard-next>Continue</button>
+      </div>
+    </div>
+
+    <div class="dl-wizard-panel" data-wizard-step="3" hidden>
+      <h3 class="dl-lens-heading">Set your limits</h3>
+      <p class="dl-wizard-hint">Caps protect you if the trader is active.</p>
+      <div class="dl-form-row">
+        <label for="copy-daily-limit" class="dl-label">Daily limit (USD)</label>
+        <input type="number" id="copy-daily-limit" class="dl-input" min="5" step="5" value="50" placeholder="50">
+      </div>
+      <div class="dl-form-row">
+        <label for="copy-per-trade-limit" class="dl-label">Per-trade max (USD)</label>
+        <input type="number" id="copy-per-trade-limit" class="dl-input" min="1" step="1" value="25" placeholder="25">
+      </div>
+      <div class="dl-wizard-nav">
+        <button type="button" class="dl-btn dl-btn--ghost" data-wizard-back>Back</button>
+        <button type="submit" class="dl-btn dl-btn--primary">Start Smart Copy</button>
+      </div>
+      <p class="dl-copy-note">You stay in control of your wallet. Trades run on DreamDEX.</p>
+    </div>
+  </form>
+
+  {% if active_copy_trader_ids %}
+  <button type="button" class="dl-btn dl-btn--ghost dl-btn--sm" id="show-event-copy-wizard">Set up another trader</button>
+  {% endif %}
+</div>

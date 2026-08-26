@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% load dreamlens_extras %}
+
+{% block title %}Explore — DreamLens{% endblock %}
+
+{% block content %}
+<div class="dl-container dl-container--home dl-home dl-animate-in">
+  <header class="dl-page-header dl-page-header--split">
+    <div>
+      <h1 class="dl-page-header__title">Explore</h1>
+      <p class="dl-page-header__subtitle">Live DreamDEX Event Contracts on Somnia Shannon.</p>
+    </div>
+    <p class="dl-hero__status">
+      <span class="dl-hero__pulse" aria-hidden="true"></span>
+      {{ markets|length }} live
+    </p>
+  </header>
+
+  <form class="dl-ask" id="ai-search-form">
+    {% csrf_token %}
+    <label class="visually-hidden" for="ai-search-input">Ask DreamLens about any event</label>
+    <div class="dl-ask__row">
+      <input
+        type="search"
+        id="ai-search-input"
+        class="dl-ask__input"
+        name="query"
+        placeholder="Ask DreamLens about any event…"
+        autocomplete="off"
+        enterkeyhint="search"
+      >
+      <button type="submit" class="dl-btn dl-btn--primary">Ask</button>
+    </div>
+    <div class="dl-ask__chips">
+      {% for chip in search_chips %}
+      <button type="button" class="dl-chip" data-search-chip="{{ chip }}">{{ chip }}</button>
+      {% endfor %}
+    </div>
+  </form>
+  <div id="ai-ask-reply" class="dl-ask-reply" hidden></div>
+
+  <section class="dl-radar" aria-labelledby="radar-heading">
+    <div class="dl-section-head">
+      <div>
+        <h2 id="radar-heading" class="dl-section__title">Event Radar</h2>
+        <p class="dl-section__subtitle">Tap a signal to filter the list.</p>
+      </div>
+    </div>
+    <div class="dl-radar__grid" id="event-radar">
+      {% for tile in radar_tiles %}
+      <button
+        type="button"
+        class="dl-radar-tile"
+        data-radar="{{ tile.signal_type }}"
+        data-blurb="{{ tile.blurb }}"
+        data-event-ids="{% for id in tile.event_ids %}{{ id }}{% if not forloop.last %},{% endif %}{% endfor %}"
+        aria-pressed="false"
+        {% if not tile.signals %}disabled title="No events with this signal right now"{% endif %}
+      >
+        <span class="dl-radar-tile__mark" aria-hidden="true"></span>
+        <span class="dl-radar-tile__title">{{ tile.title }}</span>
+        <span class="dl-radar-tile__count">{{ tile.signals|length }}</span>
+      </button>
+      {% endfor %}
+    </div>
+    <p class="dl-radar__blurb" id="radar-blurb" hidden></p>
+  </section>
+
+  <section class="dl-section" aria-labelledby="events-heading">
+    <div class="dl-section-head">
+      <h2 id="events-heading" class="dl-section__title">Events</h2>
+      <button type="button" class="dl-btn dl-btn--ghost dl-btn--sm" id="radar-clear" hidden>Show all</button>
+    </div>
+    {% if markets %}
+    <div class="dl-event-list" id="market-list">
+      {% for event in markets %}
+        {% include "components/event_card.html" with event=event %}
+      {% endfor %}
+    </div>
+    <div class="dl-empty" id="market-empty" hidden>
+      <p class="dl-empty__title">No events match that signal</p>
+      <p>Clear the filter to see everything trading right now.</p>
+      <button type="button" class="dl-btn dl-btn--ghost dl-btn--sm" data-radar-reset>Show all events</button>
+    </div>
+    {% else %}
+    <div class="dl-empty dl-empty--large">
+      <p class="dl-empty__title">No live events right now</p>
+      <p>DreamDEX Event Contracts appear here as soon as they start trading. Radar signals build up from live fills.</p>
+    </div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

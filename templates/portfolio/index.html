@@ -1,0 +1,373 @@
+{% extends "base.html" %}
+{% load dreamlens_extras %}
+
+{% block title %}Portfolio — DreamLens{% endblock %}
+
+{% block content %}
+<div class="dl-container dl-container--agent dl-portfolio-page dl-animate-in">
+  <header class="dl-page-header dl-page-header--split">
+    <div>
+      <h1 class="dl-page-header__title">Portfolio</h1>
+      <p class="dl-page-header__subtitle">Wallet, Dream Agent, and your DreamDEX positions.</p>
+    </div>
+  </header>
+
+  <section class="dl-wallet-balance" id="portfolio-wallet-balance" data-authenticated="{% if is_authenticated %}1{% else %}0{% endif %}" aria-labelledby="wallet-balance-heading">
+    <div class="dl-wallet-balance__head">
+      <h2 id="wallet-balance-heading" class="dl-section__title">Wallet</h2>
+      <button type="button" class="dl-btn dl-btn--ghost dl-btn--sm" id="portfolio-balance-refresh" {% if not is_authenticated %}hidden{% endif %}>Refresh</button>
+    </div>
+
+    <div class="dl-wallet-balance__gated" id="portfolio-balance-gated" {% if is_authenticated %}hidden{% endif %}>
+      <p>Connect MetaMask to load collateral, gas, and positions for this wallet.</p>
+    </div>
+
+    <div class="dl-ta-kpis" id="portfolio-balance-grid" role="group" aria-label="Wallet and portfolio" {% if not is_authenticated %}hidden{% endif %}>
+      <div class="dl-ta-kpi">
+        <span class="dl-ta-kpi__label">Collateral</span>
+        <span class="dl-ta-kpi__value" id="bal-collateral">
+          {% if wallet_balances and wallet_balances.collateral_balance is not None %}{{ wallet_balances.collateral_balance }}{% else %}—{% endif %}
+        </span>
+        <span class="dl-ta-kpi__hint" id="bal-collateral-sym">
+          {% if wallet_balances and wallet_balances.collateral_symbol %}{{ wallet_balances.collateral_symbol }}{% else %}Test USDC{% endif %}
+        </span>
+      </div>
+      <div class="dl-ta-kpi">
+        <span class="dl-ta-kpi__label">Gas</span>
+        <span class="dl-ta-kpi__value" id="bal-native">
+          {% if wallet_balances and wallet_balances.native_balance is not None %}{{ wallet_balances.native_balance }}{% else %}—{% endif %}
+        </span>
+        <span class="dl-ta-kpi__hint" id="bal-native-sym">
+          {% if wallet_balances and wallet_balances.native_symbol %}{{ wallet_balances.native_symbol }}{% else %}STT{% endif %}
+        </span>
+      </div>
+      <div class="dl-ta-kpi">
+        <span class="dl-ta-kpi__label">Total P&amp;L</span>
+        <span class="dl-ta-kpi__value{% if total_pnl < 0 %} is-neg{% elif total_pnl > 0 %} is-pos{% endif %}">${{ total_pnl|floatformat:2 }}</span>
+      </div>
+      <div class="dl-ta-kpi">
+        <span class="dl-ta-kpi__label">Events</span>
+        <span class="dl-ta-kpi__value">{{ event_count }}</span>
+      </div>
+      <div class="dl-ta-kpi">
+        <span class="dl-ta-kpi__label">Won</span>
+        <span class="dl-ta-kpi__value{% if won_count %} is-pos{% endif %}">{{ won_count }}</span>
+      </div>
+      <div class="dl-ta-kpi">
+        <span class="dl-ta-kpi__label">Lost</span>
+        <span class="dl-ta-kpi__value{% if lost_count %} is-neg{% endif %}">{{ lost_count }}</span>
+      </div>
+    </div>
+
+    <p class="dl-wallet-balance__meta" id="portfolio-balance-meta" {% if not wallet_balances or not wallet_balances.address %}hidden{% endif %}>
+      <span class="dl-mono" id="bal-address">{% if wallet_balances and wallet_balances.address %}{{ wallet_balances.address|short_address }}{% endif %}</span>
+      <button type="button" class="dl-icon-btn" data-copy-wallet data-copy-text="{% if wallet_balances and wallet_balances.address %}{{ wallet_balances.address }}{% endif %}" aria-label="Copy wallet address">Copy</button>
+      {% if dreamlens_network.explorerUrl %}
+      <a class="dl-icon-btn" id="bal-explorer" href="{% if wallet_balances and wallet_balances.address %}{{ dreamlens_network.explorerUrl }}/address/{{ wallet_balances.address }}{% else %}#{% endif %}" target="_blank" rel="noopener noreferrer" {% if not wallet_balances or not wallet_balances.address %}hidden{% endif %}>Explorer</a>
+      {% endif %}
+      <span id="bal-status">{% if wallet_balances and wallet_balances.error %}{{ wallet_balances.error }}{% endif %}</span>
+    </p>
+  </section>
+
+  {% if is_authenticated %}
+  <div class="dl-agent-dash">
+    <section class="dl-ta-panel" aria-labelledby="portfolio-agent-heading">
+      {% if agent %}
+      <div class="dl-agent-status-card__top">
+        <div>
+          <h2 id="portfolio-agent-heading" class="dl-agent-status-card__name">{{ agent.name }}</h2>
+          <p class="dl-agent-status-card__addr">
+            {% if smart_account %}
+            <span class="dl-mono">{{ smart_account.address|short_address }}</span>
+            {% endif %}
+          </p>
+        </div>
+        {% if agent.status == "RUNNING" %}
+        <span class="dl-smart-pill is-on"><span class="dl-smart-pill__dot" aria-hidden="true"></span> AUTONOMOUS</span>
+        {% elif agent.status == "PAUSED" %}
+        <span class="dl-smart-pill is-paused">Paused</span>
+        {% elif agent.status == "AUTHORIZED" %}
+        <span class="dl-smart-pill">Ready</span>
+        {% else %}
+        <span class="dl-smart-pill">Needs grant</span>
+        {% endif %}
+      </div>
+      <dl class="dl-agent-dl">
+        <div>
+          <dt>Agent collateral</dt>
+          <dd>{% if agent_balance and agent_balance.collateral %}{{ agent_balance.collateral }}{% elif agent_performance %}{{ agent_performance.balance }}{% else %}—{% endif %}</dd>
+        </div>
+        <div>
+          <dt>Agent gas</dt>
+          <dd>{% if agent_balance and agent_balance.native %}{{ agent_balance.native }} {{ agent_balance.native_symbol|default:"STT" }}{% else %}—{% endif %}</dd>
+        </div>
+        <div>
+          <dt>P&amp;L</dt>
+          <dd>{% if agent_performance.pnl %}${{ agent_performance.pnl }}{% else %}—{% endif %}</dd>
+        </div>
+        <div>
+          <dt>Copied / skipped</dt>
+          <dd>{{ agent_performance.trades_copied|default:0 }} / {{ agent_performance.trades_skipped|default:0 }}</dd>
+        </div>
+      </dl>
+      {% if agent_performance.permission %}
+      <p class="dl-agent-limits__line">
+        {% if agent.status == "RUNNING" %}<strong class="dl-text-yes">On</strong>{% else %}<strong>Off</strong>{% endif %}
+        · ${{ agent_performance.permission.max_trade_amount }} / trade
+        · ${{ agent_performance.permission.max_daily_volume }} / day
+        · min score {{ agent_performance.permission.min_copy_score }}
+      </p>
+      {% endif %}
+      <div class="dl-agent-actions">
+        <a href="{% url 'dream_agent' %}" class="dl-btn dl-btn--ghost dl-btn--sm">Agent details</a>
+        <a href="{% url 'dream_agent_activate' %}" class="dl-btn dl-btn--ghost dl-btn--sm">Manage grant</a>
+      </div>
+      {% else %}
+      <h2 id="portfolio-agent-heading" class="dl-agent-status-card__name">Dream Agent</h2>
+      <p class="dl-muted">No Dream Agent on this wallet yet. Create a Smart Account to copy trades autonomously.</p>
+      <a href="{% url 'dream_agent_activate' %}" class="dl-btn dl-btn--primary dl-btn--sm">Activate Dream Agent</a>
+      {% endif %}
+    </section>
+
+    <section class="dl-ta-panel dl-telegram-card" id="telegram-link-card" aria-labelledby="telegram-heading" data-telegram-status="{{ telegram_link.status|default:'' }}">
+      <div class="dl-agent-status-card__top">
+        <div>
+          <h2 id="telegram-heading" class="dl-agent-status-card__name">Telegram</h2>
+          <p class="dl-agent-status-card__addr">
+            Commands use DreamAgent on your Smart Account — not MetaMask.
+            {% if telegram_link.bot_username %}
+            <span class="dl-mono">@{{ telegram_link.bot_username }}</span>
+            {% endif %}
+          </p>
+        </div>
+        <span class="dl-smart-pill{% if telegram_link.status == 'ACTIVE' %} is-on{% elif telegram_link.status == 'PENDING' %} is-paused{% endif %}" id="telegram-pill">
+          {% if telegram_link.status == "ACTIVE" %}
+          <span class="dl-smart-pill__dot" aria-hidden="true"></span> Linked
+          {% elif telegram_link.status == "PENDING" %}
+          Confirm in Telegram
+          {% else %}
+          Not linked
+          {% endif %}
+        </span>
+      </div>
+
+      <div class="dl-telegram-actions" id="telegram-open-wrap" {% if telegram_link.status == "ACTIVE" %}hidden{% endif %}>
+        {% if telegram_link.bot_url %}
+        <a class="dl-btn dl-btn--ghost dl-btn--sm" id="telegram-open-bot" href="{{ telegram_link.bot_url }}?start={{ telegram_link.start_param|default:'chatid' }}" target="_blank" rel="noopener">Open DreamLens bot</a>
+        {% else %}
+        <a class="dl-btn dl-btn--ghost dl-btn--sm" id="telegram-open-bot" hidden href="#" target="_blank" rel="noopener">Open DreamLens bot</a>
+        {% endif %}
+      </div>
+
+      <div id="telegram-link-form" {% if telegram_link.status == "ACTIVE" or telegram_link.status == "PENDING" %}hidden{% endif %}>
+        <ol class="dl-telegram-steps">
+          <li>Open the DreamLens bot and tap <strong>Start</strong>.</li>
+          <li>Copy the numeric chat ID it replies with.</li>
+          <li>Paste it here, tap <strong>Link</strong>, then <strong>Confirm</strong> in Telegram.</li>
+        </ol>
+        <div class="dl-telegram-row">
+          <label class="visually-hidden" for="telegram-chat-input">Telegram chat ID</label>
+          <input
+            type="text"
+            inputmode="numeric"
+            id="telegram-chat-input"
+            class="dl-input"
+            placeholder="Chat ID"
+            value="{% if telegram_link.status == 'PENDING' %}{{ telegram_link.chat_id }}{% endif %}"
+            autocomplete="off"
+          >
+          <button type="button" class="dl-btn dl-btn--primary dl-btn--sm" id="telegram-link-submit">Link</button>
+        </div>
+        <p class="dl-telegram-help">
+          <a
+            class="dl-text-link"
+            href="https://t.me/userinfobot"
+            target="_blank"
+            rel="noopener noreferrer"
+          >How to get your chat ID</a>
+        </p>
+      </div>
+
+      <div class="dl-telegram-wait" id="telegram-pending" {% if telegram_link.status != "PENDING" %}hidden{% endif %}>
+        <p class="dl-telegram-wait__title">Confirm in Telegram</p>
+        <p class="dl-telegram-wait__copy">Tap <strong>Confirm</strong> on the bot message. Keep this tab open — it updates when the chat is linked.</p>
+        <p class="dl-telegram-wait__id">Chat ID <span class="dl-mono" id="telegram-pending-chat">{{ telegram_link.chat_id|default:"" }}</span></p>
+      </div>
+
+      <div id="telegram-link-active" {% if telegram_link.status != "ACTIVE" %}hidden{% endif %}>
+        <dl class="dl-agent-dl dl-agent-dl--compact">
+          <div>
+            <dt>Chat ID</dt>
+            <dd class="dl-mono" id="telegram-chat-id">{{ telegram_link.chat_id|default:"" }}</dd>
+          </div>
+          <div>
+            <dt>Remote control</dt>
+            <dd>/events · /trade · /agent</dd>
+          </div>
+        </dl>
+        <button type="button" class="dl-btn dl-btn--ghost dl-btn--sm" id="telegram-unlink">Unlink</button>
+      </div>
+
+      <p class="dl-telegram-status" id="telegram-link-status" role="status" aria-live="polite"></p>
+    </section>
+  </div>
+  {% endif %}
+
+  {% if not has_positions %}
+  <div class="dl-empty dl-empty--large">
+    <p class="dl-empty__title">No positions yet</p>
+    <p>Open an event, take a side, and it will show up here with live value. Fills from your connected wallet and Smart Account are indexed automatically.</p>
+    <a href="{% url 'explore' %}" class="dl-btn dl-btn--primary">Explore events</a>
+  </div>
+  {% else %}
+
+  <section class="dl-section">
+    <div class="dl-section-head dl-section-head--table">
+      <h2 class="dl-section__title">Open positions</h2>
+      <p class="dl-section__count">{{ open_positions|length }} open</p>
+    </div>
+    {% if open_positions %}
+    <div class="dl-event-rows">
+      {% for pos in open_positions %}
+      <a href="{% url 'event_detail' pos.event.pk %}" class="dl-event-row">
+        <span class="dl-event-row__side dl-event-row__side--{{ pos.outcome.outcome_type|lower }}">{{ pos.outcome.outcome_type }}</span>
+        <span class="dl-event-row__body">
+          <span class="dl-event-row__title">{{ pos.event.title }}</span>
+          <span class="dl-event-row__line">
+            {{ pos.amount|floatformat:2 }} {{ pos.outcome.outcome_type }}
+            · entry {{ pos.entry_price|as_usd }}
+            · <span class="dl-countdown" data-expiry="{{ pos.event.expiry_time|date:'c' }}">—</span>
+          </span>
+        </span>
+        <span class="dl-event-row__value{% if pos.pnl %}{% if pos.pnl >= 0 %} is-pos{% else %} is-neg{% endif %}{% endif %}">
+          ${{ pos.current_value|floatformat:2 }}
+          {% if pos.pnl is not None %}
+          <span class="dl-event-row__pnl">{% if pos.pnl >= 0 %}+{% endif %}${{ pos.pnl|floatformat:2 }}</span>
+          {% endif %}
+        </span>
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="dl-empty"><p>No open positions. Closed trades are below.</p></div>
+    {% endif %}
+  </section>
+
+  {% if settling_positions %}
+  <section class="dl-section">
+    <div class="dl-section-head dl-section-head--table">
+      <h2 class="dl-section__title">Settling</h2>
+      <p class="dl-section__count">{{ settling_positions|length }}</p>
+    </div>
+    <p class="dl-section__subtitle">This window has ended. DreamDEX posts the winner on-chain; then you can claim collateral.</p>
+    <div class="dl-event-rows">
+      {% for pos in settling_positions %}
+      <a href="{% url 'event_detail' pos.event.pk %}" class="dl-event-row dl-event-row--settling">
+        <span class="dl-event-row__side dl-event-row__side--{{ pos.outcome.outcome_type|lower }}">{{ pos.outcome.outcome_type }}</span>
+        <span class="dl-event-row__body">
+          <span class="dl-event-row__title">{{ pos.event.title }}</span>
+          <span class="dl-event-row__line">
+            {{ pos.amount|floatformat:2 }} {{ pos.outcome.outcome_type }}
+            · entry {{ pos.entry_price|as_usd }}
+            · waiting for oracle
+          </span>
+        </span>
+        <span class="dl-result-pill dl-result-pill--settling">Settling</span>
+      </a>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if settled_positions %}
+  <section class="dl-section">
+    <div class="dl-section-head dl-section-head--table">
+      <h2 class="dl-section__title">Closed</h2>
+      <p class="dl-section__count">{{ settled_positions|length }}</p>
+    </div>
+    <div class="dl-event-rows">
+      {% for pos in settled_positions %}
+      <div class="dl-event-row dl-event-row--settled">
+        <span class="dl-event-row__side dl-event-row__side--{{ pos.outcome.outcome_type|lower }}">{{ pos.outcome.outcome_type }}</span>
+        <span class="dl-event-row__body">
+          <a href="{% url 'event_detail' pos.event.pk %}" class="dl-event-row__title">{{ pos.event.title }}</a>
+          <span class="dl-event-row__line">
+            {{ pos.amount|floatformat:2 }} · entry {{ pos.entry_price|as_usd }}
+            {% if pos.result == "void" %}· both sides pay 0.50{% elif pos.result == "won" or pos.result == "claimed" %}· paid 1.00{% elif pos.result == "lost" %}· paid 0.00{% endif %}
+          </span>
+        </span>
+        <span class="dl-event-row__settle">
+          <span class="dl-result-pill dl-result-pill--{{ pos.result }}">
+            {% if pos.result == "won" %}Won
+            {% elif pos.result == "lost" %}Lost
+            {% elif pos.result == "void" %}Void
+            {% elif pos.result == "claimed" %}Claimed
+            {% else %}Closed{% endif %}
+          </span>
+          <span class="dl-event-row__value{% if pos.pnl %}{% if pos.pnl >= 0 %} is-pos{% else %} is-neg{% endif %}{% endif %}">
+            {% if pos.pnl is not None %}{% if pos.pnl >= 0 %}+{% endif %}${{ pos.pnl|floatformat:2 }}{% else %}—{% endif %}
+          </span>
+          {% if pos.claimable %}
+          <button
+            type="button"
+            class="dl-btn dl-btn--primary dl-btn--sm"
+            data-claim-position="{{ pos.pk }}"
+            data-claim-wallet="{{ pos.claim_wallet }}"
+          >Claim {% if pos.claim_payout %}${{ pos.claim_payout|floatformat:2 }}{% endif %}</button>
+          {% endif %}
+        </span>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if recent_trades %}
+  <section class="dl-section">
+    <div class="dl-section-head dl-section-head--table">
+      <h2 class="dl-section__title">Trades</h2>
+      <p class="dl-section__count">{{ recent_trades|length }}</p>
+    </div>
+    <div class="dl-table-wrap">
+      <table class="dl-data-table">
+        <thead>
+          <tr>
+            <th scope="col">When</th>
+            <th scope="col">Market</th>
+            <th scope="col">Side</th>
+            <th scope="col" class="dl-num">Size</th>
+            <th scope="col" class="dl-num">Entry</th>
+            <th scope="col">Tx</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for trade in recent_trades %}
+          <tr>
+            <td class="dl-muted">{{ trade.opened_at|timesince }} ago</td>
+            <td>
+              <a href="{% url 'event_detail' trade.event.pk %}">{{ trade.event.underlying_asset }} · {{ trade.event.title }}</a>
+            </td>
+            <td>
+              <span class="dl-badge dl-badge--{% if trade.outcome.outcome_type == 'YES' %}yes{% else %}no{% endif %}">{{ trade.outcome.outcome_type }}</span>
+            </td>
+            <td class="dl-num">{{ trade.amount|floatformat:2 }}</td>
+            <td class="dl-num">{{ trade.entry_price|as_usd }}</td>
+            <td>
+              {% if trade.transaction_hash and dreamlens_network.explorerUrl %}
+              <a class="dl-mono" href="{{ dreamlens_network.explorerUrl }}/tx/{{ trade.transaction_hash }}" target="_blank" rel="noopener noreferrer">{{ trade.transaction_hash|truncatechars:10 }}</a>
+              {% elif trade.transaction_hash %}
+              <span class="dl-mono">{{ trade.transaction_hash|truncatechars:10 }}</span>
+              {% else %}
+              —
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+  {% endif %}
+</div>
+{% endblock %}

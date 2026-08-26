@@ -1,0 +1,9 @@
+{
+  "name": "dreamlens-metamask-spike",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@metamask/smart-accounts-kit": "^1.6.0",
+    "viem": "^2.21.0"
+  }
+}

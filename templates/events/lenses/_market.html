@@ -1,0 +1,30 @@
+{% load dreamlens_extras %}
+<div class="dl-lens-content">
+  <h3 class="dl-lens-heading">What is the market saying?</h3>
+
+  <div class="dl-yn-bars">
+    <div class="dl-yn-bar">
+      <div class="dl-yn-bar__head">
+        <span>YES</span>
+        <strong>{% if yes_outcome %}{{ yes_outcome.current_price|as_usd }}{% else %}—{% endif %}</strong>
+      </div>
+      <div class="dl-prob-bar" aria-hidden="true">
+        <div class="dl-prob-bar__yes" style="width: {% if yes_outcome %}{% widthratio yes_outcome.current_price 1 100 %}{% else %}50{% endif %}%"></div>
+      </div>
+    </div>
+    <div class="dl-yn-bar">
+      <div class="dl-yn-bar__head">
+        <span>NO</span>
+        <strong>{% if no_outcome %}{{ no_outcome.current_price|as_usd }}{% else %}—{% endif %}</strong>
+      </div>
+      <div class="dl-prob-bar dl-prob-bar--no" aria-hidden="true">
+        <div class="dl-prob-bar__no" style="width: {% if no_outcome %}{% widthratio no_outcome.current_price 1 100 %}{% else %}50{% endif %}%"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="dl-chart-wrap">
+    <canvas id="price-chart" aria-label="Yes price history"></canvas>
+  </div>
+  <p class="dl-chart-note">Yes price over recent intervals.</p>
+</div>

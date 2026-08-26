@@ -1,0 +1,66 @@
+{% load dreamlens_extras %}
+<div class="dl-lens-content">
+  <article class="dl-insight-card">
+    <header class="dl-insight-card__header">
+      <span class="dl-insight-card__icon" aria-hidden="true">✦</span>
+      <h3 class="dl-insight-card__title">DreamLens estimate</h3>
+      <span class="dl-badge dl-badge--ai">{{ ai_insight.confidence|floatformat:0 }}% confidence</span>
+    </header>
+
+    <div class="dl-dual-bars">
+      <div class="dl-dual-bar">
+        <div class="dl-dual-bar__labels">
+          <span>Market</span>
+          <strong>{{ ai_insight.market_pct }}%</strong>
+        </div>
+        <div class="dl-prob-bar"><div class="dl-prob-bar__yes" style="width: {{ ai_insight.market_pct }}%"></div></div>
+      </div>
+      <div class="dl-dual-bar">
+        <div class="dl-dual-bar__labels">
+          <span>DreamLens estimate</span>
+          <strong>{{ ai_insight.estimate_pct }}%</strong>
+        </div>
+        <div class="dl-prob-bar"><div class="dl-prob-bar__estimate" style="width: {{ ai_insight.estimate_pct }}%"></div></div>
+      </div>
+    </div>
+
+    <p class="dl-insight-card__summary">{{ ai_insight.summary }}</p>
+
+    <section class="dl-insight-section">
+      <h4 class="dl-insight-section__title">Why</h4>
+      <ul class="dl-insight-list">
+        {% for item in ai_insight.why %}
+        <li>{{ item }}</li>
+        {% endfor %}
+      </ul>
+    </section>
+
+    <section class="dl-insight-section">
+      <h4 class="dl-insight-section__title">Risks</h4>
+      <ul class="dl-insight-list dl-insight-list--risks">
+        {% for item in ai_insight.risks %}
+        <li>{{ item }}</li>
+        {% endfor %}
+      </ul>
+    </section>
+
+    <div class="dl-insight-actions">
+      <button
+        type="button"
+        class="dl-btn dl-btn--yes dl-trade-trigger"
+        data-outcome="YES"
+        data-price="{% if yes_outcome %}{{ yes_outcome.current_price }}{% else %}0.5{% endif %}"
+        data-event-id="{{ event.pk }}"
+        data-event-title="{{ event.title }}"
+      >Buy YES</button>
+      <button
+        type="button"
+        class="dl-btn dl-btn--no dl-trade-trigger"
+        data-outcome="NO"
+        data-price="{% if no_outcome %}{{ no_outcome.current_price }}{% else %}0.5{% endif %}"
+        data-event-id="{{ event.pk }}"
+        data-event-title="{{ event.title }}"
+      >Buy NO</button>
+    </div>
+  </article>
+</div>

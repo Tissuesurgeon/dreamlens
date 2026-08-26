@@ -22,6 +22,8 @@ def _force_mock_adapter(settings):
     settings.MOCK_SMART_ACCOUNT = True
     settings.LOCAL_LLM_ENABLED = False
     settings.LLM_API_KEY = ""
+    settings.GEMINI_API_KEY = ""
+    settings.OPENROUTER_API_KEY = ""
     reset_adapter()
     yield
     reset_adapter()

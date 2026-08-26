@@ -82,6 +82,8 @@ def test_live_deposit_rejects_mock_hash(user, settings):
 def test_live_llm_unavailable_without_provider(settings):
     settings.MOCK_DREAMDEX = False
     settings.LLM_API_KEY = ""
+    settings.GEMINI_API_KEY = ""
+    settings.OPENROUTER_API_KEY = ""
     settings.LOCAL_LLM_ENABLED = False
     client = get_llm_client()
     assert isinstance(client, UnavailableLLMClient)

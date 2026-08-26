@@ -82,3 +82,39 @@ def test_parse_intent_prepare_trade_captures_asset_not_id():
     assert parsed.params["outcome"] == "YES"
     assert parsed.params["asset"] == "BTC"
     assert "event_id" not in parsed.params
+
+
+def test_get_llm_client_defaults_to_google_gemini(settings):
+    from services.ai_service import CascadingLLMClient, GoogleAIStudioClient, get_llm_client
+
+    settings.LOCAL_LLM_ENABLED = False
+    settings.OPENROUTER_API_KEY = ""
+    settings.GEMINI_API_KEY = "aq-test"
+    settings.LLM_API_KEY = ""
+    settings.LLM_PROVIDER = "google"
+    settings.LLM_MODEL = "gemini-3.7-flash"
+    settings.LLM_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai"
+    client = get_llm_client()
+    assert isinstance(client, CascadingLLMClient)
+    primary = client.clients[0]
+    assert isinstance(primary, GoogleAIStudioClient)
+    assert primary.model == "gemini-3.7-flash"
+    assert primary.label == "google"
+
+
+def test_gemini_model_does_not_send_google_key_to_openrouter(settings):
+    from services.ai_service import CascadingLLMClient, GoogleAIStudioClient, get_llm_client
+
+    settings.LOCAL_LLM_ENABLED = False
+    settings.LLM_PROVIDER = "openrouter"
+    settings.LLM_BASE_URL = "https://openrouter.ai/api/v1"
+    settings.LLM_MODEL = "gemini-3.7-flash"
+    settings.LLM_API_KEY = "AQ.test-google-key"
+    settings.GEMINI_API_KEY = "AQ.test-google-key"
+    settings.OPENROUTER_API_KEY = "sk-or-test"
+    client = get_llm_client()
+    assert isinstance(client, CascadingLLMClient)
+    primary = client.clients[0]
+    assert isinstance(primary, GoogleAIStudioClient)
+    assert primary.api_key.startswith("AQ.")
+    assert primary.label == "google"

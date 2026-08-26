@@ -135,6 +135,9 @@ For Docker, set `USE_SQLITE=0` and your Neon `DATABASE_URL` in `.env`.
 | `DREAMDEX_INDEXER_URL` | GraphQL endpoint | Live adapter indexer |
 | `DREAMDEX_RPC_URL` | Somnia RPC | On-chain reads / tx prep |
 | `LLM_API_KEY` | (empty) | Primary OpenAI-compatible API key |
+| `GEMINI_API_KEY` | (empty) | Google AI Studio key; used when `LLM_API_KEY` is empty |
+| `LLM_PROVIDER` | `google` | Primary provider label (`google` or `openrouter`) |
+| `LLM_MODEL` | `gemini-3.7-flash` | Google AI Studio Gemini 3.7 Flash |
 | `LOCAL_LLM_ENABLED` | `true` | Fall back to localhost LLM (Ollama) when primary is missing/fails |
 | `LOCAL_LLM_BASE_URL` | `http://127.0.0.1:11434/v1` | OpenAI-compatible local endpoint |
 | `LOCAL_LLM_MODEL` | `llama3.2` | Local model id (`ollama pull llama3.2`) |

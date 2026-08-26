@@ -235,11 +235,18 @@ CELERY_BEAT_SCHEDULE = {
     },
 }
 
-# LLM (AI Lens) — primary OpenAI-compatible provider
-LLM_PROVIDER = env("LLM_PROVIDER", default="")
-LLM_API_KEY = env("LLM_API_KEY", default="")
-LLM_MODEL = env("LLM_MODEL", default="")
-LLM_BASE_URL = env("LLM_BASE_URL", default="https://api.openai.com/v1")
+# LLM (AI Lens) — Google AI Studio Gemini 3.7 Flash by default
+GEMINI_API_KEY = env("GEMINI_API_KEY", default="") or env("GOOGLE_AI_STUDIO_API_KEY", default="")
+OPENROUTER_API_KEY = env("OPENROUTER_API_KEY", default="")
+LLM_PROVIDER = env("LLM_PROVIDER", default="google")
+LLM_MODEL = env("LLM_MODEL", default="gemini-3.7-flash")
+LLM_BASE_URL = env(
+    "LLM_BASE_URL",
+    default="https://generativelanguage.googleapis.com/v1beta/openai",
+)
+LLM_API_KEY = env("LLM_API_KEY", default="") or GEMINI_API_KEY or OPENROUTER_API_KEY
+LLM_HTTP_REFERER = env("LLM_HTTP_REFERER", default="http://127.0.0.1:8000")
+LLM_APP_TITLE = env("LLM_APP_TITLE", default="DreamLens")
 
 # Local OpenAI-compatible fallback (Ollama / LM Studio / vLLM)
 LOCAL_LLM_ENABLED = env.bool("LOCAL_LLM_ENABLED", default=True)

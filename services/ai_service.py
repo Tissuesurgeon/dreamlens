@@ -39,6 +39,18 @@ def _as_str_list(value: Any, fallback: str) -> list[str]:
             return items
     return [fallback]
 
+
+def _parse_llm_object(raw: str, fallback: dict[str, Any] | None = None) -> dict[str, Any]:
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return dict(fallback or {})
+    if isinstance(data, list):
+        data = data[0] if data and isinstance(data[0], dict) else {}
+    if not isinstance(data, dict):
+        return dict(fallback or {})
+    return data
+
 _rate_limit: dict[str, float] = {}
 RATE_LIMIT_SECONDS = 1.0
 
@@ -95,15 +107,19 @@ class OpenAICompatibleClient:
         *,
         api_key: str,
         model: str,
-        base_url: str = "https://api.openai.com/v1",
+        base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai",
         label: str = "primary",
-        timeout: float = 30,
+        timeout: float = 60,
+        extra_headers: dict[str, str] | None = None,
+        extra_body: dict[str, Any] | None = None,
     ) -> None:
         self.api_key = api_key
         self.model = model
         self.base_url = base_url.rstrip("/")
         self.label = label
         self.timeout = timeout
+        self.extra_headers = extra_headers or {}
+        self.extra_body = extra_body or {}
 
     def complete(self, *, system: str, user: str, json_mode: bool = False) -> str:
         import urllib.error
@@ -120,6 +136,8 @@ class OpenAICompatibleClient:
             }
             if use_json_mode:
                 payload["response_format"] = {"type": "json_object"}
+            if self.extra_body:
+                payload.update(self.extra_body)
 
             req = urllib.request.Request(
                 f"{self.base_url}/chat/completions",
@@ -127,6 +145,7 @@ class OpenAICompatibleClient:
                 headers={
                     "Authorization": f"Bearer {self.api_key}",
                     "Content-Type": "application/json",
+                    **self.extra_headers,
                 },
                 method="POST",
             )
@@ -135,11 +154,12 @@ class OpenAICompatibleClient:
             choices = body.get("choices", [])
             if not choices:
                 return "{}"
-            return choices[0].get("message", {}).get("content", "{}")
+            return _strip_thoughts(choices[0].get("message", {}).get("content", "{}"))
 
         try:
             return _request(json_mode)
         except urllib.error.HTTPError as exc:
+            detail = _http_error_detail(exc)
             # Many local servers reject response_format — retry without it.
             if json_mode and exc.code in (400, 422):
                 logger.info("%s LLM rejected json_mode; retrying plain", self.label)
@@ -147,9 +167,116 @@ class OpenAICompatibleClient:
                     return _request(False)
                 except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as retry_exc:
                     raise RuntimeError(f"{self.label} LLM failed: {retry_exc}") from retry_exc
-            raise RuntimeError(f"{self.label} LLM HTTP {exc.code}: {exc.reason}") from exc
+            raise RuntimeError(f"{self.label} LLM HTTP {exc.code}: {detail}") from exc
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
             raise RuntimeError(f"{self.label} LLM failed: {exc}") from exc
+
+
+def _strip_thoughts(text: str) -> str:
+    cleaned = re.sub(r"<thought>.*?</thought>", "", text or "", flags=re.DOTALL | re.I)
+    cleaned = cleaned.strip()
+    return cleaned or (text or "{}")
+
+
+def _http_error_detail(exc: Exception) -> str:
+    reason = getattr(exc, "reason", "") or type(exc).__name__
+    body = ""
+    reader = getattr(exc, "read", None)
+    if callable(reader):
+        try:
+            body = reader().decode("utf-8", errors="replace")[:240]
+        except Exception:  # noqa: BLE001
+            body = ""
+    body = re.sub(r"AQ\.[A-Za-z0-9*]+", "AQ.[redacted]", body)
+    body = re.sub(r"AIza[A-Za-z0-9_-]+", "AIza[redacted]", body)
+    body = re.sub(r"sk-or-v1-[A-Za-z0-9*]+", "sk-or-[redacted]", body)
+    return f"{reason}: {body}" if body else str(reason)
+
+
+class GoogleAIStudioClient:
+    """Gemini generateContent API. Keeps thinking at minimal for interactive latency."""
+
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        model: str,
+        label: str = "google",
+        timeout: float = 60,
+    ) -> None:
+        self.api_key = api_key
+        self.model = model.removeprefix("models/")
+        self.label = label
+        self.timeout = timeout
+        self.base_url = "https://generativelanguage.googleapis.com/v1beta"
+
+    def complete(self, *, system: str, user: str, json_mode: bool = False) -> str:
+        import urllib.error
+        import urllib.request
+
+        def _request(use_json_mode: bool) -> str:
+            generation_config: dict[str, Any] = {
+                "maxOutputTokens": 1024,
+                "thinkingConfig": _google_thinking_config(self.model),
+            }
+            # Gemini 3.x rejects/ignores sampling knobs; Gemma still uses them.
+            if not self.model.lower().startswith("gemini-3"):
+                generation_config["temperature"] = 0.2
+            if use_json_mode:
+                generation_config["responseMimeType"] = "application/json"
+            payload = {
+                "systemInstruction": {"parts": [{"text": system}]},
+                "contents": [{"role": "user", "parts": [{"text": user}]}],
+                "generationConfig": generation_config,
+            }
+            req = urllib.request.Request(
+                f"{self.base_url}/models/{self.model}:generateContent",
+                data=json.dumps(payload).encode(),
+                headers={
+                    "Content-Type": "application/json",
+                    "x-goog-api-key": self.api_key,
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                body = json.loads(resp.read().decode())
+            return _strip_thoughts(_extract_gemini_text(body))
+
+        try:
+            return _request(json_mode)
+        except urllib.error.HTTPError as exc:
+            detail = _http_error_detail(exc)
+            if json_mode and exc.code in (400, 422):
+                logger.info("%s LLM rejected json_mode; retrying plain", self.label)
+                try:
+                    return _request(False)
+                except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as retry_exc:
+                    raise RuntimeError(f"{self.label} LLM failed: {retry_exc}") from retry_exc
+            raise RuntimeError(f"{self.label} LLM HTTP {exc.code}: {detail}") from exc
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+            raise RuntimeError(f"{self.label} LLM failed: {exc}") from exc
+
+
+def _google_thinking_config(model: str) -> dict[str, Any]:
+    """Gemma 4 only accepts minimal/high. Gemini 3.7 Flash rejects MINIMAL."""
+    if "gemma-4" in (model or "").lower():
+        return {"thinkingLevel": "minimal"}
+    return {"thinkingLevel": "low"}
+
+
+def _extract_gemini_text(body: dict[str, Any]) -> str:
+    candidates = body.get("candidates") or []
+    if not candidates:
+        return "{}"
+    parts = (candidates[0].get("content") or {}).get("parts") or []
+    chunks: list[str] = []
+    for part in parts:
+        if part.get("thought"):
+            continue
+        text = part.get("text")
+        if text:
+            chunks.append(text)
+    return "".join(chunks).strip() or "{}"
 
 
 class UnavailableLLMClient:
@@ -200,20 +327,89 @@ def _local_llm_client() -> OpenAICompatibleClient | None:
     )
 
 
+def _is_google_model(model: str) -> bool:
+    name = (model or "").lower().removeprefix("models/")
+    return name.startswith("gemini-") or name.startswith("gemma-")
+
+
+def _is_google_key(key: str) -> bool:
+    return (key or "").startswith(("AQ.", "AIza"))
+
+
+def _is_google_llm() -> bool:
+    provider = (getattr(settings, "LLM_PROVIDER", "") or "").lower()
+    base = (getattr(settings, "LLM_BASE_URL", "") or "").lower()
+    model = getattr(settings, "LLM_MODEL", "") or ""
+    return (
+        provider in {"google", "gemini"}
+        or "generativelanguage.googleapis.com" in base
+        or _is_google_model(model)
+    )
+
+
+def _google_api_key() -> str:
+    gemini = getattr(settings, "GEMINI_API_KEY", "") or ""
+    llm = getattr(settings, "LLM_API_KEY", "") or ""
+    if _is_google_key(gemini):
+        return gemini
+    if _is_google_key(llm):
+        return llm
+    return gemini or (llm if not llm.startswith("sk-") else "")
+
+
+def _openrouter_api_key() -> str:
+    or_key = getattr(settings, "OPENROUTER_API_KEY", "") or ""
+    llm = getattr(settings, "LLM_API_KEY", "") or ""
+    if llm.startswith("sk-or-"):
+        return llm
+    if _is_google_key(llm):
+        return or_key
+    return or_key or llm
+
+
+def _openrouter_headers() -> dict[str, str]:
+    base = (getattr(settings, "LLM_BASE_URL", "") or "").lower()
+    provider = (getattr(settings, "LLM_PROVIDER", "") or "").lower()
+    if "openrouter.ai" not in base and provider != "openrouter":
+        return {}
+    headers: dict[str, str] = {}
+    referer = (getattr(settings, "LLM_HTTP_REFERER", "") or "").strip()
+    title = (getattr(settings, "LLM_APP_TITLE", "") or "").strip()
+    if referer:
+        headers["HTTP-Referer"] = referer
+    if title:
+        headers["X-Title"] = title
+    return headers
+
+
 def get_llm_client() -> LLMClient:
     """Primary cloud LLM → local Ollama/LM Studio → mock."""
     chain: list[LLMClient] = []
+    model = settings.LLM_MODEL or "gemini-3.7-flash"
 
-    api_key = settings.LLM_API_KEY
-    if api_key:
-        chain.append(
-            OpenAICompatibleClient(
-                api_key=api_key,
-                model=settings.LLM_MODEL or "gpt-4o-mini",
-                base_url=getattr(settings, "LLM_BASE_URL", None) or "https://api.openai.com/v1",
-                label=settings.LLM_PROVIDER or "primary",
+    if _is_google_llm():
+        google_key = _google_api_key()
+        if google_key:
+            chain.append(
+                GoogleAIStudioClient(
+                    api_key=google_key,
+                    model=model,
+                    label="google",
+                )
             )
-        )
+    else:
+        or_key = _openrouter_api_key()
+        if or_key:
+            chain.append(
+                OpenAICompatibleClient(
+                    api_key=or_key,
+                    model=model,
+                    base_url=getattr(settings, "LLM_BASE_URL", None)
+                    or "https://openrouter.ai/api/v1",
+                    label="openrouter",
+                    extra_headers=_openrouter_headers(),
+                )
+            )
 
     local = _local_llm_client()
     if local is not None:
@@ -269,10 +465,7 @@ def analyze_event(event: EventContract, *, user=None) -> dict:
         user=prompt,
         json_mode=True,
     )
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError:
-        data = {}
+    data = _parse_llm_object(raw)
 
     result = {
         "event_id": event.pk,
@@ -325,10 +518,9 @@ def evaluate_copy(
         user=prompt,
         json_mode=True,
     )
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError:
-        data = {"decision": "SKIP", "confidence": 0.0, "reasoning": "Parse error"}
+    data = _parse_llm_object(
+        raw, fallback={"decision": "SKIP", "confidence": 0.0, "reasoning": "Parse error"}
+    )
 
     return {
         "decision": str(data.get("decision", "SKIP")).upper(),
@@ -551,11 +743,9 @@ def chat(
             ),
             user=message,
         )
-        try:
-            data = json.loads(raw)
-            reply = data.get("message", raw)
-        except json.JSONDecodeError:
-            reply = raw if raw else "How can I help with DreamDEX events today?"
+        data = _parse_llm_object(raw)
+        reply = data.get("message") or raw if data else raw
+        reply = reply if reply else "How can I help with DreamDEX events today?"
 
     return {
         "intent": parsed.intent,

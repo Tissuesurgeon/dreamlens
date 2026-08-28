@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#241b24">
-  <meta name="description" content="DreamLens — see DreamDEX Event Contracts differently. Discover, understand, trade.">
+  <meta name="description" content="DreamLens — AI-powered intelligence for DreamDEX Event Contracts. Understand. Decide. Trade with Confidence.">
   <title>{% block title %}DreamLens{% endblock %}</title>
   <link rel="icon" href="{% static 'brand/favicon.svg' %}" type="image/svg+xml">
   <link rel="icon" href="{% static 'brand/favicon.ico' %}" sizes="any">
@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,650;12..96,800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{% static 'css/dreamlens.css' %}?v=20260828d">
+  <link rel="stylesheet" href="{% static 'css/dreamlens.css' %}?v=20260828g">
   {% block extra_head %}{% endblock %}
 </head>
 <body class="dl-body dl-body--landing">
@@ -26,6 +26,7 @@
         Dream<span>Lens</span>
       </a>
       <div class="dl-landing-header__right">
+        <a href="#how-it-works" class="dl-landing-nav">How it works</a>
         <a href="{% url 'home' %}" class="dl-btn dl-btn--primary dl-btn--sm">Enter</a>
       </div>
     </div>
@@ -36,13 +37,38 @@
   </main>
 
   <footer class="dl-landing-footer">
-    <p>DreamDEX Event Contracts · Somnia Shannon</p>
+    <div class="dl-landing-footer__grid">
+      <div>
+        <p class="dl-brand dl-brand--landing">Dream<span>Lens</span></p>
+        <p>AI-powered intelligence for DreamDEX Event Contracts.</p>
+      </div>
+      <div>
+        <p class="dl-landing-footer__label">Product</p>
+        <ul>
+          <li><a href="{% url 'discover' %}">Discover</a></li>
+          <li><a href="{% url 'following' %}">Smart Copy</a></li>
+          <li><a href="{% url 'dream_agent' %}">DreamAgent</a></li>
+          <li><a href="{% url 'portfolio' %}">Portfolio</a></li>
+        </ul>
+      </div>
+      <div>
+        <p class="dl-landing-footer__label">Resources</p>
+        <ul>
+          <li><a href="https://github.com/Tissuesurgeon/dreamlens/tree/main/docs" target="_blank" rel="noopener noreferrer">Documentation</a></li>
+          <li><a href="https://github.com/Tissuesurgeon/dreamlens" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+          {% if telegram_bot_url %}
+          <li><a href="{{ telegram_bot_url }}" target="_blank" rel="noopener noreferrer">Telegram</a></li>
+          {% endif %}
+        </ul>
+      </div>
+    </div>
+    <p class="dl-landing-footer__credit">Built for DreamDEX · Powered by Somnia</p>
   </footer>
 
   <script>
     window.DreamLensConfig = {{ dreamlens_network_json|safe }};
   </script>
-  <script src="{% static 'js/landing.js' %}?v=20260828d" defer></script>
+  <script src="{% static 'js/landing.js' %}?v=20260828g" defer></script>
   {% block extra_js %}{% endblock %}
 </body>
 </html>

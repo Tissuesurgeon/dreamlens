@@ -6,8 +6,7 @@ import logging
 from typing import Any
 
 from django.conf import settings
-from eth_account import Account
-from web3 import Web3
+from eth_utils import to_checksum_address
 
 from integrations.metamask.execution import (
     DelegatedExecution,
@@ -23,6 +22,18 @@ class SessionKeyError(Exception):
     pass
 
 
+def _account():
+    from eth_account import Account
+
+    return Account
+
+
+def _web3():
+    from web3 import Web3
+
+    return Web3
+
+
 def session_key_configured() -> bool:
     return bool(getattr(settings, "DREAM_AGENT_SESSION_KEY", "") or "")
 
@@ -33,9 +44,9 @@ def get_session_address() -> str:
     if key:
         if not str(key).startswith("0x"):
             key = "0x" + key
-        return Account.from_key(key).address
+        return _account().from_key(key).address
     if mock_smart_account_enabled():
-        return Web3.to_checksum_address("0x" + "11" * 20)
+        return to_checksum_address("0x" + "11" * 20)
     raise SessionKeyError(
         "DREAM_AGENT_SESSION_KEY is not set. Generate a session EOA for redeemDelegations."
     )
@@ -43,12 +54,14 @@ def get_session_address() -> str:
 
 def wait_for_receipt(tx_hash: str, *, timeout: int = 120):
     rpc = getattr(settings, "DREAMDEX_RPC_URL", "")
+    Web3 = _web3()
     w3 = Web3(Web3.HTTPProvider(rpc))
     return w3.eth.wait_for_transaction_receipt(tx_hash, timeout=timeout)
 
 
 def get_transaction_receipt(tx_hash: str):
     rpc = getattr(settings, "DREAMDEX_RPC_URL", "")
+    Web3 = _web3()
     w3 = Web3(Web3.HTTPProvider(rpc))
     return w3.eth.get_transaction_receipt(tx_hash)
 
@@ -66,7 +79,7 @@ def apply_smart_account_gas_payment(
     if not sa:
         return execution
     try:
-        sa_bal = int(w3.eth.get_balance(Web3.to_checksum_address(sa)))
+        sa_bal = int(w3.eth.get_balance(to_checksum_address(sa)))
         gas_price = int(w3.eth.gas_price)
         payment = compute_gas_reimbursement_wei(
             sa_balance_wei=sa_bal,
@@ -125,14 +138,15 @@ def broadcast_delegated_execution(
         key = "0x" + key
 
     rpc = getattr(settings, "DREAMDEX_RPC_URL", "")
+    Web3 = _web3()
     w3 = Web3(Web3.HTTPProvider(rpc))
-    acct = Account.from_key(key)
+    acct = _account().from_key(key)
     execution = apply_smart_account_gas_payment(
         execution, session_address=acct.address, w3=w3
     )
     nonce = w3.eth.get_transaction_count(acct.address)
     tx = {
-        "to": Web3.to_checksum_address(execution.to),
+        "to": to_checksum_address(execution.to),
         "data": execution.data,
         "value": execution.value,
         "chainId": execution.chain_id,

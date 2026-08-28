@@ -9,8 +9,11 @@ RAILWAY_CSRF_ORIGINS = ("https://*.up.railway.app",)
 
 
 def redis_looks_local(url: str) -> bool:
-    lowered = (url or "").lower()
-    return "localhost" in lowered or "127.0.0.1" in lowered
+    """True when Redis is the local/compose host, not a hosted plugin."""
+    from urllib.parse import urlparse
+
+    host = (urlparse(url or "").hostname or "").lower()
+    return host in {"localhost", "127.0.0.1", "0.0.0.0", "::1", "redis"}
 
 
 def _host_from_url(value: str) -> str:

@@ -12,13 +12,14 @@
 
   function initPlane() {
     var hero = document.querySelector(".dl-landing-hero");
-    var yesEl = document.querySelector("[data-landing-yes]");
-    var noEl = document.querySelector("[data-landing-no]");
+    var plane = document.querySelector("[data-landing-plane]");
+    var yesEl = plane && plane.querySelector("[data-landing-yes]");
+    var noEl = plane && plane.querySelector("[data-landing-no]");
     var split = document.querySelector("[data-landing-split]");
     var optic = document.querySelector("[data-landing-optic]");
     if (!hero || !yesEl || !noEl) return;
 
-    var yes = 0.57;
+    var yes = 0.41;
 
     function paint(y) {
       var n = 1 - y;
@@ -55,14 +56,13 @@
     function frame(now) {
       var elapsed = (now - t0) / 1000;
       yes = clamp(
-        0.57 + Math.sin(elapsed * 0.42) * 0.09 + Math.sin(elapsed * 0.95) * 0.035,
-        0.36,
-        0.74
+        0.41 + Math.sin(elapsed * 0.42) * 0.08 + Math.sin(elapsed * 0.95) * 0.03,
+        0.28,
+        0.58
       );
       paint(yes);
 
       if (optic) {
-        // Idle drift + soft pointer follow
         var idleX = 0.58 + Math.sin(elapsed * 0.35) * 0.06;
         var idleY = 0.4 + Math.cos(elapsed * 0.28) * 0.05;
         ptrX += (targetX - ptrX) * 0.045;
@@ -75,20 +75,6 @@
         optic.style.setProperty("--oscale", String(scale.toFixed(4)));
       }
 
-      requestAnimationFrame(frame);
-    }
-    requestAnimationFrame(frame);
-  }
-
-  function initScorePulse() {
-    var el = document.querySelector("[data-landing-score]");
-    if (!el || reduce) return;
-    var base = 83;
-    var t0 = performance.now();
-    function frame(now) {
-      var elapsed = (now - t0) / 1000;
-      var v = Math.round(base + Math.sin(elapsed * 0.8) * 2);
-      el.textContent = String(v);
       requestAnimationFrame(frame);
     }
     requestAnimationFrame(frame);
@@ -123,7 +109,6 @@
 
   document.addEventListener("DOMContentLoaded", function () {
     initPlane();
-    initScorePulse();
     initReveal();
   });
 })();

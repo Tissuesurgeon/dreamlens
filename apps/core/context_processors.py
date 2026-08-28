@@ -6,6 +6,7 @@ import json
 
 from django.conf import settings
 
+from integrations.telegram.client import bot_url
 from services.event_copy import collateral_ticker
 
 
@@ -36,4 +37,5 @@ def dreamlens(request):
         "dreamlens_network": network_cfg,
         "dreamlens_network_json": json.dumps(network_cfg),
         "collateral_symbol": ticker,
+        "telegram_bot_url": bot_url(),
     }

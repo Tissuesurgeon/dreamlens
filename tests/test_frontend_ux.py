@@ -222,3 +222,25 @@ def test_portfolio_level_one_words(client):
     assert "Today's result" in body
     assert "liquidation" not in body.lower()
     assert "Unrealized" not in body
+
+
+@pytest.mark.django_db
+def test_landing_tells_the_product_story(client):
+    res = client.get("/")
+    assert res.status_code == 200
+    body = res.content.decode()
+    assert "Understand. Decide. Trade with Confidence." in body
+    assert "How it works" in body
+    assert "From looking to a Decision Receipt." in body
+    assert "$0.41" in body
+    assert "41¢" not in body
+    assert "82 / 100" in body
+    assert SCORE_DISCLAIMER in body
+    assert "chance of winning" not in body.lower()
+    assert "Testnet only. No real monetary value." in body
+    assert "Will Bitcoin be above $118,500 at expiry?" in body
+    assert "DreamAgent cannot" in body
+    assert "Intelligence on top. On-chain execution underneath." in body
+    health = client.get("/healthz")
+    assert health.status_code == 200
+    assert health.content == b"ok"

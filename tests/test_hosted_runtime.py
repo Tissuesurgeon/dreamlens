@@ -70,4 +70,11 @@ def test_any_railway_var_counts_as_hosted(monkeypatch):
 def test_redis_local_detection():
     assert redis_looks_local("redis://localhost:6379/0")
     assert redis_looks_local("redis://127.0.0.1:6379/1")
+    assert redis_looks_local("redis://redis:6379/0")
     assert not redis_looks_local("redis://redis.railway.internal:6379/0")
+
+
+def test_healthz_does_not_need_session(client):
+    response = client.get("/healthz")
+    assert response.status_code == 200
+    assert response.content == b"ok"

@@ -1,5 +1,5 @@
 <section
-  class="dl-feed"
+  class="dl-feed{% if feed_class %} {{ feed_class }}{% endif %}"
   data-market-feed
   {% if feed_asset %}data-feed-asset="{{ feed_asset|upper }}"{% endif %}
   {% if feed_limit %}data-feed-limit="{{ feed_limit }}"{% endif %}
@@ -24,6 +24,8 @@
     </span>
   </div>
   <ul class="dl-feed__list" data-feed-list>
-    <li class="dl-feed__empty">Loading headlines…</li>
+    <li class="dl-feed__skel" aria-hidden="true"></li>
+    <li class="dl-feed__skel" aria-hidden="true"></li>
+    <li class="dl-feed__skel" aria-hidden="true"></li>
   </ul>
 </section>

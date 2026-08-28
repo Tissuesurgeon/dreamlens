@@ -59,7 +59,7 @@
     {% endfor %}
   </div>
 
-  {% if event.dl_score %}
+  {% if event.dl_score and not compact %}
   <details class="dl-score-why">
     <summary>How this score is calculated</summary>
     <dl>

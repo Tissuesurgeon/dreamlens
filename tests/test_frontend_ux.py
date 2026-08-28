@@ -79,10 +79,12 @@ def test_home_has_look_at(client, sample_event):
     res = client.get("/home/")
     assert res.status_code == 200
     body = res.content.decode()
-    assert "What should I look at?" in body
-    assert "Live now" in body
     assert event_question(sample_event) in body
+    assert "Also watching" in body or "Understand" in body
     assert "Live market feed" in body
+    assert as_cents(sample_event.outcomes.get(outcome_type="YES").current_price) in body
+    assert ">Home<" in body
+    assert "What should I look at?" not in body
 
 
 @pytest.mark.django_db

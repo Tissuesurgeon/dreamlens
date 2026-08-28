@@ -42,6 +42,8 @@ def _postgres_handshake_ok(host: str, port: int, timeout: float = 20.0) -> bool:
 
 def _ensure_supabase_pg_tunnel() -> None:
     """Route local Supabase Postgres via Tor when the ISP drops SSLRequest."""
+    if os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+        return
     db = DATABASES["default"]  # noqa: F405
     host = (db.get("HOST") or "").lower()
     if "supabase.com" not in host or _running_tests():

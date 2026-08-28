@@ -5,109 +5,139 @@
 
 {% block content %}
 <div class="dl-container dl-container--home dl-home dl-animate-in">
-  <header class="dl-page-header dl-page-header--split">
-    <div>
-      <h1 class="dl-page-header__title">Home</h1>
-      <p class="dl-page-header__subtitle">
-        {% if agent %}
-        Your DreamAgent is watching {{ live_count }} live event{{ live_count|pluralize }}.
-        {% else %}
-        {{ live_count }} live event{{ live_count|pluralize }} on DreamDEX.
-        {% endif %}
-      </p>
-    </div>
-    <p class="dl-hero__status">
-      {% if agent_status == "active" %}
-      <span class="dl-smart-pill is-on"><span class="dl-smart-pill__dot" aria-hidden="true"></span> Active</span>
-      {% elif agent_status == "paused" %}
-      <span class="dl-smart-pill is-paused">Paused</span>
-      {% else %}
+  <p class="dl-home-strip">
+    <span class="dl-home-strip__live">
       <span class="dl-hero__pulse" aria-hidden="true"></span>
       {{ live_count }} live
-      {% endif %}
-    </p>
-  </header>
-
-  {% if available %}
-  <p class="dl-home-available">Available collateral {{ available }}</p>
-  {% endif %}
-
-  <section class="dl-section" aria-labelledby="look-heading">
-    <div class="dl-section-head">
-      <div>
-        <h2 id="look-heading" class="dl-section__title">What should I look at?</h2>
-        <p class="dl-section__subtitle">Something meaningful to do right now.</p>
-      </div>
-    </div>
-
-    {% if featured %}
-    <article class="dl-live-now">
-      <p class="dl-live-now__kicker">Live now · Moving quickly</p>
-      <h3 class="dl-live-now__title"><a href="{% url 'event_detail' featured.pk %}">{{ featured|question_copy }}</a></h3>
-      <div class="dl-live-now__prices">
-        {% for o in featured.outcomes.all %}
-          {% if o.outcome_type == "YES" %}<span class="dl-text-yes">YES {{ o.current_price|as_cents }}</span>{% endif %}
-          {% if o.outcome_type == "NO" %}<span class="dl-text-no">NO {{ o.current_price|as_cents }}</span>{% endif %}
-        {% endfor %}
-      </div>
-      {% if featured.dl_score %}
-      <p class="dl-live-now__score">DreamLens Score {{ featured.dl_score.score }}/100</p>
-      <p class="dl-score-why__note">{% score_disclaimer %}</p>
-      {% endif %}
-      <p>Ends in <span class="dl-countdown" data-expiry="{{ featured.expiry_time|date:'c' }}">{{ featured|ends_in }}</span></p>
-      <div class="dl-live-now__actions">
-        <a href="{% url 'event_detail' featured.pk %}" class="dl-btn dl-btn--primary">Understand</a>
-        <button type="button" class="dl-btn dl-btn--ghost" data-explain-event="{{ featured.pk }}" data-explain-question="{{ featured|question_copy }}" data-explain-asset="{{ featured.underlying_asset|upper }}">Explain this</button>
-      </div>
-    </article>
+    </span>
+    {% if agent_status == "active" %}
+    <span class="dl-smart-pill is-on"><span class="dl-smart-pill__dot" aria-hidden="true"></span> Agent on</span>
+    {% elif agent_status == "paused" %}
+    <span class="dl-smart-pill is-paused">Agent paused</span>
     {% endif %}
-
-    {% if watching %}
-    <h3 class="dl-section__title dl-section__title--sm">{{ watching|length }} event{{ watching|length|pluralize }} worth watching</h3>
-    <div class="dl-event-list">
-      {% for event in watching %}
-        {% include "components/event_card.html" with event=event %}
-      {% endfor %}
-    </div>
-    {% elif not featured %}
-    <div class="dl-empty">
-      <p class="dl-empty__title">No live events right now</p>
-      <p>DreamDEX Event Contracts appear here as soon as they start trading.</p>
-    </div>
+    {% if available %}
+    <span class="dl-home-strip__avail">Available {{ available|usd_amount }}</span>
     {% endif %}
-  </section>
+  </p>
 
-  {% include "components/market_feed.html" with feed_heading_id="home-feed-heading" %}
+  <div class="dl-home-desk">
+    <div class="dl-home-desk__main">
+      {% if featured %}
+      <article
+        class="dl-spotlight"
+        data-event-id="{{ featured.pk }}"
+        data-asset="{{ featured.underlying_asset|upper }}"
+      >
+        <header class="dl-spotlight__head">
+          <span class="dl-event-card__asset">{{ featured.underlying_asset|upper }}</span>
+          {% if featured.dl_score %}
+          <span class="dl-spotlight__score">Score {{ featured.dl_score.score }}/100</span>
+          {% endif %}
+          <span class="dl-spotlight__timer">Ends in <span class="dl-countdown" data-expiry="{{ featured.expiry_time|date:'c' }}">{{ featured|ends_in }}</span></span>
+        </header>
+        <h1 class="dl-spotlight__title">
+          <a href="{% url 'event_detail' featured.pk %}">{{ featured|question_copy }}</a>
+        </h1>
+        <div class="dl-event-card__prices">
+          {% for o in featured.outcomes.all %}
+            {% if o.outcome_type == "YES" %}
+            <button
+              type="button"
+              class="dl-event-card__price dl-event-card__price--yes"
+              data-trade
+              data-event-id="{{ featured.pk }}"
+              data-event-title="{{ featured|question_copy }}"
+              data-event-expiry="{{ featured.expiry_time|date:'c' }}"
+              data-outcome="YES"
+              data-price="{{ o.current_price }}"
+              aria-label="Buy Yes at {{ o.current_price|as_cents }}"
+            >
+              <span class="dl-event-card__side">YES</span>
+              <span class="dl-event-card__num">{{ o.current_price|as_cents }}</span>
+              <span class="dl-event-card__hint">{{ o.current_price|put_one }}</span>
+            </button>
+            {% endif %}
+          {% endfor %}
+          {% for o in featured.outcomes.all %}
+            {% if o.outcome_type == "NO" %}
+            <button
+              type="button"
+              class="dl-event-card__price dl-event-card__price--no"
+              data-trade
+              data-event-id="{{ featured.pk }}"
+              data-event-title="{{ featured|question_copy }}"
+              data-event-expiry="{{ featured.expiry_time|date:'c' }}"
+              data-outcome="NO"
+              data-price="{{ o.current_price }}"
+              aria-label="Buy No at {{ o.current_price|as_cents }}"
+            >
+              <span class="dl-event-card__side">NO</span>
+              <span class="dl-event-card__num">{{ o.current_price|as_cents }}</span>
+              <span class="dl-event-card__hint">{{ o.current_price|put_one }}</span>
+            </button>
+            {% endif %}
+          {% endfor %}
+        </div>
+        <footer class="dl-spotlight__foot">
+          <div class="dl-spotlight__actions">
+            <a href="{% url 'event_detail' featured.pk %}" class="dl-btn dl-btn--primary">Understand</a>
+            <button type="button" class="dl-btn dl-btn--ghost" data-explain-event="{{ featured.pk }}" data-explain-question="{{ featured|question_copy }}" data-explain-asset="{{ featured.underlying_asset|upper }}">Explain this</button>
+          </div>
+        </footer>
+      </article>
+      {% elif not watching %}
+      <div class="dl-empty">
+        <h1 class="dl-empty__title">No live events right now</h1>
+        <p>DreamDEX Event Contracts appear here as soon as they start trading.</p>
+      </div>
+      {% endif %}
 
-  {% if copy_relationships %}
-  <section class="dl-section" aria-labelledby="copy-snip-heading">
-    <div class="dl-section-head">
-      <h2 id="copy-snip-heading" class="dl-section__title">Smart Copy</h2>
-      <a href="{% url 'following' %}" class="dl-btn dl-btn--ghost dl-btn--sm">See traders</a>
-    </div>
-    <div class="dl-copy-chip-row">
-      {% for rel in copy_relationships %}
-      <a href="{% url 'trader_detail' rel.trader.pk %}" class="dl-copy-chip">
-        <span class="dl-mono">{{ rel.trader.display_name|default:rel.trader.wallet_address|short_address }}</span>
-        <span class="dl-smart-pill is-on"><span class="dl-smart-pill__dot" aria-hidden="true"></span> Following</span>
-      </a>
-      {% endfor %}
-    </div>
-  </section>
-  {% endif %}
+      {% if watching %}
+      <section class="dl-home-more" aria-labelledby="watching-heading">
+        <h2 id="watching-heading" class="dl-section__title">Also watching</h2>
+        <div class="dl-event-list dl-event-list--stack">
+          {% for event in watching %}
+            {% include "components/event_card.html" with event=event compact=True %}
+          {% endfor %}
+        </div>
+      </section>
+      {% endif %}
 
-  {% if executions %}
-  <section class="dl-section" aria-labelledby="agent-activity-heading">
-    <div class="dl-section-head">
-      <h2 id="agent-activity-heading" class="dl-section__title">Agent activity</h2>
-      <a href="{% url 'copy_activity' %}" class="dl-btn dl-btn--ghost dl-btn--sm">All receipts</a>
+      {% if executions %}
+      <section class="dl-home-more" aria-labelledby="agent-activity-heading">
+        <div class="dl-section-head">
+          <h2 id="agent-activity-heading" class="dl-section__title">Agent activity</h2>
+          <a href="{% url 'copy_activity' %}" class="dl-btn dl-btn--ghost dl-btn--sm">All receipts</a>
+        </div>
+        <div class="dl-receipt-list">
+          {% for ex in executions %}
+            {% include "components/decision_receipt.html" with ex=ex %}
+          {% endfor %}
+        </div>
+      </section>
+      {% endif %}
     </div>
-    <div class="dl-receipt-list">
-      {% for ex in executions %}
-        {% include "components/decision_receipt.html" with ex=ex %}
-      {% endfor %}
-    </div>
-  </section>
-  {% endif %}
+
+    <aside class="dl-home-desk__rail">
+      {% include "components/market_feed.html" with feed_heading_id="home-feed-heading" feed_class="dl-feed--rail" feed_limit=6 %}
+
+      {% if copy_relationships %}
+      <section class="dl-home-rail-block" aria-labelledby="copy-snip-heading">
+        <div class="dl-section-head">
+          <h2 id="copy-snip-heading" class="dl-section__title">Smart Copy</h2>
+          <a href="{% url 'following' %}" class="dl-btn dl-btn--ghost dl-btn--sm">See traders</a>
+        </div>
+        <div class="dl-copy-chip-row">
+          {% for rel in copy_relationships %}
+          <a href="{% url 'trader_detail' rel.trader.pk %}" class="dl-copy-chip">
+            <span class="dl-mono">{{ rel.trader.display_name|default:rel.trader.wallet_address|short_address }}</span>
+            <span class="dl-smart-pill is-on"><span class="dl-smart-pill__dot" aria-hidden="true"></span> Following</span>
+          </a>
+          {% endfor %}
+        </div>
+      </section>
+      {% endif %}
+    </aside>
+  </div>
 </div>
 {% endblock %}

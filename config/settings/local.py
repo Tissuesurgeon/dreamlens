@@ -4,6 +4,9 @@ import subprocess
 import sys
 import time
 
+from config.runtime import csrf_origin_aliases, merge_allowed_hosts
+from django_settings_boot import hosted_edge
+
 from .base import *  # noqa: F403
 
 DEBUG = True
@@ -42,7 +45,7 @@ def _postgres_handshake_ok(host: str, port: int, timeout: float = 20.0) -> bool:
 
 def _ensure_supabase_pg_tunnel() -> None:
     """Route local Supabase Postgres via Tor when the ISP drops SSLRequest."""
-    if os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+    if hosted_edge() or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
         return
     db = DATABASES["default"]  # noqa: F405
     host = (db.get("HOST") or "").lower()
@@ -82,9 +85,14 @@ REST_FRAMEWORK = {
     ],
 }
 
-ALLOWED_HOSTS = env.list(  # noqa: F405
-    "ALLOWED_HOSTS",
-    default=["localhost", "127.0.0.1", "0.0.0.0"],
+if hosted_edge():
+    DEBUG = False
+
+ALLOWED_HOSTS = merge_allowed_hosts(
+    env.list(  # noqa: F405
+        "ALLOWED_HOSTS",
+        default=["localhost", "127.0.0.1", "0.0.0.0"],
+    )
 )
 
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
@@ -99,6 +107,7 @@ CSRF_TRUSTED_ORIGINS = list(
             "http://localhost:8000",
             "http://127.0.0.1:8000",
         ]
+        + csrf_origin_aliases()
     )
 )
 

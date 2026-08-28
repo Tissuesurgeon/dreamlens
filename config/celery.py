@@ -1,8 +1,8 @@
-import os
-
 from celery import Celery
 
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.local")
+from django_settings_boot import configure_django_settings
+
+configure_django_settings()
 
 app = Celery("dreamlens")
 app.config_from_object("django.conf:settings", namespace="CELERY")

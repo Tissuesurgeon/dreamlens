@@ -9,6 +9,7 @@ from django.db.utils import ProgrammingError
 
 from apps.accounts.models import TelegramLink
 from apps.agents.models import AgentEvaluation
+from services.event_copy import format_collateral
 from integrations.telegram.client import TelegramError, explorer_tx_url, send_message
 
 logger = logging.getLogger("dreamlens.telegram.notify")
@@ -40,7 +41,7 @@ def notify_agent_evaluation(user, ev: AgentEvaluation) -> None:
         return
     decision = ev.decision
     title = ev.event_title or "DreamDEX event"
-    amount = f"${ev.amount}" if ev.amount is not None else ""
+    amount = format_collateral(ev.amount, compact=True) if ev.amount is not None else ""
     side = f" {ev.outcome}" if ev.outcome else ""
     if decision == AgentEvaluation.Decision.COPY:
         line = f"DreamAgent copied {amount}{side} on {title}."
@@ -77,7 +78,7 @@ def notify_copy_pending(user, execution) -> None:
     amount = getattr(execution, "amount", None)
     line = f"Smart Copy waiting: {title}"
     if amount is not None:
-        line += f"\n${amount}"
+        line += f"\n{format_collateral(amount, compact=True)}"
     if score is not None:
         line += f"\nCopy Score: {score}"
     line += "\nConfirm on DreamLens web or ignore."

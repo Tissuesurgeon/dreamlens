@@ -254,7 +254,7 @@ def test_agent_dashboard_shows_kpis_when_running(client, user, running_agent):
     res = client.get("/agent/")
     assert res.status_code == 200
     assert running_agent.name.encode() in res.content
-    assert b"AUTONOMOUS" in res.content
+    assert b"Active" in res.content
     assert b"dl-ta-kpis" in res.content
     assert b"data-agent-pause" in res.content
     assert b"data-agent-revoke" in res.content
@@ -279,7 +279,7 @@ def test_portfolio_shows_running_agent(client, user, running_agent):
     res = client.get("/portfolio/")
     assert res.status_code == 200
     assert running_agent.name.encode() in res.content
-    assert b"AUTONOMOUS" in res.content
+    assert b"Active" in res.content
     assert running_agent.smart_account.address[-4:].encode() in res.content
     assert b"Agent details" in res.content
     assert b"Agent gas" in res.content

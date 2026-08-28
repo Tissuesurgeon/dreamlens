@@ -12,7 +12,7 @@
     <div class="dl-insight-compare__divider" aria-hidden="true">vs</div>
     <div class="dl-insight-compare__col">
       <span class="dl-insight-compare__label">Market</span>
-      <span class="dl-insight-compare__value">${{ ai_insight.market_price }}</span>
+      <span class="dl-insight-compare__value">{{ ai_insight.market_price|as_usd }}</span>
     </div>
   </div>
   <p class="dl-insight-card__summary">{{ ai_insight.summary }}</p>

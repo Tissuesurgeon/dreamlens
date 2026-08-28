@@ -291,6 +291,34 @@ class ChatSerializer(serializers.Serializer):
         return attrs
 
 
+class LensChatSerializer(serializers.Serializer):
+    message = serializers.CharField()
+    event_id = serializers.IntegerField(required=False, allow_null=True)
+    structured = serializers.BooleanField(required=False, default=False)
+    history = serializers.ListField(
+        child=serializers.DictField(),
+        required=False,
+        default=list,
+    )
+
+    def validate_message(self, value: str) -> str:
+        text = (value or "").strip()
+        if not text:
+            raise serializers.ValidationError("Ask a question about the market.")
+        return text
+
+    def validate_history(self, value):
+        cleaned = []
+        for item in (value or [])[-10:]:
+            if not isinstance(item, dict):
+                continue
+            role = str(item.get("role") or "").lower()
+            content = str(item.get("content") or item.get("text") or "").strip()
+            if role in {"user", "assistant"} and content:
+                cleaned.append({"role": role, "content": content[:4000]})
+        return cleaned
+
+
 class AnalyzeEventSerializer(serializers.Serializer):
     event_id = serializers.IntegerField()
 

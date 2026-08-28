@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Lens — DreamLens{% endblock %}
+
+{% block content %}
+<div class="dl-container dl-container--lens dl-lens-page dl-animate-in">
+  <header class="dl-page-header">
+    <h1 class="dl-page-header__title">Lens</h1>
+    <p class="dl-page-header__subtitle">A financial analyst for live DreamDEX markets and the news around them.</p>
+  </header>
+
+  {% include "components/market_feed.html" with feed_heading_id="lens-feed-heading" feed_limit=6 %}
+
+  <div class="dl-lens-chat">
+    <div class="dl-lens-thread" id="lens-thread" aria-live="polite">
+      <div class="dl-lens-empty" id="lens-empty">
+        <p class="dl-lens-empty__title">Ask Lens</p>
+        <p>Lens is a financial analyst for live DreamDEX markets. It comments on prices, flow, and news — it does not place trades.</p>
+      </div>
+    </div>
+
+    <div class="dl-lens-composer">
+      <div class="dl-ask__chips" id="lens-chips">
+        {% for chip in lens_chips %}
+        <button type="button" class="dl-chip" data-lens-chip="{{ chip }}">{{ chip }}</button>
+        {% endfor %}
+      </div>
+      <form class="dl-ask" id="lens-form">
+        {% csrf_token %}
+        <label class="visually-hidden" for="lens-input">Ask Lens about the market</label>
+        <div class="dl-ask__row">
+          <input
+            type="text"
+            id="lens-input"
+            class="dl-ask__input"
+            name="message"
+            placeholder="What's happening in the market?"
+            autocomplete="off"
+            enterkeyhint="send"
+          >
+          <button type="submit" class="dl-btn dl-btn--primary" id="lens-submit">Ask</button>
+        </div>
+      </form>
+      <p class="dl-lens-disclaimer">DreamLens estimate — not financial advice or a guaranteed outcome.</p>
+    </div>
+  </div>
+</div>
+{% endblock %}

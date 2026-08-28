@@ -9,6 +9,7 @@ from django.utils import timezone
 
 from apps.agents.models import DreamAgent, DreamAgentPermission
 from apps.dreamcopy.models import CopyRelationship, TraderTrade
+from services.event_copy import format_collateral
 
 
 @dataclass
@@ -57,13 +58,13 @@ class PolicyEngine:
 
         if ctx.amount > perm.max_trade_amount:
             reasons.append(
-                f"${ctx.amount} exceeds max per trade ${perm.max_trade_amount}"
+                f"{format_collateral(ctx.amount, compact=True)} exceeds max per trade {format_collateral(perm.max_trade_amount, compact=True)}"
             )
 
         projected = ctx.daily_volume + ctx.amount
         if projected > perm.max_daily_volume:
             reasons.append(
-                f"Daily volume ${projected} would exceed ${perm.max_daily_volume}"
+                f"Daily volume {format_collateral(projected, compact=True)} would exceed {format_collateral(perm.max_daily_volume, compact=True)}"
             )
 
         min_score = perm.min_copy_score

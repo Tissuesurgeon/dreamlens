@@ -4,7 +4,10 @@ from apps.core import views
 
 urlpatterns = [
     path("", views.landing, name="landing"),
+    path("home/", views.home, name="home"),
+    path("discover/", views.discover, name="discover"),
     path("explore/", views.explore, name="explore"),
+    path("lens/", views.lens, name="lens"),
     path("events/<int:pk>/", views.event_detail, name="event_detail"),
     path("following/", views.following, name="following"),
     path("following/activity/", views.copy_activity, name="copy_activity"),

@@ -10,6 +10,7 @@ from django.utils import timezone
 
 from apps.dreamcopy.models import CopyRelationship, TraderProfile, TraderTrade
 from apps.events.models import EventContract, EventOutcome, EventRadarSignal
+from services.event_copy import format_collateral
 from services.consensus_service import compute_consensus
 
 logger = logging.getLogger("dreamlens.services.copy_score")
@@ -121,16 +122,16 @@ def _score_event(event: EventContract, outcome: EventOutcome) -> tuple[Decimal, 
     )
 
     if liquidity >= 1000:
-        why.append(f"Event has sufficient liquidity (${liquidity:,.0f})")
+        why.append(f"Event has sufficient liquidity ({format_collateral(liquidity, compact=True)})")
     else:
-        risks.append(f"Liquidity ${liquidity:,.0f} is thin")
+        risks.append(f"Liquidity {format_collateral(liquidity, compact=True)} is thin")
     if mins > 0:
         if mins < 5:
             risks.append(f"Event expires in {mins:.0f} minutes")
         else:
             why.append(f"{mins:.0f} minutes remaining")
     if volume > 0:
-        why.append(f"Volume ${volume:,.0f}")
+        why.append(f"Volume {format_collateral(volume, compact=True)}")
 
     return _clamp(score), why, risks
 
@@ -330,7 +331,7 @@ def evaluate_copy_score(
         if min_liq and liquidity < min_liq and consider.get("liquidity", True):
             decision = "SKIP"
             skip_reasons.append(
-                f"Event liquidity ${liquidity:,.0f} below your minimum ${min_liq:,.0f}"
+                f"Event liquidity {format_collateral(liquidity, compact=True)} below your minimum {format_collateral(min_liq, compact=True)}"
             )
 
         if relationship.copy_mode == CopyRelationship.CopyMode.CONSENSUS or consider.get(

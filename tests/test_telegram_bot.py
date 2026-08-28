@@ -233,9 +233,11 @@ def test_events_alias_lists_live_event(send_msg, user, sample_event, telegram_se
     _activate_link(user)
     with patch("services.telegram_bot_service.send_message") as bot_send:
         handle_update(_message("/events"))
+    from services.event_copy import event_question
+
     text = bot_send.call_args[0][1]
     assert str(sample_event.pk) in text
-    assert sample_event.underlying_asset in text
+    assert event_question(sample_event) in text
 
 
 @pytest.mark.django_db

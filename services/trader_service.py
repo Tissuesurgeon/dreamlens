@@ -292,7 +292,10 @@ def _kick_background_trader_sync(interval: int) -> None:
                 cache.delete(_TRADERS_SYNCING_KEY)
             except Exception:
                 pass
-            close_old_connections()
+            try:
+                close_old_connections()
+            except Exception:
+                pass
             if _trader_sync_lock.locked():
                 _trader_sync_lock.release()
 

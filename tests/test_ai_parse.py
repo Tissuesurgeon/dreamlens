@@ -19,6 +19,7 @@ REQUIRED_ANALYZE_KEYS = {
     "risks",
     "label",
     "disclaimer",
+    "setup",
 }
 
 
@@ -28,6 +29,9 @@ def test_analyze_event_has_required_keys(sample_event, user):
     assert REQUIRED_ANALYZE_KEYS.issubset(result.keys())
     assert isinstance(result["reasons"], list)
     assert isinstance(result["risks"], list)
+    assert len(result["reasons"]) >= 4
+    assert len(result["risks"]) >= 3
+    assert result["setup"]
     assert result["disclaimer"]
 
 

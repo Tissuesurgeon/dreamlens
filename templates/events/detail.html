@@ -1,48 +1,19 @@
 {% extends "base.html" %}
 {% load dreamlens_extras %}
 
-{% block title %}{{ event.title }} — DreamLens{% endblock %}
+{% block title %}{{ event|question_copy }} — DreamLens{% endblock %}
 
 {% block content %}
 <div class="dl-container dl-container--event dl-event-page dl-animate-in">
-  <a href="{% url 'explore' %}" class="dl-back">← Explore</a>
+  <a href="{% url 'discover' %}" class="dl-back">← Discover</a>
 
   <div class="dl-event-layout">
     <div class="dl-event-layout__main">
       <header class="dl-event-header">
-        <div class="dl-event-header__meta">
-          <span class="dl-badge">{{ event.underlying_asset }}</span>
-          <span class="dl-badge dl-badge--muted">Live</span>
-          <span class="dl-countdown" data-expiry="{{ event.expiry_time|date:'c' }}">—</span>
-        </div>
-        <h1 class="dl-event-header__title">{{ event.title }}</h1>
-        {% if event.opening_price %}
-        <p class="dl-event-header__base">
-          Opening price <strong>{{ event.opening_price|spot_usd }}</strong>
-          · Yes if {{ event.underlying_asset }} finishes at or above this level
-        </p>
-        {% endif %}
-        <p class="dl-event-header__expiry">Ends <time datetime="{{ event.expiry_time|date:'c' }}">{{ event.expiry_time|date:"M j · g:i A T" }}</time></p>
+        <p class="dl-trade-kicker">What do you think will happen?</p>
+        <h1 class="dl-event-header__title">{{ event|question_copy }}</h1>
+        <p class="dl-event-header__expiry">when this event expires · Ends in <span class="dl-countdown" data-expiry="{{ event.expiry_time|date:'c' }}">{{ event|ends_in }}</span></p>
       </header>
-
-      <div class="dl-ta-kpis dl-ta-kpis--4" role="group" aria-label="Market stats">
-        <div class="dl-ta-kpi">
-          <span class="dl-ta-kpi__label">Volume</span>
-          <span class="dl-ta-kpi__value">{{ volume|usd_amount }}</span>
-        </div>
-        <div class="dl-ta-kpi">
-          <span class="dl-ta-kpi__label">Liquidity</span>
-          <span class="dl-ta-kpi__value">{{ liquidity|usd_amount }}</span>
-        </div>
-        <div class="dl-ta-kpi">
-          <span class="dl-ta-kpi__label">Traders</span>
-          <span class="dl-ta-kpi__value">{{ trader_count }}</span>
-        </div>
-        <div class="dl-ta-kpi">
-          <span class="dl-ta-kpi__label">Time left</span>
-          <span class="dl-ta-kpi__value dl-countdown" data-expiry="{{ event.expiry_time|date:'c' }}">—</span>
-        </div>
-      </div>
 
       <div class="dl-payout-tiles" aria-label="Prices">
         <button
@@ -51,11 +22,11 @@
           data-outcome="YES"
           data-price="{% if yes_outcome %}{{ yes_outcome.current_price }}{% else %}0.5{% endif %}"
           data-event-id="{{ event.pk }}"
-          data-event-title="{{ event.title }}"
+          data-event-title="{{ event|question_copy }}"
+          data-event-expiry="{{ event.expiry_time|date:'c' }}"
         >
           <span class="dl-payout-tile__side">YES</span>
-          <span class="dl-payout-tile__price">{% if yes_outcome %}{{ yes_outcome.current_price|as_usd }}{% else %}—{% endif %}</span>
-          <span class="dl-payout-tile__payout">Potential {% if yes_payout %}{{ yes_payout }}x{% else %}—{% endif %}</span>
+          <span class="dl-payout-tile__price">{% if yes_outcome %}{{ yes_outcome.current_price|as_cents }}{% else %}—{% endif %}</span>
         </button>
         <button
           type="button"
@@ -63,83 +34,127 @@
           data-outcome="NO"
           data-price="{% if no_outcome %}{{ no_outcome.current_price }}{% else %}0.5{% endif %}"
           data-event-id="{{ event.pk }}"
-          data-event-title="{{ event.title }}"
+          data-event-title="{{ event|question_copy }}"
+          data-event-expiry="{{ event.expiry_time|date:'c' }}"
         >
           <span class="dl-payout-tile__side">NO</span>
-          <span class="dl-payout-tile__price">{% if no_outcome %}{{ no_outcome.current_price|as_usd }}{% else %}—{% endif %}</span>
-          <span class="dl-payout-tile__payout">Potential {% if no_payout %}{{ no_payout }}x{% else %}—{% endif %}</span>
+          <span class="dl-payout-tile__price">{% if no_outcome %}{{ no_outcome.current_price|as_cents }}{% else %}—{% endif %}</span>
         </button>
       </div>
 
-      <div class="dl-mobile-insight">
-        {% include "events/lenses/_ai_compact.html" %}
-      </div>
+      <section class="dl-possible" aria-labelledby="possible-heading">
+        <h2 id="possible-heading" class="dl-section__title">Your possible result</h2>
+        <p class="dl-label">Try an amount</p>
+        <div class="dl-preset-group" id="possible-chips">
+          <button type="button" class="dl-preset" data-possible-amount="1">$1</button>
+          <button type="button" class="dl-preset is-active" data-possible-amount="5">$5</button>
+          <button type="button" class="dl-preset" data-possible-amount="10">$10</button>
+          <button type="button" class="dl-preset" data-possible-amount="25">$25</button>
+        </div>
+        <div class="dl-possible__grid" id="possible-grid"
+          data-yes-price="{% if yes_outcome %}{{ yes_outcome.current_price }}{% else %}0.5{% endif %}"
+          data-no-price="{% if no_outcome %}{{ no_outcome.current_price }}{% else %}0.5{% endif %}">
+          <article class="dl-possible__side">
+            <h3 class="dl-text-yes">YES</h3>
+            <dl class="dl-trade-math">
+              <div><dt>You pay</dt><dd data-possible-pay="yes">$5.00</dd></div>
+              <div><dt>Maximum possible payout</dt><dd data-possible-payout="yes">—</dd></div>
+              <div><dt>Potential profit</dt><dd data-possible-profit="yes">—</dd></div>
+              <div><dt>Maximum loss</dt><dd data-possible-loss="yes">$5.00</dd></div>
+            </dl>
+            <button
+              type="button"
+              class="dl-btn dl-btn--yes dl-btn--block dl-trade-trigger"
+              data-outcome="YES"
+              data-price="{% if yes_outcome %}{{ yes_outcome.current_price }}{% else %}0.5{% endif %}"
+              data-event-id="{{ event.pk }}"
+              data-event-title="{{ event|question_copy }}"
+              data-event-expiry="{{ event.expiry_time|date:'c' }}"
+              data-amount="5"
+            >Buy YES</button>
+          </article>
+          <article class="dl-possible__side">
+            <h3 class="dl-text-no">NO</h3>
+            <dl class="dl-trade-math">
+              <div><dt>You pay</dt><dd data-possible-pay="no">$5.00</dd></div>
+              <div><dt>Maximum possible payout</dt><dd data-possible-payout="no">—</dd></div>
+              <div><dt>Potential profit</dt><dd data-possible-profit="no">—</dd></div>
+              <div><dt>Maximum loss</dt><dd data-possible-loss="no">$5.00</dd></div>
+            </dl>
+            <button
+              type="button"
+              class="dl-btn dl-btn--no dl-btn--block dl-trade-trigger"
+              data-outcome="NO"
+              data-price="{% if no_outcome %}{{ no_outcome.current_price }}{% else %}0.5{% endif %}"
+              data-event-id="{{ event.pk }}"
+              data-event-title="{{ event|question_copy }}"
+              data-event-expiry="{{ event.expiry_time|date:'c' }}"
+              data-amount="5"
+            >Buy NO</button>
+          </article>
+        </div>
+      </section>
 
-      <div class="dl-lens-tabs" role="tablist" aria-label="Event lenses">
-        <button type="button" class="dl-lens-tab is-active" role="tab" aria-selected="true" data-lens="market">Market</button>
-        <button type="button" class="dl-lens-tab" role="tab" aria-selected="false" data-lens="ai">AI</button>
-        <button type="button" class="dl-lens-tab" role="tab" aria-selected="false" data-lens="traders">Traders</button>
-        <button type="button" class="dl-lens-tab" role="tab" aria-selected="false" data-lens="copy">Copy</button>
-      </div>
+      <section class="dl-watching" aria-labelledby="watching-heading">
+        <h2 id="watching-heading" class="dl-section__title">Why DreamLens is watching</h2>
+        {% if event.dl_score %}
+        <p class="dl-watching__score">Score {{ event.dl_score.score }}/100</p>
+        <dl class="dl-score-dl">
+          <div><dt>Activity</dt><dd>{{ event.dl_score.activity }}</dd></div>
+          <div><dt>Liquidity</dt><dd>{{ event.dl_score.liquidity }}</dd></div>
+          <div><dt>Trader activity</dt><dd>{{ event.dl_score.trader_activity }}</dd></div>
+          <div><dt>Time remaining</dt><dd>{{ event.dl_score.time_remaining }}</dd></div>
+        </dl>
+        <p class="dl-score-why__note">{% score_disclaimer %}</p>
+        {% endif %}
+        <button type="button" class="dl-btn dl-btn--ghost" data-explain-event="{{ event.pk }}" data-explain-question="{{ event|question_copy }}" data-explain-asset="{{ event.underlying_asset|upper }}">Explain this market</button>
+      </section>
 
-      <div class="dl-lens-panels">
-        <div class="dl-lens-panel is-active" id="lens-market" role="tabpanel">
-          {% include "events/lenses/_market.html" %}
+      {% include "components/market_feed.html" with feed_asset=event.underlying_asset feed_title="News that can move this window" feed_heading_id="event-feed-heading" feed_limit=6 %}
+
+      <div class="dl-advanced">
+        <div class="dl-ta-kpis dl-ta-kpis--4" role="group" aria-label="Market stats">
+          <div class="dl-ta-kpi">
+            <span class="dl-ta-kpi__label">Volume</span>
+            <span class="dl-ta-kpi__value">{{ volume|usd_amount }}</span>
+          </div>
+          <div class="dl-ta-kpi">
+            <span class="dl-ta-kpi__label">Liquidity</span>
+            <span class="dl-ta-kpi__value">{{ liquidity|usd_amount }}</span>
+          </div>
+          <div class="dl-ta-kpi">
+            <span class="dl-ta-kpi__label">Traders</span>
+            <span class="dl-ta-kpi__value">{{ trader_count }}</span>
+          </div>
+          <div class="dl-ta-kpi">
+            <span class="dl-ta-kpi__label">Contract</span>
+            <span class="dl-ta-kpi__value dl-mono">{{ event.external_id|truncatechars:10 }}</span>
+          </div>
         </div>
-        <div class="dl-lens-panel" id="lens-ai" role="tabpanel" hidden>
-          {% include "events/lenses/_ai.html" %}
+
+        <div class="dl-lens-tabs" role="tablist" aria-label="Event lenses">
+          <button type="button" class="dl-lens-tab is-active" role="tab" aria-selected="true" data-lens="market">Market</button>
+          <button type="button" class="dl-lens-tab" role="tab" aria-selected="false" data-lens="ai">AI</button>
+          <button type="button" class="dl-lens-tab" role="tab" aria-selected="false" data-lens="traders">Traders</button>
+          <button type="button" class="dl-lens-tab" role="tab" aria-selected="false" data-lens="copy">Copy</button>
         </div>
-        <div class="dl-lens-panel" id="lens-traders" role="tabpanel" hidden>
-          {% include "events/lenses/_traders.html" %}
-        </div>
-        <div class="dl-lens-panel" id="lens-copy" role="tabpanel" hidden>
-          {% include "events/lenses/_copy.html" %}
+
+        <div class="dl-lens-panels">
+          <div class="dl-lens-panel is-active" id="lens-market" role="tabpanel">
+            {% include "events/lenses/_market.html" %}
+          </div>
+          <div class="dl-lens-panel" id="lens-ai" role="tabpanel" hidden>
+            {% include "events/lenses/_ai.html" %}
+          </div>
+          <div class="dl-lens-panel" id="lens-traders" role="tabpanel" hidden>
+            {% include "events/lenses/_traders.html" %}
+          </div>
+          <div class="dl-lens-panel" id="lens-copy" role="tabpanel" hidden>
+            {% include "events/lenses/_copy.html" %}
+          </div>
         </div>
       </div>
     </div>
-
-    <aside class="dl-event-layout__aside" aria-label="AI insight">
-      <div class="dl-sticky-insight">
-        {% include "events/lenses/_ai_compact.html" %}
-        <div class="dl-sticky-buy">
-          <button
-            type="button"
-            class="dl-btn dl-btn--yes dl-btn--block dl-trade-trigger"
-            data-outcome="YES"
-            data-price="{% if yes_outcome %}{{ yes_outcome.current_price }}{% else %}0.5{% endif %}"
-            data-event-id="{{ event.pk }}"
-            data-event-title="{{ event.title }}"
-          >Buy YES</button>
-          <button
-            type="button"
-            class="dl-btn dl-btn--no dl-btn--block dl-trade-trigger"
-            data-outcome="NO"
-            data-price="{% if no_outcome %}{{ no_outcome.current_price }}{% else %}0.5{% endif %}"
-            data-event-id="{{ event.pk }}"
-            data-event-title="{{ event.title }}"
-          >Buy NO</button>
-        </div>
-      </div>
-    </aside>
-  </div>
-
-  <div class="dl-mobile-buy" aria-label="Trade">
-    <button
-      type="button"
-      class="dl-btn dl-btn--yes dl-trade-trigger"
-      data-outcome="YES"
-      data-price="{% if yes_outcome %}{{ yes_outcome.current_price }}{% else %}0.5{% endif %}"
-      data-event-id="{{ event.pk }}"
-      data-event-title="{{ event.title }}"
-    >Buy YES</button>
-    <button
-      type="button"
-      class="dl-btn dl-btn--no dl-trade-trigger"
-      data-outcome="NO"
-      data-price="{% if no_outcome %}{{ no_outcome.current_price }}{% else %}0.5{% endif %}"
-      data-event-id="{{ event.pk }}"
-      data-event-title="{{ event.title }}"
-    >Buy NO</button>
   </div>
 </div>
 {% endblock %}
@@ -148,8 +163,15 @@
 {{ chart_data|json_script:"chart-data" }}
 <script>
   window.DreamLens = window.DreamLens || {};
-  window.DreamLens.chartData = JSON.parse(document.getElementById("chart-data").textContent);
-  window.DreamLens.eventId = {{ event.pk }};
-  window.DreamLens.eventTitle = document.querySelector(".dl-event-header__title")?.textContent?.trim() || "";
+  (function () {
+    const el = document.getElementById("chart-data");
+    if (el) {
+      try {
+        window.DreamLens.chartData = JSON.parse(el.textContent);
+      } catch (err) {
+        /* keep defaults */
+      }
+    }
+  })();
 </script>
 {% endblock %}

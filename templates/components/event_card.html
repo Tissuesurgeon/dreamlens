@@ -4,19 +4,18 @@
   data-event-id="{{ event.pk }}"
   data-asset="{{ event.underlying_asset|upper }}"
   data-signals="{% if event.radar_types %}{% for t in event.radar_types %}{{ t }} {% endfor %}{% else %}{% for s in event.radar_signals.all %}{% if s.is_active %}{{ s.signal_type }} {% endif %}{% endfor %}{% endif %}"
+  data-intent="{% if event.intent_tags %}{% for t in event.intent_tags %}{{ t }} {% endfor %}{% endif %}"
+  data-score="{{ event.dl_score.score|default:0 }}"
 >
   <div class="dl-event-card__top">
     <span class="dl-event-card__asset">{{ event.underlying_asset|upper }}</span>
-    {% if event.card_signal %}
-    <span class="dl-event-card__radar">
-      <span aria-hidden="true">◆</span>
-      {{ event.card_signal.signal_type|signal_label }}{% if event.card_signal.score %} · {{ event.card_signal.score|floatformat:0 }}%{% endif %}
-    </span>
+    {% if event.dl_score %}
+    <span class="dl-event-card__score">DreamLens Score {{ event.dl_score.score }}/100</span>
     {% endif %}
   </div>
 
   <h3 class="dl-event-card__title">
-    <a href="{% url 'event_detail' event.pk %}">{{ event.title }}</a>
+    <a href="{% url 'event_detail' event.pk %}">{{ event|question_copy }}</a>
   </h3>
 
   <div class="dl-event-card__prices">
@@ -27,14 +26,15 @@
         class="dl-event-card__price dl-event-card__price--yes"
         data-trade
         data-event-id="{{ event.pk }}"
-        data-event-title="{{ event.title }}"
+        data-event-title="{{ event|question_copy }}"
+        data-event-expiry="{{ event.expiry_time|date:'c' }}"
         data-outcome="YES"
         data-price="{{ o.current_price }}"
-        aria-label="Buy Yes at {{ o.current_price|as_usd }}"
+        aria-label="Buy Yes at {{ o.current_price|as_cents }}"
       >
         <span class="dl-event-card__side">YES</span>
-        <span class="dl-event-card__num">{{ o.current_price|as_usd }}</span>
-        <span class="dl-event-card__hint">{{ o.current_price|payout_mult }} payout</span>
+        <span class="dl-event-card__num">{{ o.current_price|as_cents }}</span>
+        <span class="dl-event-card__hint">{{ o.current_price|put_one }}</span>
       </button>
       {% endif %}
     {% endfor %}
@@ -45,35 +45,39 @@
         class="dl-event-card__price dl-event-card__price--no"
         data-trade
         data-event-id="{{ event.pk }}"
-        data-event-title="{{ event.title }}"
+        data-event-title="{{ event|question_copy }}"
+        data-event-expiry="{{ event.expiry_time|date:'c' }}"
         data-outcome="NO"
         data-price="{{ o.current_price }}"
-        aria-label="Buy No at {{ o.current_price|as_usd }}"
+        aria-label="Buy No at {{ o.current_price|as_cents }}"
       >
         <span class="dl-event-card__side">NO</span>
-        <span class="dl-event-card__num">{{ o.current_price|as_usd }}</span>
-        <span class="dl-event-card__hint">{{ o.current_price|payout_mult }} payout</span>
+        <span class="dl-event-card__num">{{ o.current_price|as_cents }}</span>
+        <span class="dl-event-card__hint">{{ o.current_price|put_one }}</span>
       </button>
       {% endif %}
     {% endfor %}
   </div>
 
-  {% for o in event.outcomes.all %}
-    {% if o.outcome_type == "YES" %}
-    <div class="dl-prob" role="img" aria-label="Market implies {{ o.current_price|pct_of }} percent Yes">
-      <div class="dl-prob-bar">
-        <div class="dl-prob-bar__yes" style="width: {% widthratio o.current_price 1 100 %}%"></div>
-      </div>
-      <div class="dl-prob__labels">
-        <span class="dl-text-yes">{{ o.current_price|pct_of }}% YES</span>
-        <span class="dl-text-no">{{ o.current_price|complement_pct }}% NO</span>
-      </div>
-    </div>
-    {% endif %}
-  {% endfor %}
+  {% if event.dl_score %}
+  <details class="dl-score-why">
+    <summary>How this score is calculated</summary>
+    <dl>
+      <div><dt>Activity</dt><dd>{{ event.dl_score.activity }}</dd></div>
+      <div><dt>Liquidity</dt><dd>{{ event.dl_score.liquidity }}</dd></div>
+      <div><dt>Trader activity</dt><dd>{{ event.dl_score.trader_activity }}</dd></div>
+      <div><dt>Time remaining</dt><dd>{{ event.dl_score.time_remaining }}</dd></div>
+    </dl>
+    <p class="dl-score-why__note">{% score_disclaimer %}</p>
+  </details>
+  {% endif %}
 
   <div class="dl-event-card__meta">
-    <span>{{ event.cumulative_quote_volume|usd_amount }} vol · {{ event.trade_count }} trade{{ event.trade_count|pluralize }} · <span class="dl-countdown" data-expiry="{{ event.expiry_time|date:'c' }}">—</span></span>
-    <a href="{% url 'event_detail' event.pk %}" class="dl-event-card__explore">Explore</a>
+    <span>Ends in <span class="dl-countdown" data-expiry="{{ event.expiry_time|date:'c' }}">{{ event|ends_in }}</span></span>
+    <span class="dl-event-card__actions">
+      <button type="button" class="dl-text-link" data-explain-event="{{ event.pk }}" data-explain-question="{{ event|question_copy }}" data-explain-asset="{{ event.underlying_asset|upper }}">Explain this</button>
+      <a href="{% url 'event_detail' event.pk %}" class="dl-event-card__explore">View market</a>
+    </span>
   </div>
+  <p class="dl-event-card__advanced dl-advanced">{{ event.cumulative_quote_volume|usd_amount }} vol · {{ event.trade_count }} trade{{ event.trade_count|pluralize }}</p>
 </article>

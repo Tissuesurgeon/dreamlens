@@ -90,13 +90,15 @@ def test_trader_detail_page_opens(client, sample_event):
         opened_at=sample_event.expiry_time,
         external_trade_id="fill-view-1",
     )
+    from services.event_copy import event_question
+
     res = client.get(f"/traders/{trader.pk}/")
     assert res.status_code == 200
     assert trader.wallet_address.encode() in res.content
-    assert sample_event.title.encode() in res.content
-    assert b"YES / NO split" in res.content
-    assert b"Fill volume by day" in res.content
-    assert b"Recent fills" in res.content
+    assert event_question(sample_event).encode() in res.content
+    assert b"What they usually trade" in res.content
+    assert b"How DreamLens sees them" in res.content
+    assert b"Recent trades" in res.content
     assert b"Smart Copy" in res.content
 
 
@@ -149,7 +151,7 @@ def test_following_page_lists_active_traders_with_copy_actions(client, sample_ev
     )
     res = client.get("/following/")
     assert res.status_code == 200
-    assert b"Active traders" in res.content
+    assert b"Smart Copy" in res.content
     assert b"/traders/%d/" % trader.pk in res.content
     assert b"data-follow-trader" in res.content
     assert b"data-open-smart-copy" in res.content

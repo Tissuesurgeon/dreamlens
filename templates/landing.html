@@ -37,7 +37,7 @@
     <h1 class="dl-landing-headline">See the event differently.</h1>
     <p class="dl-landing-lede">DreamLens reviews DreamDEX markets before you trade. You still sign every order.</p>
     <div class="dl-landing-cta">
-      <a href="{% url 'explore' %}" class="dl-btn dl-btn--primary dl-btn--landing">Enter DreamLens</a>
+      <a href="{% url 'home' %}" class="dl-btn dl-btn--primary dl-btn--landing">Enter DreamLens</a>
       {% if dreamlens_network.explorerUrl %}
       <a class="dl-landing-cta__secondary" href="{{ dreamlens_network.explorerUrl }}" target="_blank" rel="noopener noreferrer">View Shannon chain</a>
       {% endif %}
@@ -102,6 +102,6 @@
 
 <section class="dl-landing-end" data-landing-reveal>
   <p class="dl-landing-end__line">Look through the lens.</p>
-  <a href="{% url 'explore' %}" class="dl-btn dl-btn--primary dl-btn--landing">Enter DreamLens</a>
+  <a href="{% url 'home' %}" class="dl-btn dl-btn--primary dl-btn--landing">Enter DreamLens</a>
 </section>
 {% endblock %}

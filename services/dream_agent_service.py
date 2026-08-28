@@ -18,6 +18,7 @@ from integrations.metamask.execution import build_delegated_trade_execution
 from integrations.metamask.transactions import broadcast_delegated_execution
 from services.copy_score import evaluate_copy_score
 from services.copy_service import _copy_amount, _daily_copy_total
+from services.event_copy import format_collateral
 from services.policy_service import PolicyContext, PolicyEngine
 from services.risk_service import RiskContext, RiskEngine
 from services.trading_service import confirm_trade, prepare_trade
@@ -447,11 +448,11 @@ def execute_agent_manual_trade(
     skip_reasons: list[str] = []
     if amount > permission.max_trade_amount:
         skip_reasons.append(
-            f"${amount} exceeds max per trade ${permission.max_trade_amount}"
+            f"{format_collateral(amount, compact=True)} exceeds max per trade {format_collateral(permission.max_trade_amount, compact=True)}"
         )
     if daily + amount > permission.max_daily_volume:
         skip_reasons.append(
-            f"Daily volume would exceed ${permission.max_daily_volume}"
+            f"Daily volume would exceed {format_collateral(permission.max_daily_volume, compact=True)}"
         )
     allowed_outcomes = permission.allowed_outcomes_json or []
     if allowed_outcomes and side not in {str(o).upper() for o in allowed_outcomes}:

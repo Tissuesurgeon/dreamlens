@@ -12,7 +12,7 @@ from django.core.cache import cache
 from django.utils import timezone
 
 from apps.dreamcopy.models import CopyRelationship
-from apps.events.models import EventContract, EventOutcome
+from apps.events.models import EventContract
 from integrations.telegram.client import (
     TelegramError,
     answer_callback,
@@ -22,6 +22,14 @@ from integrations.telegram.client import (
     send_message,
 )
 from services.ai_service import analyze_event, parse_intent
+from services.event_copy import (
+    as_cents,
+    event_question,
+    format_collateral,
+    format_ends_in,
+    format_event_card_text,
+    yes_no_outcomes,
+)
 from services.copy_service import CopyError, create_copy_relationship
 from services.dream_agent_service import (
     DreamAgentError,
@@ -44,9 +52,9 @@ logger = logging.getLogger("dreamlens.telegram.bot")
 HELP = (
     "DreamLens bot — DreamAgent on Somnia.\n"
     "/start /help /connect — link this chat\n"
-    "/events /markets — live Event Contracts\n"
-    "/analyze [id|BTC|ETH] — market + estimate\n"
-    "/trade <id> YES|NO <usd> — confirm then DreamAgent executes\n"
+    "/events /markets — live events\n"
+    "/analyze [id|BTC|ETH] — understand a market\n"
+    "/trade <id> YES|NO <amount> — confirm then DreamAgent executes\n"
     "/agent /status /balance — agent + Smart Account\n"
     "/positions /activity — portfolio and evaluations\n"
     "/pause /resume — stop or start autonomous copy\n"
@@ -69,7 +77,7 @@ _POSITION_PHRASES = ("show positions", "my positions", "portfolio", "my portfoli
 _AGENT_PHRASES = ("how is my agent", "agent status", "my agent")
 
 LIMIT_TEMPLATE = (
-    "Your DreamAgent limit is ${max} per trade. I cannot execute ${asked}. "
+    "Your DreamAgent limit is {max} per trade. I cannot execute {asked}. "
     "Change limits on the Agent page with MetaMask."
 )
 
@@ -233,8 +241,8 @@ def _cmd_agent(chat_id: int, user) -> None:
         f"Collateral: {coll}\n"
         f"Gas: {native} {native_sym}\n"
         f"Copied / skipped: {perf.get('trades_copied', 0)} / {perf.get('trades_skipped', 0)}\n"
-        f"P&L: ${perf.get('pnl', '—')}\n"
-        f"Max trade: ${perm.get('max_trade_amount', '—')} · daily ${perm.get('max_daily_volume', '—')}",
+        f"P&L: {format_collateral(perf.get('pnl')) if perf.get('pnl') not in (None, '—') else '—'}\n"
+        f"Max trade: {format_collateral(perm.get('max_trade_amount'), compact=True)} · daily {format_collateral(perm.get('max_daily_volume'), compact=True)}",
         reply_markup=inline_keyboard(
             [
                 [("Pause", "go:pause"), ("Resume", "go:resume")],
@@ -284,20 +292,20 @@ def _cmd_positions(chat_id: int, user) -> None:
     )
     trades = list_recent_trades(user, limit=8)
     if not positions and not trades:
-        send_message(chat_id, "No positions yet. Open an event on Explore or /events.")
+        send_message(chat_id, "No positions yet. Open an event on Discover or /events.")
         return
     lines = ["Positions"]
     for pos in positions:
         label = (pos.result or "open").upper()
-        pnl = f" · PnL {pos.pnl}" if pos.pnl is not None else ""
+        result = f" · Today's result {pos.pnl}" if pos.pnl is not None else ""
         lines.append(
-            f"{label} {pos.outcome.outcome_type} {pos.amount}{pnl} · {pos.event.title[:48]}"
+            f"{label} {pos.outcome.outcome_type} {pos.amount} · {event_question(pos.event)[:72]}{result}"
         )
     if trades:
         lines.append("Trades")
         for trade in trades:
             lines.append(
-                f"{trade.outcome.outcome_type} {trade.amount} @ {trade.entry_price} · {trade.event.title[:40]}"
+                f"{trade.outcome.outcome_type} {as_cents(trade.entry_price)} · {event_question(trade.event)[:64]}"
             )
     send_message(chat_id, "\n".join(lines))
 
@@ -318,7 +326,7 @@ def _cmd_activity(chat_id: int, user) -> None:
     lines = ["Agent activity"]
     for ev in rows:
         title = ev.event_title or "event"
-        amt = f" ${ev.amount}" if ev.amount is not None else ""
+        amt = f" {format_collateral(ev.amount, compact=True)}" if ev.amount is not None else ""
         line = f"{ev.decision}{amt} · {title[:40]}"
         if ev.tx_hash:
             line += f"\n{explorer_tx_url(ev.tx_hash)}"
@@ -437,13 +445,10 @@ def _live_events(*, asset: str | None = None):
 
 
 def _yes_price(event: EventContract) -> str:
-    yes = next(
-        (o for o in event.outcomes.all() if o.outcome_type == EventOutcome.OutcomeType.YES),
-        None,
-    )
+    yes, _ = yes_no_outcomes(event)
     if not yes:
         return "—"
-    return f"${yes.current_price.quantize(Decimal('0.01'))}"
+    return as_cents(yes.current_price)
 
 
 def _cmd_markets(chat_id: int, *, asset: str | None = None) -> None:
@@ -451,21 +456,20 @@ def _cmd_markets(chat_id: int, *, asset: str | None = None) -> None:
     if not events:
         send_message(chat_id, "No live markets right now.")
         return
-    lines = ["Live events — /trade <id> YES|NO <usd>"]
+    lines = ["Live events"]
     rows = []
     for ev in events:
-        mins = int((ev.expiry_time - timezone.now()).total_seconds() // 60)
-        lines.append(
-            f"#{ev.pk} {ev.underlying_asset} YES {_yes_price(ev)} · {mins}m · {ev.title[:40]}"
-        )
+        lines.append(format_event_card_text(ev))
+        lines.append(f"/trade {ev.pk}")
+        lines.append("")
         rows.append(
             [
-                ("Analyze", f"an:{ev.pk}"),
-                ("Buy YES", f"by:{ev.pk}:YES"),
-                ("Buy NO", f"by:{ev.pk}:NO"),
+                ("Explain", f"an:{ev.pk}"),
+                ("Trade YES", f"by:{ev.pk}:YES"),
+                ("Trade NO", f"by:{ev.pk}:NO"),
             ]
         )
-    send_message(chat_id, "\n".join(lines), reply_markup=inline_keyboard(rows))
+    send_message(chat_id, "\n".join(lines).strip(), reply_markup=inline_keyboard(rows))
 
 
 def _resolve_event(*, event_id: int | None = None, asset: str | None = None) -> EventContract | None:
@@ -509,25 +513,22 @@ def _cmd_analyze(chat_id: int, user, text: str) -> None:
 
 
 def _send_analysis(chat_id: int, user, event: EventContract) -> None:
-    no = next(
-        (o for o in event.outcomes.all() if o.outcome_type == EventOutcome.OutcomeType.NO),
-        None,
-    )
     try:
         insight = analyze_event(event, user=user)
     except Exception:
         logger.warning("telegram analyze failed", exc_info=True)
         insight = {}
-    mins = max(int((event.expiry_time - timezone.now()).total_seconds() // 60), 0)
+    mins = format_ends_in(event)
     reasons = insight.get("reasons") or []
     reason = reasons[0] if reasons else "Market data from DreamDEX."
+    yes, no = yes_no_outcomes(event)
     lines = [
-        event.title,
-        f"YES {_yes_price(event)} · NO ${((no.current_price if no else Decimal('0')).quantize(Decimal('0.01')))}",
-        f"Expiry ~{mins}m",
-        f"Signal: {insight.get('signal', '—')}",
+        event_question(event),
+        f"YES {as_cents(yes.current_price if yes else None)}",
+        f"NO {as_cents(no.current_price if no else None)}",
+        f"Ends in {mins}",
         reason,
-        "Testnet market — data may be limited.",
+        "This is a market price, not a guarantee.",
     ]
     send_message(
         chat_id,
@@ -535,8 +536,8 @@ def _send_analysis(chat_id: int, user, event: EventContract) -> None:
         reply_markup=inline_keyboard(
             [
                 [
-                    ("Buy YES", f"by:{event.pk}:YES"),
-                    ("Buy NO", f"by:{event.pk}:NO"),
+                    ("Trade YES", f"by:{event.pk}:YES"),
+                    ("Trade NO", f"by:{event.pk}:NO"),
                 ]
             ]
         ),
@@ -581,7 +582,10 @@ def _offer_trade(chat_id: int, user, event: EventContract, outcome: str, amount:
     if cap is not None and amount > cap:
         send_message(
             chat_id,
-            LIMIT_TEMPLATE.format(max=cap, asked=amount),
+            LIMIT_TEMPLATE.format(
+                max=format_collateral(cap, compact=True),
+                asked=format_collateral(amount, compact=True),
+            ),
         )
         return
     token = secrets.token_urlsafe(10)
@@ -595,9 +599,21 @@ def _offer_trade(chat_id: int, user, event: EventContract, outcome: str, amount:
         },
         TRADE_TTL,
     )
+    yes, no = yes_no_outcomes(event)
+    side = yes if outcome.upper() == "YES" else no
+    price = side.current_price if side else None
     send_message(
         chat_id,
-        f"Place ${amount} {outcome} on {event.title} (#{event.pk}) via DreamAgent?",
+        "\n".join(
+            [
+                event_question(event),
+                f"{outcome} {as_cents(price)}",
+                f"You pay {format_collateral(amount)}",
+                f"Maximum loss {format_collateral(amount)}",
+                f"Ends in {format_ends_in(event)}",
+                "Place this trade via DreamAgent?",
+            ]
+        ),
         reply_markup=inline_keyboard(
             [
                 [
@@ -800,7 +816,10 @@ def _handle_callback(query: dict[str, Any]) -> None:
             if cap is not None and "exceeds max" in msg.lower():
                 send_message(
                     chat_id,
-                    LIMIT_TEMPLATE.format(max=cap, asked=payload.get("amount")),
+                    LIMIT_TEMPLATE.format(
+                        max=format_collateral(cap, compact=True),
+                        asked=format_collateral(payload.get("amount"), compact=True),
+                    ),
                 )
             else:
                 send_message(chat_id, msg)

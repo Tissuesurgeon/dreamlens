@@ -6,6 +6,8 @@ import json
 
 from django.conf import settings
 
+from services.event_copy import collateral_ticker
+
 
 def dreamlens(request):
     chain_id = int(settings.DREAMDEX_CHAIN_ID)
@@ -19,6 +21,7 @@ def dreamlens(request):
         currency = {"name": "Somnia Test Token", "symbol": "STT", "decimals": 18}
         explorer = "https://shannon-explorer.somnia.network"
 
+    ticker = collateral_ticker()
     network_cfg = {
         "chainId": chain_id,
         "chainIdHex": hex(chain_id),
@@ -27,8 +30,10 @@ def dreamlens(request):
         "explorerUrl": explorer,
         "nativeCurrency": currency,
         "network": network,
+        "collateralSymbol": ticker,
     }
     return {
         "dreamlens_network": network_cfg,
         "dreamlens_network_json": json.dumps(network_cfg),
+        "collateral_symbol": ticker,
     }

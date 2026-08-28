@@ -1,4 +1,4 @@
-"""DreamLens page views — landing, explore, event detail, portfolio, following, traders."""
+"""DreamLens page views — landing, home, discover, lens, event detail, portfolio, following, traders."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 from django.db.models import Count, Q
 from django.http import JsonResponse
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
@@ -18,6 +18,13 @@ from apps.events.models import EventContract, EventOutcome, EventRadarSignal
 from apps.portfolio.models import Position
 from integrations.dreamdex.trading import get_candles
 from services.ai_service import analyze_event
+from services.event_copy import (
+    SCORE_DISCLAIMER,
+    annotate_event_display,
+    asset_mix_groups,
+    format_collateral,
+    trader_view_signals,
+)
 from services.event_service import refresh_event_from_dreamdex, refresh_events_from_dreamdex
 from services.market_stats import event_market_stats
 from services.trader_service import (
@@ -50,10 +57,19 @@ RADAR_TILES = [
     },
 ]
 
-SEARCH_CHIPS = [
-    "What's interesting right now?",
-    "Show me BTC events expiring soon.",
-    "What are top traders buying?",
+LENS_CHIPS = [
+    "What's moving right now?",
+    "News hitting BTC?",
+    "Which events expire soon?",
+]
+
+INTENT_FILTERS = [
+    {"id": "all", "label": "All"},
+    {"id": "moving-fast", "label": "Moving Fast"},
+    {"id": "popular", "label": "Popular"},
+    {"id": "high-score", "label": "High DreamLens Score"},
+    {"id": "traders-active", "label": "Traders Are Active"},
+    {"id": "ending-soon", "label": "Ending Soon"},
 ]
 
 
@@ -160,14 +176,17 @@ def _ai_insight(event: EventContract, yes: EventOutcome | None) -> dict:
     edge = estimate_pct - market_pct
     direction = "YES" if edge >= 0 else "NO"
     reasons = analysis.get("reasons") or [
-        f"{event.underlying_asset} momentum aligns with {direction}.",
-        "Order book depth favors the signal side.",
-        "Recent trader fills lean with consensus.",
+        f"YES is the live book for whether {event.underlying_asset} finishes above the strike.",
+        f"{event.trade_count} trades and {event.cumulative_quote_volume} volume show how active this window is.",
+        f"{event.minutes_to_expiry:.1f} minutes remain — a last print can still change the result.",
+        "DreamLens Score is an activity signal, not a chance of winning.",
+        "A headline in the underlying can reprice YES faster than this window can absorb.",
     ]
     risks = analysis.get("risks") or [
         "Short expiry — price can reverse quickly.",
         "Liquidity may thin near settlement.",
         "Oracle timing can differ from spot moves.",
+        "A headline can reprice the underlying before this window closes.",
     ]
     return {
         "estimate": Decimal(str(round(estimate, 2))),
@@ -176,12 +195,13 @@ def _ai_insight(event: EventContract, yes: EventOutcome | None) -> dict:
         "market_price": market_price,
         "edge": abs(edge),
         "direction": direction,
+        "setup": analysis.get("setup") or "",
         "summary": (
-            f"DreamLens estimate: {estimate_pct}% YES vs market ${market_price}. "
+            f"DreamLens estimate: {estimate_pct}% YES vs market {format_collateral(market_price)}. "
             "Analytical estimate — not a guaranteed probability."
         ),
-        "why": reasons[:3],
-        "risks": risks[:3],
+        "why": reasons[:5],
+        "risks": risks[:4],
         "confidence": float(analysis.get("confidence") or 0.65),
         "signal": analysis.get("signal") or "INTERESTING",
     }
@@ -213,8 +233,7 @@ def landing(request):
     return render(request, "landing.html", {})
 
 
-def explore(request):
-    # Pull / refresh markets from DreamDEX (cached for DREAMDEX_EVENT_SYNC_INTERVAL).
+def _live_markets() -> tuple[list[EventContract], list[dict]]:
     refresh_events_from_dreamdex()
     now = timezone.now()
     markets = list(
@@ -226,15 +245,122 @@ def explore(request):
         .order_by("expiry_time")[:24]
     )
     radar = _build_radar(markets)
+    for event in markets:
+        annotate_event_display(event)
+    return markets, radar
 
+
+def _featured_and_watching(markets: list[EventContract]) -> tuple[EventContract | None, list[EventContract]]:
+    if not markets:
+        return None, []
+    moving = [e for e in markets if "moving-fast" in (getattr(e, "intent_tags", []) or [])]
+    ranked = sorted(
+        markets,
+        key=lambda e: (
+            1 if "moving-fast" in (getattr(e, "intent_tags", []) or []) else 0,
+            (getattr(e, "dl_score", {}) or {}).get("score", 0),
+            e.trade_count or 0,
+        ),
+        reverse=True,
+    )
+    featured = moving[0] if moving else ranked[0]
+    watching = [e for e in ranked if e.pk != featured.pk][:3]
+    return featured, watching
+
+
+def home(request):
+    markets, _radar = _live_markets()
+    featured, watching = _featured_and_watching(markets)
+
+    agent = None
+    agent_status = "off"
+    available = None
+    executions = []
+    copies = []
+    if request.user.is_authenticated:
+        from apps.agents.models import DreamAgent
+        from services import smart_account_service
+
+        agent = (
+            DreamAgent.objects.filter(user=request.user)
+            .exclude(status=DreamAgent.Status.REVOKED)
+            .select_related("smart_account")
+            .order_by("-updated_at")
+            .first()
+        )
+        if agent:
+            if agent.status == DreamAgent.Status.RUNNING:
+                agent_status = "active"
+            elif agent.status == DreamAgent.Status.PAUSED:
+                agent_status = "paused"
+            else:
+                agent_status = "ready"
+        sa = smart_account_service.get_account(request.user)
+        if sa:
+            try:
+                bal = smart_account_service.get_balance(sa)
+                available = (bal or {}).get("collateral") if isinstance(bal, dict) else getattr(bal, "collateral", None)
+            except Exception:
+                available = None
+        copies = list(
+            CopyRelationship.objects.filter(
+                user=request.user,
+                status=CopyRelationship.Status.ACTIVE,
+            ).select_related("trader")[:4]
+        )
+        executions = list(
+            CopyExecution.objects.filter(relationship__user=request.user)
+            .select_related(
+                "relationship__trader",
+                "source_trade__event",
+                "source_trade__outcome",
+                "copied_trade",
+            )
+            .order_by("-created_at")[:6]
+        )
+        for ex in executions:
+            annotate_event_display(ex.source_trade.event)
+
+    return render(
+        request,
+        "home_app.html",
+        {
+            "featured": featured,
+            "watching": watching,
+            "live_count": len(markets),
+            "agent": agent,
+            "agent_status": agent_status,
+            "available": available,
+            "copy_relationships": copies,
+            "executions": executions,
+            "score_disclaimer": SCORE_DISCLAIMER,
+        },
+    )
+
+
+def discover(request):
+    markets, radar = _live_markets()
     return render(
         request,
         "home.html",
         {
             "markets": markets,
             "radar_tiles": radar,
-            "search_chips": SEARCH_CHIPS,
+            "intent_filters": INTENT_FILTERS,
+            "score_disclaimer": SCORE_DISCLAIMER,
         },
+    )
+
+
+def explore(request):
+    return redirect("discover", permanent=False)
+
+
+def lens(request):
+    return render(
+        request,
+        "lens/index.html",
+        {"lens_chips": LENS_CHIPS},
     )
 
 
@@ -251,6 +377,7 @@ def event_detail(request, pk: int):
         or event
     )
     yes, no = _yes_no_outcomes(event)
+    annotate_event_display(event, trader_count=None)
     ai_insight = _ai_insight(event, yes)
     chart_data = _chart_data(event)
 
@@ -262,6 +389,7 @@ def event_detail(request, pk: int):
     trader_count = stats["trader_count"]
     yes_position_share = stats["yes_position_share"]
     no_position_share = stats["no_position_share"]
+    annotate_event_display(event, trader_count=trader_count)
 
     yes_payout = None
     no_payout = None
@@ -307,6 +435,8 @@ def event_detail(request, pk: int):
             "no_position_share": no_position_share,
             "consensus": consensus,
             "active_copy_trader_ids": active_copy_trader_ids,
+            "score_disclaimer": SCORE_DISCLAIMER,
+            "event_question": event.question,
         },
     )
 
@@ -318,6 +448,10 @@ def portfolio(request):
             "portfolio/index.html",
             {
                 "total_pnl": Decimal("0"),
+                "today_result": Decimal("0"),
+                "available": None,
+                "in_active_events": Decimal("0"),
+                "potential_payout": Decimal("0"),
                 "open_positions": [],
                 "settled_positions": [],
                 "settling_positions": [],
@@ -385,11 +519,41 @@ def portfolio(request):
     won_count = sum(1 for p in positions if p.result in ("won", "claimed"))
     lost_count = sum(1 for p in positions if p.result == "lost")
 
+    today = timezone.now().date()
+    in_active = Decimal("0")
+    potential_payout = Decimal("0")
+    today_result = Decimal("0")
+    for pos in open_positions:
+        cost = (pos.amount or Decimal("0")) * (pos.entry_price or Decimal("0"))
+        in_active += cost
+        potential_payout += pos.amount or Decimal("0")
+        today_result += pos.pnl or Decimal("0")
+        annotate_event_display(pos.event)
+        pos.you_put_in = cost
+        pos.potential_payout = pos.amount or Decimal("0")
+    for pos in settling_positions + settled_positions:
+        annotate_event_display(pos.event)
+        pos.you_put_in = (pos.amount or Decimal("0")) * (pos.entry_price or Decimal("0"))
+        pos.potential_payout = pos.amount or Decimal("0")
+        settled_at = getattr(pos, "settled_at", None)
+        if settled_at and settled_at.date() == today:
+            today_result += pos.pnl or Decimal("0")
+    for trade in recent_trades:
+        annotate_event_display(trade.event)
+
+    available = None
+    if wallet_balances:
+        available = wallet_balances.get("collateral_balance") if isinstance(wallet_balances, dict) else getattr(wallet_balances, "collateral_balance", None)
+
     return render(
         request,
         "portfolio/index.html",
         {
             "total_pnl": total_pnl,
+            "today_result": today_result,
+            "available": available,
+            "in_active_events": in_active,
+            "potential_payout": potential_payout,
             "open_positions": open_positions,
             "settling_positions": settling_positions,
             "settled_positions": settled_positions,
@@ -481,9 +645,12 @@ def copy_activity(request):
             "relationship__trader",
             "source_trade__event",
             "source_trade__outcome",
+            "copied_trade",
         )
         .order_by("-created_at")[:50]
     )
+    for ex in executions:
+        annotate_event_display(ex.source_trade.event)
     return render(
         request,
         "copy/activity.html",
@@ -522,6 +689,14 @@ def copy_settings(request, pk: int):
 def trader_detail(request, pk: int):
     trader = get_object_or_404(TraderProfile, pk=pk)
     analytics = build_trader_analytics(trader)
+    analytics["mix"] = asset_mix_groups(analytics.get("assets") or [])
+    analytics["view"] = trader_view_signals(
+        win_pct=analytics.get("win_pct"),
+        indexed_count=analytics.get("indexed_count") or trader.total_trades,
+        last_fill_at=analytics.get("last_fill_at"),
+    )
+    for fill in analytics.get("fills") or []:
+        annotate_event_display(fill.event)
     relationship = None
     already_following = False
     if request.user.is_authenticated:
@@ -572,6 +747,23 @@ def dream_agent(request):
             agent_balance = smart_account_service.get_balance(sa)
         except Exception:
             agent_balance = None
+    executions = []
+    if request.user.is_authenticated:
+        executions = list(
+            CopyExecution.objects.filter(relationship__user=request.user)
+            .select_related(
+                "relationship__trader",
+                "source_trade__event",
+                "source_trade__outcome",
+                "copied_trade",
+            )
+            .order_by("-created_at")[:8]
+        )
+        for ex in executions:
+            annotate_event_display(ex.source_trade.event)
+    today_result = None
+    if performance.get("pnl") is not None:
+        today_result = performance.get("pnl")
     return render(
         request,
         "agent/index.html",
@@ -581,6 +773,8 @@ def dream_agent(request):
             "performance": performance,
             "agent_balance": agent_balance,
             "is_authenticated": request.user.is_authenticated,
+            "executions": executions,
+            "today_result": today_result,
         },
     )
 

@@ -14,3 +14,4 @@ CACHES = {
     }
 }
 SESSION_ENGINE = "django.contrib.sessions.backends.db"
+MARKET_NEWS_FETCH = False

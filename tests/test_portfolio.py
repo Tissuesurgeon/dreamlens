@@ -132,8 +132,10 @@ def test_portfolio_page_shows_onchain_fill(client, user, wallet, sample_event, m
     client.force_login(user)
     res = client.get("/portfolio/")
     assert res.status_code == 200
+    from services.event_copy import event_question
+
     body = res.content.decode()
-    assert sample_event.underlying_asset in body
+    assert event_question(sample_event) in body
     assert "Open positions" in body
     assert "Trades" in body
     assert "20.00" in body

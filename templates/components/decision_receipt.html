@@ -1,0 +1,67 @@
+{% load dreamlens_extras %}
+<article class="dl-receipt" data-receipt>
+  <header class="dl-receipt__head">
+    <p class="dl-receipt__kicker">Dream Agent</p>
+    <h3 class="dl-receipt__title">
+      {% if ex.status == "SKIPPED" %}Skipped{% elif ex.status == "FAILED" %}Did not execute{% else %}Copied {{ ex.relationship.trader.display_name|default:ex.relationship.trader.wallet_address|short_address }}{% endif %}
+    </h3>
+  </header>
+
+  <p class="dl-receipt__event">
+    <a href="{% url 'event_detail' ex.source_trade.event.pk %}">{{ ex.source_trade.event|question_copy }}</a>
+    <span>{{ ex.source_trade.outcome.outcome_type }} @ {{ ex.source_trade.entry_price|as_cents }}{% if ex.amount %} · {{ ex.amount|usd_plain }}{% endif %}</span>
+  </p>
+
+  <section class="dl-receipt__block">
+    <h4>Why?</h4>
+    <dl class="dl-receipt__dl">
+      {% if ex.score_json.trader %}<div><dt>Trader activity</dt><dd>{% if ex.score_json.trader >= 75 %}High{% elif ex.score_json.trader >= 55 %}Good{% else %}Medium{% endif %}</dd></div>{% endif %}
+      {% if ex.copy_score %}<div><dt>Event score</dt><dd>{{ ex.copy_score }}</dd></div>{% endif %}
+      {% if ex.score_json.event %}<div><dt>Liquidity</dt><dd>{% if ex.score_json.event >= 75 %}Good{% elif ex.score_json.event >= 55 %}Medium{% else %}Low{% endif %}</dd></div>{% endif %}
+    </dl>
+    {% if ex.why_json %}
+    <ul class="dl-receipt__list">
+      {% for w in ex.why_json|slice:":3" %}<li>{{ w }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+  </section>
+
+  <section class="dl-receipt__block">
+    <h4>What did the agent see?</h4>
+    <p>{{ ex.source_trade.event|question_copy }} · {{ ex.source_trade.outcome.outcome_type }} {{ ex.source_trade.entry_price|as_cents }}</p>
+  </section>
+
+  <section class="dl-receipt__block">
+    <h4>What rules applied?</h4>
+    <ul class="dl-check-list">
+      <li>✓ Maximum trade: {{ ex.relationship.max_per_trade|default:"—" }}</li>
+      <li>✓ Daily limit: {{ ex.relationship.max_daily|default:"—" }}</li>
+      <li>✓ Minimum score: {{ ex.relationship.min_copy_score|default:70 }}</li>
+    </ul>
+  </section>
+
+  <section class="dl-receipt__block">
+    <h4>What did the agent do?</h4>
+    <p>{% if ex.status == "EXECUTED" or ex.status == "APPROVED" %}Copied this trade inside your rules.{% elif ex.status == "SKIPPED" %}{{ ex.reason|default:"Did not copy — a rule did not pass." }}{% else %}{{ ex.get_status_display }}{% endif %}</p>
+  </section>
+
+  <section class="dl-receipt__block">
+    <h4>What happened?</h4>
+    <p>
+      {% if ex.status == "EXECUTED" %}✓ Executed
+      {% elif ex.status == "SKIPPED" %}Skipped
+      {% elif ex.status == "APPROVED" %}Approved — waiting to execute
+      {% else %}{{ ex.get_status_display }}{% endif %}
+    </p>
+    {% if ex.copied_trade.transaction_hash %}
+    <p class="dl-receipt__tx">
+      Somnia TX
+      {% if dreamlens_network.explorerUrl %}
+      <a class="dl-mono" href="{{ dreamlens_network.explorerUrl }}/tx/{{ ex.copied_trade.transaction_hash }}" target="_blank" rel="noopener noreferrer">{{ ex.copied_trade.transaction_hash|truncatechars:12 }}</a>
+      {% else %}
+      <span class="dl-mono">{{ ex.copied_trade.transaction_hash|truncatechars:12 }}</span>
+      {% endif %}
+    </p>
+    {% endif %}
+  </section>
+</article>

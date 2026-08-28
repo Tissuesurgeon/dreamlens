@@ -2,37 +2,83 @@
   <div class="dl-modal__backdrop" data-modal-close></div>
   <div class="dl-modal__panel dl-animate-slide-up">
     <header class="dl-modal__header">
-      <h2 id="trade-modal-title" class="dl-modal__title">Confirm trade</h2>
+      <h2 id="trade-modal-title" class="dl-modal__title">Review trade</h2>
       <button type="button" class="dl-modal__close" data-modal-close aria-label="Close">&times;</button>
     </header>
 
     <div class="dl-modal__body">
-      <dl class="dl-trade-summary">
-        <div class="dl-trade-summary__row">
-          <dt>Event</dt>
-          <dd id="modal-event-title">—</dd>
-        </div>
-        <div class="dl-trade-summary__row">
-          <dt>Outcome</dt>
-          <dd id="modal-outcome">—</dd>
-        </div>
-        <div class="dl-trade-summary__row">
-          <dt>Entry price</dt>
-          <dd id="modal-entry">—</dd>
-        </div>
-        <div class="dl-trade-summary__row">
-          <dt>Amount (USD)</dt>
-          <dd>
-            <input type="number" id="modal-amount" class="dl-input" min="1" step="1" value="10" aria-label="Amount in USD">
-          </dd>
-        </div>
-        <div class="dl-trade-summary__row dl-trade-summary__row--highlight">
-          <dt>Potential payout</dt>
-          <dd id="modal-payout">—</dd>
-        </div>
-      </dl>
+      <div class="dl-trade-step" data-trade-step="1">
+        <p class="dl-trade-kicker">What do you think will happen?</p>
+        <p class="dl-trade-question" id="modal-event-title">—</p>
+        <p class="dl-trade-side" id="modal-outcome-line">—</p>
 
-      <details class="dl-tx-details">
+        <p class="dl-label">Try an amount</p>
+        <div class="dl-preset-group" id="modal-amount-chips">
+          <button type="button" class="dl-preset" data-trade-amount="1">$1</button>
+          <button type="button" class="dl-preset is-active" data-trade-amount="5">$5</button>
+          <button type="button" class="dl-preset" data-trade-amount="10">$10</button>
+          <button type="button" class="dl-preset" data-trade-amount="25">$25</button>
+        </div>
+        <label class="visually-hidden" for="modal-amount">Amount in USD</label>
+        <input type="number" id="modal-amount" class="dl-input" min="1" step="1" value="5" aria-label="Amount in USD">
+
+        <dl class="dl-trade-math" id="modal-math">
+          <div><dt>You pay</dt><dd id="modal-pay">—</dd></div>
+          <div><dt>Maximum possible payout</dt><dd id="modal-payout">—</dd></div>
+          <div><dt>Potential profit</dt><dd id="modal-profit">—</dd></div>
+          <div><dt>Maximum loss</dt><dd id="modal-loss">—</dd></div>
+        </dl>
+        <p class="dl-muted" id="modal-needs">What needs to happen: —</p>
+        <p class="dl-muted">Ends in <span id="modal-ends">—</span></p>
+      </div>
+
+      <div class="dl-trade-step" data-trade-step="2" hidden>
+        <div class="dl-trade-risk">
+          <p>You're risking</p>
+          <p class="dl-trade-risk__num" id="review-risk">$5.00</p>
+          <p>Maximum possible payout</p>
+          <p class="dl-trade-risk__num" id="review-payout">—</p>
+        </div>
+        <dl class="dl-trade-summary">
+          <div class="dl-trade-summary__row">
+            <dt>Event</dt>
+            <dd id="review-event">—</dd>
+          </div>
+          <div class="dl-trade-summary__row">
+            <dt>Expires</dt>
+            <dd id="review-expires">—</dd>
+          </div>
+          <div class="dl-trade-summary__row">
+            <dt>What am I buying?</dt>
+            <dd id="review-buying">—</dd>
+          </div>
+          <div class="dl-trade-summary__row">
+            <dt>What needs to happen?</dt>
+            <dd id="review-needs">—</dd>
+          </div>
+        </dl>
+        <label class="dl-check">
+          <input type="checkbox" id="trade-understand">
+          I understand that I can lose the amount I paid.
+        </label>
+      </div>
+
+      <div class="dl-trade-step" data-trade-step="3" hidden>
+        <article class="dl-check-card" id="trade-check">
+          <h3 class="dl-check-card__title">Trade Check</h3>
+          <ul class="dl-check-list" id="trade-check-list">
+            <li>✓ Event understood</li>
+            <li>✓ Event still active</li>
+            <li>✓ Amount within limit</li>
+            <li>✓ Maximum loss shown</li>
+            <li>✓ Smart Account funded</li>
+            <li>✓ Execution through DreamDEX</li>
+          </ul>
+          <p class="dl-check-card__ready">Ready to trade</p>
+        </article>
+      </div>
+
+      <details class="dl-tx-details dl-advanced">
         <summary>Transaction details</summary>
         <pre id="modal-tx-details" class="dl-tx-details__pre">Awaiting preparation…</pre>
       </details>
@@ -40,7 +86,9 @@
 
     <footer class="dl-modal__footer">
       <button type="button" class="dl-btn dl-btn--ghost" data-modal-close>Cancel</button>
-      <button type="button" class="dl-btn dl-btn--primary" id="modal-confirm-trade">Confirm &amp; Trade</button>
+      <button type="button" class="dl-btn dl-btn--ghost" id="modal-back" hidden>Back</button>
+      <button type="button" class="dl-btn dl-btn--primary" id="modal-next">Review trade</button>
+      <button type="button" class="dl-btn dl-btn--primary" id="modal-confirm-trade" hidden>Confirm Trade</button>
     </footer>
   </div>
 </div>

@@ -2,6 +2,17 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from django import template
 
+from services.event_copy import (
+    SCORE_DISCLAIMER,
+    as_cents as _as_cents,
+    collateral_ticker,
+    event_question as _event_question,
+    format_collateral,
+    format_ends_in as _format_ends_in,
+    format_usd_plain,
+    put_one_win,
+)
+
 register = template.Library()
 
 
@@ -17,43 +28,61 @@ def _to_decimal(value) -> Decimal | None:
 @register.filter
 def as_usd(value):
     """Format a 0–1 outcome price as dollars, e.g. 0.43 → $0.43."""
-    amount = _to_decimal(value)
-    if amount is None:
-        return "—"
-    quantized = amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    return f"${quantized}"
+    return format_collateral(value)
 
 
 @register.filter
 def price_cents(value):
-    """Alias kept for templates; displays dollars (quote is USD-pegged)."""
-    return as_usd(value)
+    """Outcome price as dollars, e.g. 0.41 → $0.41."""
+    return _as_cents(value)
+
+
+@register.filter
+def as_cents(value):
+    return _as_cents(value)
+
+
+@register.filter
+def question_copy(event):
+    return _event_question(event)
+
+
+@register.filter
+def put_one(value):
+    return put_one_win(value)
+
+
+@register.filter
+def ends_in(event):
+    return _format_ends_in(event)
+
+
+@register.filter
+def usd_plain(value):
+    """Stake / payout / PnL in Event Contract collateral."""
+    return format_collateral(value)
+
+
+@register.simple_tag
+def score_disclaimer():
+    return SCORE_DISCLAIMER
+
+
+@register.simple_tag
+def collateral_symbol():
+    return collateral_ticker()
 
 
 @register.filter
 def spot_usd(value):
     """Format an underlying spot/opening price, e.g. 77068.2 → $77,068.20."""
-    amount = _to_decimal(value)
-    if amount is None:
-        return "—"
-    quantized = amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    return f"${quantized:,.2f}"
+    return format_usd_plain(value)
 
 
 @register.filter
 def usd_amount(value):
-    """Format a quote/notional amount as dollars.
-
-    Under $1,000 keep cents (testnet flow like $14.44). Larger notionals stay compact.
-    """
-    amount = _to_decimal(value)
-    if amount is None:
-        return "—"
-    if amount < Decimal("1000"):
-        quantized = amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        return f"${quantized:,.2f}"
-    quantized = int(amount.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
-    return f"${quantized:,}"
+    """Quote/notional in Event Contract collateral."""
+    return format_collateral(value)
 
 
 @register.filter

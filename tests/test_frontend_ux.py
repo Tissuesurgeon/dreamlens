@@ -1,0 +1,222 @@
+"""User-facing frontend: language helpers, IA, receipts, trade copy."""
+
+from __future__ import annotations
+
+from decimal import Decimal
+
+import pytest
+from django.urls import reverse
+
+from apps.dreamcopy.models import CopyExecution
+from services.event_copy import (
+    SCORE_DISCLAIMER,
+    as_cents,
+    event_question,
+    format_event_card_text,
+    format_payout_block,
+    payout_math,
+)
+from services import telegram_bot_service
+
+
+@pytest.mark.django_db
+def test_event_question_and_cents_match_telegram(sample_event):
+    sample_event.metadata_json = {"opening_price": "118500"}
+    sample_event.save(update_fields=["metadata_json"])
+    question = event_question(sample_event)
+    assert question.startswith("Will ")
+    assert "at expiry?" in question
+    assert "$118,500.00" in question
+    yes = sample_event.outcomes.get(outcome_type="YES")
+    text = format_event_card_text(sample_event)
+    assert question in text
+    assert f"YES {as_cents(yes.current_price)}" in text
+    assert "NO " in text
+    assert "Ends in" in text
+    assert format_event_card_text(sample_event) == telegram_bot_service.format_event_card_text(sample_event)
+    assert "%" not in text or "chance" not in text.lower()
+
+
+def test_payout_labels():
+    block = format_payout_block(Decimal("5"), Decimal("0.41"))
+    assert "You pay $5.00" in block
+    assert "Maximum possible payout" in block
+    assert "Potential profit" in block
+    assert "Maximum loss $5.00" in block
+    assert "What could I receive" not in block
+    math = payout_math(Decimal("5"), Decimal("0.41"))
+    assert math["payout"] == Decimal("12.20")
+    assert math["profit"] == Decimal("7.20")
+
+
+@pytest.mark.django_db
+def test_explore_redirects_to_discover(client):
+    res = client.get("/explore/")
+    assert res.status_code == 302
+    assert res["Location"].endswith("/discover/")
+
+
+@pytest.mark.django_db
+def test_nav_and_testnet_chrome(client):
+    res = client.get("/home/")
+    assert res.status_code == 200
+    body = res.content.decode()
+    assert ">Home<" in body
+    assert ">Discover<" in body
+    assert "Smart Copy" in body
+    assert ">Agent<" in body
+    assert ">Portfolio<" in body
+    assert "Copy" in body
+    assert "Me" in body
+    assert "Testnet" in body
+    assert "no real monetary value" in body
+    assert 'href="/lens/"' in body
+    assert ">Lens<" not in body.split("dl-nav", 1)[-1].split("</nav>", 1)[0]
+
+
+@pytest.mark.django_db
+def test_home_has_look_at(client, sample_event):
+    res = client.get("/home/")
+    assert res.status_code == 200
+    body = res.content.decode()
+    assert "What should I look at?" in body
+    assert "Live now" in body
+    assert event_question(sample_event) in body
+    assert "Live market feed" in body
+
+
+@pytest.mark.django_db
+def test_discover_intent_filters_and_score(client, sample_event):
+    res = client.get("/discover/")
+    assert res.status_code == 200
+    body = res.content.decode()
+    assert "Moving Fast" in body
+    assert "High DreamLens Score" in body
+    assert "Ending Soon" in body
+    assert "Traders Are Active" in body
+    assert event_question(sample_event) in body
+    assert as_cents(sample_event.outcomes.get(outcome_type="YES").current_price) in body
+    assert "DreamLens Score" in body
+    assert SCORE_DISCLAIMER in body
+    assert "% chance" not in body.lower()
+    assert "Put $1" in body
+    assert "Explain this" in body
+    assert 'id="ai-search-form"' not in body
+    assert "Live market feed" in body
+
+
+@pytest.mark.django_db
+def test_event_detail_both_sides_and_explain(client, sample_event):
+    res = client.get(reverse("event_detail", args=[sample_event.pk]))
+    assert res.status_code == 200
+    body = res.content.decode()
+    assert "What do you think will happen?" in body
+    assert "Your possible result" in body
+    assert "Maximum possible payout" in body
+    assert "Potential profit" in body
+    assert "Maximum loss" in body
+    assert "Why DreamLens is watching" in body
+    assert "Explain this market" in body
+    assert "News that can move this window" in body
+    assert 'id="explain-sheet"' in body
+    assert "Got it" in body
+    assert "Buy YES" in body
+    explain = body[body.find("explain-sheet") : body.find("explain-sheet") + 2000]
+    assert "Buy YES" not in explain
+    assert "Review trade" in body
+    assert "Trade Check" in body
+    assert "I understand that I can lose the amount I paid." in body
+
+
+@pytest.mark.django_db
+def test_agent_can_cannot(client):
+    res = client.get("/agent/")
+    assert res.status_code == 200
+    body = res.content.decode()
+    assert "Your Dream Agent" in body
+    assert "Trade Event Contracts" in body
+    assert "Withdraw your funds" in body
+    assert "Change your permissions" in body
+    assert "Exceed your limits" in body
+    assert "Withdrawal: Never" in body
+    assert "What happens next?" in body
+    assert "Agent Check" in body
+
+
+@pytest.mark.django_db
+def test_smart_copy_follow_sheet_and_sample_size(client, sample_event):
+    from django.core.cache import cache
+
+    from apps.dreamcopy.models import TraderProfile, TraderTrade
+
+    cache.clear()
+
+    trader = TraderProfile.objects.create(
+        wallet_address="0x6730d3a2a217108ab53ccfe60ffdad05d3c124e5",
+        display_name="AlphaTrader",
+        total_trades=31,
+        win_rate=Decimal("0.72"),
+    )
+    yes = sample_event.outcomes.get(outcome_type="YES")
+    TraderTrade.objects.create(
+        trader=trader,
+        event=sample_event,
+        outcome=yes,
+        entry_price=yes.current_price,
+        amount=Decimal("5"),
+        opened_at=sample_event.expiry_time,
+        external_trade_id="ux-fill-1",
+    )
+    res = client.get("/following/")
+    assert res.status_code == 200
+    body = res.content.decode()
+    assert "Smart Copy" in body
+    assert "See what they trade" in body
+    assert "Maximum per trade" in body
+    assert "Minimum DreamLens Score" in body
+    assert "What happens next?" in body
+    assert "Activate Smart Copy" in body
+
+    detail = client.get(reverse("trader_detail", args=[trader.pk]))
+    assert detail.status_code == 200
+    dbody = detail.content.decode()
+    assert "What they usually trade" in dbody
+    assert "How DreamLens sees them" in dbody
+    assert "Sample size" in dbody
+    assert "observed trades" in dbody
+    assert "Past performance does not guarantee future results." in dbody
+
+
+@pytest.mark.django_db
+def test_decision_receipt_structure(client, user, copy_relationship, source_trade):
+    CopyExecution.objects.create(
+        relationship=copy_relationship,
+        source_trade=source_trade,
+        status=CopyExecution.Status.EXECUTED,
+        copy_score=86,
+        score_json={"trader": 82, "event": 86, "market": 70},
+        why_json=["Trader activity is high"],
+        amount=Decimal("4"),
+    )
+    client.force_login(user)
+    res = client.get("/following/activity/")
+    assert res.status_code == 200
+    body = res.content.decode()
+    assert "Why?" in body
+    assert "What did the agent see?" in body
+    assert "What rules applied?" in body
+    assert "What did the agent do?" in body
+    assert "What happened?" in body
+
+
+@pytest.mark.django_db
+def test_portfolio_level_one_words(client):
+    res = client.get("/portfolio/")
+    assert res.status_code == 200
+    body = res.content.decode()
+    assert "Available" in body
+    assert "In active events" in body
+    assert "Potential payout" in body
+    assert "Today's result" in body
+    assert "liquidation" not in body.lower()
+    assert "Unrealized" not in body

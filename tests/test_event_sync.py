@@ -12,7 +12,12 @@ from django.db import IntegrityError
 from django.utils import timezone
 
 from apps.events.models import EventContract, EventOutcome
-from services.event_service import refresh_events_from_dreamdex, sync_events
+from services.event_service import (
+    _event_defaults,
+    _upsert_events_bulk,
+    refresh_events_from_dreamdex,
+    sync_events,
+)
 
 
 @pytest.mark.django_db
@@ -111,3 +116,38 @@ def test_external_id_unique(mock_adapter):
             yes_identifier="dup-yes",
             no_identifier="dup-no",
         )
+
+
+@pytest.mark.django_db
+def test_upsert_events_bulk_dedupes_duplicate_market_ids(mock_adapter):
+    dtos = mock_adapter.list_events(status="live")
+    assert dtos
+    created, updated = _upsert_events_bulk(dtos + dtos)
+    assert EventContract.objects.count() == len({dto.market_id for dto in dtos})
+    assert EventOutcome.objects.count() == EventContract.objects.count() * 2
+    assert created + updated == len({dto.market_id for dto in dtos})
+
+
+@pytest.mark.django_db
+def test_upsert_events_bulk_survives_insert_race(mock_adapter, monkeypatch):
+    """Home and Discover can both see an empty index and insert the same ids."""
+    dtos = mock_adapter.list_events(status="live")
+    assert dtos
+    EventContract.objects.bulk_create(
+        [EventContract(external_id=dto.market_id, **_event_defaults(dto)) for dto in dtos]
+    )
+
+    real_filter = EventContract.objects.filter
+    seen_existing_lookup = {"count": 0}
+
+    def hide_first_existing_lookup(*args, **kwargs):
+        if kwargs.get("external_id__in") is not None:
+            seen_existing_lookup["count"] += 1
+            if seen_existing_lookup["count"] == 1:
+                return EventContract.objects.none()
+        return real_filter(*args, **kwargs)
+
+    monkeypatch.setattr(EventContract.objects, "filter", hide_first_existing_lookup)
+    _upsert_events_bulk(dtos)
+    assert EventContract.objects.count() == len({dto.market_id for dto in dtos})
+    assert EventOutcome.objects.count() == EventContract.objects.count() * 2

@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,650;12..96,800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{% static 'css/dreamlens.css' %}?v=20260824e">
+  <link rel="stylesheet" href="{% static 'css/dreamlens.css' %}?v=20260828d">
   {% block extra_head %}{% endblock %}
 </head>
 <body class="dl-body dl-body--landing">
@@ -26,7 +26,7 @@
         Dream<span>Lens</span>
       </a>
       <div class="dl-landing-header__right">
-        <a href="{% url 'explore' %}" class="dl-btn dl-btn--primary dl-btn--sm">Enter</a>
+        <a href="{% url 'home' %}" class="dl-btn dl-btn--primary dl-btn--sm">Enter</a>
       </div>
     </div>
   </header>
@@ -39,7 +39,10 @@
     <p>DreamDEX Event Contracts · Somnia Shannon</p>
   </footer>
 
-  <script src="{% static 'js/landing.js' %}?v=20260824d" defer></script>
+  <script>
+    window.DreamLensConfig = {{ dreamlens_network_json|safe }};
+  </script>
+  <script src="{% static 'js/landing.js' %}?v=20260828d" defer></script>
   {% block extra_js %}{% endblock %}
 </body>
 </html>

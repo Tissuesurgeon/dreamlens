@@ -1,0 +1,29 @@
+<section
+  class="dl-feed"
+  data-market-feed
+  {% if feed_asset %}data-feed-asset="{{ feed_asset|upper }}"{% endif %}
+  {% if feed_limit %}data-feed-limit="{{ feed_limit }}"{% endif %}
+  aria-labelledby="{{ feed_heading_id|default:'feed-heading' }}"
+>
+  <div class="dl-section-head">
+    <div>
+      <h2 id="{{ feed_heading_id|default:'feed-heading' }}" class="dl-section__title">
+        {% if feed_title %}{{ feed_title }}{% else %}Live market feed{% endif %}
+      </h2>
+      <p class="dl-section__subtitle">
+        {% if feed_asset %}
+        Headlines that can move {{ feed_asset|upper }} windows. Not a trading signal.
+        {% else %}
+        Headlines that can move BTC and ETH windows. Not a trading signal.
+        {% endif %}
+      </p>
+    </div>
+    <span class="dl-feed__live" data-feed-live hidden>
+      <span class="dl-hero__pulse" aria-hidden="true"></span>
+      Live
+    </span>
+  </div>
+  <ul class="dl-feed__list" data-feed-list>
+    <li class="dl-feed__empty">Loading headlines…</li>
+  </ul>
+</section>

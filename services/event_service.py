@@ -9,13 +9,14 @@ from decimal import Decimal
 
 from django.conf import settings
 from django.core.cache import cache
-from django.db import close_old_connections, transaction
+from django.db import IntegrityError, close_old_connections, transaction
 from django.utils import timezone
 
 from apps.events.models import EventContract, EventOutcome
 from integrations.dreamdex.adapter import get_adapter
 from integrations.dreamdex.exceptions import DreamDEXUnavailable
 from integrations.dreamdex.types import EventDTO
+from services.event_copy import format_usd_plain
 
 logger = logging.getLogger("dreamlens.services.event")
 
@@ -63,8 +64,7 @@ _EVENT_SYNC_FIELDS = [
 
 
 def _format_usd(amount: Decimal) -> str:
-    quantized = amount.quantize(Decimal("0.01"))
-    return f"${quantized:,.2f}"
+    return format_usd_plain(amount)
 
 
 def _event_window(dto: EventDTO) -> str:
@@ -193,7 +193,11 @@ def _upsert_events_bulk(dtos: list[EventDTO]) -> tuple[int, int]:
     if not dtos:
         return 0, 0
     now = timezone.now()
-    ids = [dto.market_id for dto in dtos]
+    # Last write wins if the adapter lists the same market twice. A single
+    # INSERT with duplicate unique keys also fails ON CONFLICT DO UPDATE.
+    by_id = {dto.market_id: dto for dto in dtos}
+    dtos = list(by_id.values())
+    ids = list(by_id.keys())
     existing = {
         row.external_id: row
         for row in EventContract.objects.filter(external_id__in=ids)
@@ -204,14 +208,16 @@ def _upsert_events_bulk(dtos: list[EventDTO]) -> tuple[int, int]:
         fields = _event_defaults(dto)
         row = existing.get(dto.market_id)
         if row is None:
-            to_create.append(EventContract(external_id=dto.market_id, **fields))
+            created = EventContract(external_id=dto.market_id, **fields)
+            created.updated_at = now
+            to_create.append(created)
             continue
         for key, value in fields.items():
             setattr(row, key, value)
         row.updated_at = now
         to_update.append(row)
     if to_create:
-        EventContract.objects.bulk_create(to_create)
+        _bulk_create_events(to_create)
     if to_update:
         EventContract.objects.bulk_update(to_update, _EVENT_SYNC_FIELDS)
 
@@ -247,13 +253,38 @@ def _upsert_events_bulk(dtos: list[EventDTO]) -> tuple[int, int]:
             current.updated_at = now
             oc_update.append(current)
     if oc_create:
-        EventOutcome.objects.bulk_create(oc_create)
+        _bulk_create_outcomes(oc_create)
     if oc_update:
         EventOutcome.objects.bulk_update(
             oc_update,
             ["external_identifier", "symbol", "current_price", "updated_at"],
         )
     return len(to_create), len(to_update)
+
+
+def _bulk_create_events(to_create: list[EventContract]) -> None:
+    """Insert markets; treat a concurrent sync's commit as an update."""
+    try:
+        EventContract.objects.bulk_create(
+            to_create,
+            update_conflicts=True,
+            unique_fields=["external_id"],
+            update_fields=_EVENT_SYNC_FIELDS,
+        )
+    except IntegrityError:
+        EventContract.objects.bulk_create(to_create, ignore_conflicts=True)
+
+
+def _bulk_create_outcomes(oc_create: list[EventOutcome]) -> None:
+    try:
+        EventOutcome.objects.bulk_create(
+            oc_create,
+            update_conflicts=True,
+            unique_fields=["event", "outcome_type"],
+            update_fields=["external_identifier", "symbol", "current_price", "updated_at"],
+        )
+    except IntegrityError:
+        EventOutcome.objects.bulk_create(oc_create, ignore_conflicts=True)
 
 
 def _upsert_outcomes(contract: EventContract, dto: EventDTO) -> None:
@@ -335,7 +366,10 @@ def _run_event_sync_job(interval: int) -> None:
             cache.delete(_EVENTS_SYNCING_KEY)
         except Exception:
             pass
-        close_old_connections()
+        try:
+            close_old_connections()
+        except Exception:
+            pass
         if _event_sync_lock.locked():
             _event_sync_lock.release()
 
@@ -378,7 +412,15 @@ def refresh_events_from_dreamdex(*, force: bool = False) -> dict[str, int] | Non
         if has_live:
             _kick_background_event_sync(interval)
             return None
+    acquired = _event_sync_lock.acquire(blocking=True, timeout=45)
+    if not acquired:
+        logger.warning("Timed out waiting for DreamDEX market sync")
+        return None
     try:
+        # Another request may have filled the index while we waited.
+        if not force and _has_local_live_events():
+            _mark_events_fresh(interval)
+            return None
         stats = sync_events()
         _mark_events_fresh(interval)
         return stats
@@ -388,6 +430,8 @@ def refresh_events_from_dreamdex(*, force: bool = False) -> dict[str, int] | Non
     except Exception:
         logger.exception("Failed to refresh markets from DreamDEX")
         return None
+    finally:
+        _event_sync_lock.release()
 
 
 def _refresh_dropped_live_markets(stale_qs) -> int:

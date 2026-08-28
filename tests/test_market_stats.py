@@ -9,6 +9,7 @@ import pytest
 from django.utils import timezone
 
 from apps.core.templatetags.dreamlens_extras import usd_amount
+from services.event_copy import format_collateral
 from apps.dreamcopy.models import TraderProfile
 from integrations.dreamdex.types import FillDTO
 from services.market_stats import book_liquidity, event_market_stats, traded_volume
@@ -57,6 +58,7 @@ def test_usd_amount_keeps_cents_under_1000():
     assert usd_amount(Decimal("14.44")) == "$14.44"
     assert usd_amount(Decimal("0.50")) == "$0.50"
     assert usd_amount(Decimal("1234.5")) == "$1,235"
+    assert format_collateral(Decimal("5"), compact=True) == "$5"
 
 
 @pytest.mark.django_db
@@ -87,12 +89,13 @@ def test_explore_shows_volume_and_trade_count(client, sample_event, mock_adapter
     sample_event.cumulative_quote_volume = Decimal("14.44")
     sample_event.trade_count = 3
     sample_event.save(update_fields=["cumulative_quote_volume", "trade_count"])
-    res = client.get("/explore/")
+    res = client.get("/discover/")
     assert res.status_code == 200
     body = res.content.decode()
     assert "$14.44" in body
     assert "3 trade" in body
-    assert "Explore" in body
+    assert "Discover" in body
+    assert 'id="ai-search-form"' not in body
 
 
 @pytest.mark.django_db

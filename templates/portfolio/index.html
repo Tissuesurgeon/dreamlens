@@ -8,31 +8,40 @@
   <header class="dl-page-header dl-page-header--split">
     <div>
       <h1 class="dl-page-header__title">Portfolio</h1>
-      <p class="dl-page-header__subtitle">Wallet, Dream Agent, and your DreamDEX positions.</p>
+      <p class="dl-page-header__subtitle">What you have, what's in play, and today's result.</p>
     </div>
   </header>
 
   <section class="dl-wallet-balance" id="portfolio-wallet-balance" data-authenticated="{% if is_authenticated %}1{% else %}0{% endif %}" aria-labelledby="wallet-balance-heading">
     <div class="dl-wallet-balance__head">
-      <h2 id="wallet-balance-heading" class="dl-section__title">Wallet</h2>
+      <h2 id="wallet-balance-heading" class="dl-section__title">Your money</h2>
       <button type="button" class="dl-btn dl-btn--ghost dl-btn--sm" id="portfolio-balance-refresh" {% if not is_authenticated %}hidden{% endif %}>Refresh</button>
     </div>
 
     <div class="dl-wallet-balance__gated" id="portfolio-balance-gated" {% if is_authenticated %}hidden{% endif %}>
-      <p>Connect MetaMask to load collateral, gas, and positions for this wallet.</p>
+      <p>Connect MetaMask to load available funds and positions for this wallet.</p>
     </div>
 
     <div class="dl-ta-kpis" id="portfolio-balance-grid" role="group" aria-label="Wallet and portfolio" {% if not is_authenticated %}hidden{% endif %}>
       <div class="dl-ta-kpi">
-        <span class="dl-ta-kpi__label">Collateral</span>
+        <span class="dl-ta-kpi__label">Available</span>
         <span class="dl-ta-kpi__value" id="bal-collateral">
-          {% if wallet_balances and wallet_balances.collateral_balance is not None %}{{ wallet_balances.collateral_balance }}{% else %}—{% endif %}
-        </span>
-        <span class="dl-ta-kpi__hint" id="bal-collateral-sym">
-          {% if wallet_balances and wallet_balances.collateral_symbol %}{{ wallet_balances.collateral_symbol }}{% else %}Test USDC{% endif %}
+          {% if available %}{{ available }}{% elif wallet_balances and wallet_balances.collateral_balance is not None %}{{ wallet_balances.collateral_balance }}{% else %}—{% endif %}
         </span>
       </div>
       <div class="dl-ta-kpi">
+        <span class="dl-ta-kpi__label">In active events</span>
+        <span class="dl-ta-kpi__value">{{ in_active_events|default:0|usd_plain }}</span>
+      </div>
+      <div class="dl-ta-kpi">
+        <span class="dl-ta-kpi__label">Potential payout</span>
+        <span class="dl-ta-kpi__value">{{ potential_payout|default:0|usd_plain }}</span>
+      </div>
+      <div class="dl-ta-kpi">
+        <span class="dl-ta-kpi__label">Today's result</span>
+        <span class="dl-ta-kpi__value{% if today_result < 0 %} is-neg{% elif today_result > 0 %} is-pos{% endif %}">{{ today_result|default:0|usd_plain }}</span>
+      </div>
+      <div class="dl-ta-kpi dl-advanced">
         <span class="dl-ta-kpi__label">Gas</span>
         <span class="dl-ta-kpi__value" id="bal-native">
           {% if wallet_balances and wallet_balances.native_balance is not None %}{{ wallet_balances.native_balance }}{% else %}—{% endif %}
@@ -41,25 +50,13 @@
           {% if wallet_balances and wallet_balances.native_symbol %}{{ wallet_balances.native_symbol }}{% else %}STT{% endif %}
         </span>
       </div>
-      <div class="dl-ta-kpi">
-        <span class="dl-ta-kpi__label">Total P&amp;L</span>
-        <span class="dl-ta-kpi__value{% if total_pnl < 0 %} is-neg{% elif total_pnl > 0 %} is-pos{% endif %}">${{ total_pnl|floatformat:2 }}</span>
-      </div>
-      <div class="dl-ta-kpi">
-        <span class="dl-ta-kpi__label">Events</span>
-        <span class="dl-ta-kpi__value">{{ event_count }}</span>
-      </div>
-      <div class="dl-ta-kpi">
-        <span class="dl-ta-kpi__label">Won</span>
-        <span class="dl-ta-kpi__value{% if won_count %} is-pos{% endif %}">{{ won_count }}</span>
-      </div>
-      <div class="dl-ta-kpi">
-        <span class="dl-ta-kpi__label">Lost</span>
-        <span class="dl-ta-kpi__value{% if lost_count %} is-neg{% endif %}">{{ lost_count }}</span>
+      <div class="dl-ta-kpi dl-advanced">
+        <span class="dl-ta-kpi__label">P&amp;L</span>
+        <span class="dl-ta-kpi__value{% if total_pnl < 0 %} is-neg{% elif total_pnl > 0 %} is-pos{% endif %}">{{ total_pnl|usd_plain }}</span>
       </div>
     </div>
 
-    <p class="dl-wallet-balance__meta" id="portfolio-balance-meta" {% if not wallet_balances or not wallet_balances.address %}hidden{% endif %}>
+    <p class="dl-wallet-balance__meta dl-advanced" id="portfolio-balance-meta" {% if not wallet_balances or not wallet_balances.address %}hidden{% endif %}>
       <span class="dl-mono" id="bal-address">{% if wallet_balances and wallet_balances.address %}{{ wallet_balances.address|short_address }}{% endif %}</span>
       <button type="button" class="dl-icon-btn" data-copy-wallet data-copy-text="{% if wallet_balances and wallet_balances.address %}{{ wallet_balances.address }}{% endif %}" aria-label="Copy wallet address">Copy</button>
       {% if dreamlens_network.explorerUrl %}
@@ -83,7 +80,7 @@
           </p>
         </div>
         {% if agent.status == "RUNNING" %}
-        <span class="dl-smart-pill is-on"><span class="dl-smart-pill__dot" aria-hidden="true"></span> AUTONOMOUS</span>
+        <span class="dl-smart-pill is-on"><span class="dl-smart-pill__dot" aria-hidden="true"></span> Active</span>
         {% elif agent.status == "PAUSED" %}
         <span class="dl-smart-pill is-paused">Paused</span>
         {% elif agent.status == "AUTHORIZED" %}
@@ -102,8 +99,8 @@
           <dd>{% if agent_balance and agent_balance.native %}{{ agent_balance.native }} {{ agent_balance.native_symbol|default:"STT" }}{% else %}—{% endif %}</dd>
         </div>
         <div>
-          <dt>P&amp;L</dt>
-          <dd>{% if agent_performance.pnl %}${{ agent_performance.pnl }}{% else %}—{% endif %}</dd>
+          <dt>Today's result</dt>
+          <dd>{% if agent_performance.pnl %}{{ agent_performance.pnl|usd_plain }}{% else %}—{% endif %}</dd>
         </div>
         <div>
           <dt>Copied / skipped</dt>
@@ -113,8 +110,8 @@
       {% if agent_performance.permission %}
       <p class="dl-agent-limits__line">
         {% if agent.status == "RUNNING" %}<strong class="dl-text-yes">On</strong>{% else %}<strong>Off</strong>{% endif %}
-        · ${{ agent_performance.permission.max_trade_amount }} / trade
-        · ${{ agent_performance.permission.max_daily_volume }} / day
+        · {{ agent_performance.permission.max_trade_amount|usd_plain }} / trade
+        · {{ agent_performance.permission.max_daily_volume|usd_plain }} / day
         · min score {{ agent_performance.permission.min_copy_score }}
       </p>
       {% endif %}
@@ -217,7 +214,7 @@
   <div class="dl-empty dl-empty--large">
     <p class="dl-empty__title">No positions yet</p>
     <p>Open an event, take a side, and it will show up here with live value. Fills from your connected wallet and Smart Account are indexed automatically.</p>
-    <a href="{% url 'explore' %}" class="dl-btn dl-btn--primary">Explore events</a>
+    <a href="{% url 'discover' %}" class="dl-btn dl-btn--primary">Discover events</a>
   </div>
   {% else %}
 
@@ -232,17 +229,18 @@
       <a href="{% url 'event_detail' pos.event.pk %}" class="dl-event-row">
         <span class="dl-event-row__side dl-event-row__side--{{ pos.outcome.outcome_type|lower }}">{{ pos.outcome.outcome_type }}</span>
         <span class="dl-event-row__body">
-          <span class="dl-event-row__title">{{ pos.event.title }}</span>
+          <span class="dl-event-row__title">{{ pos.event|question_copy }}</span>
           <span class="dl-event-row__line">
-            {{ pos.amount|floatformat:2 }} {{ pos.outcome.outcome_type }}
-            · entry {{ pos.entry_price|as_usd }}
-            · <span class="dl-countdown" data-expiry="{{ pos.event.expiry_time|date:'c' }}">—</span>
+            You put in {{ pos.you_put_in|usd_plain }}
+            · current {{ pos.current_value|usd_plain }}
+            · potential payout {{ pos.potential_payout|usd_plain }}
+            · ends in <span class="dl-countdown" data-expiry="{{ pos.event.expiry_time|date:'c' }}">{{ pos.event|ends_in }}</span>
           </span>
         </span>
         <span class="dl-event-row__value{% if pos.pnl %}{% if pos.pnl >= 0 %} is-pos{% else %} is-neg{% endif %}{% endif %}">
-          ${{ pos.current_value|floatformat:2 }}
+          {{ pos.current_value|usd_plain }}
           {% if pos.pnl is not None %}
-          <span class="dl-event-row__pnl">{% if pos.pnl >= 0 %}+{% endif %}${{ pos.pnl|floatformat:2 }}</span>
+          <span class="dl-event-row__pnl">{% if pos.pnl >= 0 %}+{% endif %}{{ pos.pnl|usd_plain }}</span>
           {% endif %}
         </span>
       </a>
@@ -265,7 +263,7 @@
       <a href="{% url 'event_detail' pos.event.pk %}" class="dl-event-row dl-event-row--settling">
         <span class="dl-event-row__side dl-event-row__side--{{ pos.outcome.outcome_type|lower }}">{{ pos.outcome.outcome_type }}</span>
         <span class="dl-event-row__body">
-          <span class="dl-event-row__title">{{ pos.event.title }}</span>
+          <span class="dl-event-row__title">{{ pos.event|question_copy }}</span>
           <span class="dl-event-row__line">
             {{ pos.amount|floatformat:2 }} {{ pos.outcome.outcome_type }}
             · entry {{ pos.entry_price|as_usd }}
@@ -290,7 +288,7 @@
       <div class="dl-event-row dl-event-row--settled">
         <span class="dl-event-row__side dl-event-row__side--{{ pos.outcome.outcome_type|lower }}">{{ pos.outcome.outcome_type }}</span>
         <span class="dl-event-row__body">
-          <a href="{% url 'event_detail' pos.event.pk %}" class="dl-event-row__title">{{ pos.event.title }}</a>
+          <a href="{% url 'event_detail' pos.event.pk %}" class="dl-event-row__title">{{ pos.event|question_copy }}</a>
           <span class="dl-event-row__line">
             {{ pos.amount|floatformat:2 }} · entry {{ pos.entry_price|as_usd }}
             {% if pos.result == "void" %}· both sides pay 0.50{% elif pos.result == "won" or pos.result == "claimed" %}· paid 1.00{% elif pos.result == "lost" %}· paid 0.00{% endif %}
@@ -305,7 +303,7 @@
             {% else %}Closed{% endif %}
           </span>
           <span class="dl-event-row__value{% if pos.pnl %}{% if pos.pnl >= 0 %} is-pos{% else %} is-neg{% endif %}{% endif %}">
-            {% if pos.pnl is not None %}{% if pos.pnl >= 0 %}+{% endif %}${{ pos.pnl|floatformat:2 }}{% else %}—{% endif %}
+            {% if pos.pnl is not None %}{% if pos.pnl >= 0 %}+{% endif %}{{ pos.pnl|usd_plain }}{% else %}—{% endif %}
           </span>
           {% if pos.claimable %}
           <button
@@ -313,7 +311,7 @@
             class="dl-btn dl-btn--primary dl-btn--sm"
             data-claim-position="{{ pos.pk }}"
             data-claim-wallet="{{ pos.claim_wallet }}"
-          >Claim {% if pos.claim_payout %}${{ pos.claim_payout|floatformat:2 }}{% endif %}</button>
+          >Claim {% if pos.claim_payout %}{{ pos.claim_payout|usd_plain }}{% endif %}</button>
           {% endif %}
         </span>
       </div>
@@ -345,7 +343,7 @@
           <tr>
             <td class="dl-muted">{{ trade.opened_at|timesince }} ago</td>
             <td>
-              <a href="{% url 'event_detail' trade.event.pk %}">{{ trade.event.underlying_asset }} · {{ trade.event.title }}</a>
+              <a href="{% url 'event_detail' trade.event.pk %}">{{ trade.event|question_copy }}</a>
             </td>
             <td>
               <span class="dl-badge dl-badge--{% if trade.outcome.outcome_type == 'YES' %}yes{% else %}no{% endif %}">{{ trade.outcome.outcome_type }}</span>

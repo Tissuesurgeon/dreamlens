@@ -23,21 +23,22 @@ DISCLAIMER = "DreamLens estimate — not financial advice or a guaranteed outcom
 FOUR_PLACES = Decimal("0.0001")
 
 
-def _as_str_list(value: Any, fallback: str) -> list[str]:
+def _as_str_list(value: Any, fallback: str | list[str], *, limit: int = 8) -> list[str]:
+    fallbacks = [fallback] if isinstance(fallback, str) else [str(x) for x in fallback if str(x).strip()]
+    items: list[str] = []
     if isinstance(value, str) and value.strip():
-        return [value.strip()]
-    if isinstance(value, list):
-        items = []
+        items = [value.strip()]
+    elif isinstance(value, list):
         for item in value:
             if isinstance(item, str) and item.strip():
                 items.append(item.strip())
             elif isinstance(item, dict):
                 text = item.get("text") or item.get("reason") or item.get("message")
                 if text:
-                    items.append(str(text))
-        if items:
-            return items
-    return [fallback]
+                    items.append(str(text).strip())
+    if items:
+        return items[:limit]
+    return fallbacks[:limit] if fallbacks else ["Insufficient detail from the model."]
 
 
 def _parse_llm_object(raw: str, fallback: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -57,31 +58,92 @@ RATE_LIMIT_SECONDS = 1.0
 
 @runtime_checkable
 class LLMClient(Protocol):
-    def complete(self, *, system: str, user: str, json_mode: bool = False) -> str: ...
+    def complete(
+        self,
+        *,
+        system: str,
+        user: str,
+        json_mode: bool = False,
+        **kwargs: Any,
+    ) -> str: ...
 
 
 class MockLLMClient:
     """Deterministic mock responses when no API key is configured."""
 
-    def complete(self, *, system: str, user: str, json_mode: bool = False) -> str:
-        if "analyze" in user.lower() or "event" in system.lower():
+    def complete(self, *, system: str, user: str, json_mode: bool = False, **kwargs: Any) -> str:
+        blob = f"{system}\n{user}".lower()
+        if json_mode and ("yes_needs" in blob or "in_the_price" in blob):
+            return json.dumps(
+                {
+                    "setup": (
+                        "This is a short binary window on whether the underlying finishes "
+                        "above the listed strike by expiry. YES is the claim that it does; "
+                        "NO is the claim that it does not. Current YES and NO prices already "
+                        "split that claim into two complementary sides."
+                    ),
+                    "yes_needs": (
+                        "YES wins only if the oracle print at expiry is strictly above the strike. "
+                        "A last-minute rally that fades before settlement still resolves NO. "
+                        "Watch both the distance to strike and the minutes remaining."
+                    ),
+                    "no_needs": (
+                        "NO wins if the underlying is at or below the strike when the window closes. "
+                        "Holding near the strike into the final minutes favors NO because the "
+                        "question is 'above', not 'at'."
+                    ),
+                    "in_the_price": (
+                        "The YES price is what traders are paying for that claim right now, not a "
+                        "guaranteed chance of winning. Volume and trade count show how much "
+                        "conviction is actually in the book."
+                    ),
+                    "could_change": (
+                        "A sharp move in the underlying, thin liquidity near expiry, or a headline "
+                        "that reprices BTC/ETH can flip YES and NO quickly. Oracle timing can "
+                        "differ from the spot ticker you are watching."
+                    ),
+                }
+            )
+        if json_mode and (
+            "estimated_probability" in blob
+            or "senior-desk" in blob
+            or "analyze binary" in blob
+        ):
             return json.dumps(
                 {
                     "estimated_probability": 0.58,
                     "market_probability": 0.52,
                     "confidence": 0.62,
                     "signal": "LEAN_YES",
+                    "setup": (
+                        "The market is pricing a modest YES lean with limited time left. "
+                        "DreamLens is comparing that book to volume, trade count, and the "
+                        "distance between the underlying and the strike — not calling a winner."
+                    ),
                     "reasons": [
-                        "Price momentum slightly bullish",
-                        "Volume above recent average",
+                        "YES is trading above 0.50, so the book already leans that the underlying clears the strike.",
+                        "Volume is high enough that the price is not a single fill.",
+                        "Trade count shows more than one participant is active in this window.",
+                        "Time remaining still allows a move, but not a slow grind from far below the strike.",
+                        "Supplied headlines, if any, are consistent with the current lean rather than a shock.",
                     ],
                     "risks": [
-                        "Short time to expiry increases variance",
-                        "Consensus not unanimous among traders",
+                        "Short expiry increases the chance of a last-print reversal.",
+                        "Liquidity can thin in the final minutes, so a small order moves YES a long way.",
+                        "Oracle settlement can differ from the spot ticker on your screen.",
+                        "A headline that hits after you look can reprice the book before expiry.",
                     ],
                     "label": "DreamLens estimate",
                     "disclaimer": DISCLAIMER,
                 }
+            )
+        if "you are lens" in system.lower() or "financial analyst" in system.lower():
+            return (
+                "Live DreamDEX markets look mixed. The busiest contract is the one with the "
+                "highest volume and the shortest time left — treat that as flow, not a forecast. "
+                "Headlines around bitcoin and ether can reprice YES within a single window, "
+                "especially when the underlying is close to the strike. "
+                + DISCLAIMER
             )
         if "copy" in user.lower():
             return json.dumps(
@@ -121,7 +183,7 @@ class OpenAICompatibleClient:
         self.extra_headers = extra_headers or {}
         self.extra_body = extra_body or {}
 
-    def complete(self, *, system: str, user: str, json_mode: bool = False) -> str:
+    def complete(self, *, system: str, user: str, json_mode: bool = False, **kwargs: Any) -> str:
         import urllib.error
         import urllib.request
 
@@ -134,6 +196,9 @@ class OpenAICompatibleClient:
                 ],
                 "temperature": 0.2,
             }
+            max_tokens = int(kwargs.get("max_output_tokens") or 0)
+            if max_tokens > 0:
+                payload["max_tokens"] = max_tokens
             if use_json_mode:
                 payload["response_format"] = {"type": "json_object"}
             if self.extra_body:
@@ -210,13 +275,30 @@ class GoogleAIStudioClient:
         self.timeout = timeout
         self.base_url = "https://generativelanguage.googleapis.com/v1beta"
 
-    def complete(self, *, system: str, user: str, json_mode: bool = False) -> str:
+    def complete(self, *, system: str, user: str, json_mode: bool = False, **kwargs: Any) -> str:
         import urllib.error
         import urllib.request
 
-        def _request(use_json_mode: bool) -> str:
+        history = kwargs.get("history") or []
+        google_search = bool(kwargs.get("google_search"))
+
+        def _contents() -> list[dict[str, Any]]:
+            turns: list[dict[str, Any]] = []
+            for item in history:
+                if not isinstance(item, dict):
+                    continue
+                text = str(item.get("content") or item.get("text") or "").strip()
+                role = str(item.get("role") or "user").lower()
+                if not text:
+                    continue
+                gem_role = "model" if role in {"assistant", "model"} else "user"
+                turns.append({"role": gem_role, "parts": [{"text": text}]})
+            turns.append({"role": "user", "parts": [{"text": user}]})
+            return turns
+
+        def _request(use_json_mode: bool, use_search: bool) -> str:
             generation_config: dict[str, Any] = {
-                "maxOutputTokens": 1024,
+                "maxOutputTokens": int(kwargs.get("max_output_tokens") or 1024),
                 "thinkingConfig": _google_thinking_config(self.model),
             }
             # Gemini 3.x rejects/ignores sampling knobs; Gemma still uses them.
@@ -224,11 +306,13 @@ class GoogleAIStudioClient:
                 generation_config["temperature"] = 0.2
             if use_json_mode:
                 generation_config["responseMimeType"] = "application/json"
-            payload = {
+            payload: dict[str, Any] = {
                 "systemInstruction": {"parts": [{"text": system}]},
-                "contents": [{"role": "user", "parts": [{"text": user}]}],
+                "contents": _contents(),
                 "generationConfig": generation_config,
             }
+            if use_search:
+                payload["tools"] = [{"google_search": {}}]
             req = urllib.request.Request(
                 f"{self.base_url}/models/{self.model}:generateContent",
                 data=json.dumps(payload).encode(),
@@ -243,13 +327,19 @@ class GoogleAIStudioClient:
             return _strip_thoughts(_extract_gemini_text(body))
 
         try:
-            return _request(json_mode)
+            return _request(json_mode, google_search)
         except urllib.error.HTTPError as exc:
             detail = _http_error_detail(exc)
+            if google_search and exc.code in (400, 404, 422):
+                logger.info("%s LLM rejected google_search; retrying without", self.label)
+                try:
+                    return _request(json_mode, False)
+                except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, json.JSONDecodeError) as retry_exc:
+                    raise RuntimeError(f"{self.label} LLM failed: {retry_exc}") from retry_exc
             if json_mode and exc.code in (400, 422):
                 logger.info("%s LLM rejected json_mode; retrying plain", self.label)
                 try:
-                    return _request(False)
+                    return _request(False, False)
                 except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as retry_exc:
                     raise RuntimeError(f"{self.label} LLM failed: {retry_exc}") from retry_exc
             raise RuntimeError(f"{self.label} LLM HTTP {exc.code}: {detail}") from exc
@@ -282,7 +372,7 @@ def _extract_gemini_text(body: dict[str, Any]) -> str:
 class UnavailableLLMClient:
     """Explicit failure — never invent market probabilities."""
 
-    def complete(self, *, system: str, user: str, json_mode: bool = False) -> str:
+    def complete(self, *, system: str, user: str, json_mode: bool = False, **kwargs: Any) -> str:
         return json.dumps(
             {
                 "available": False,
@@ -303,16 +393,16 @@ class CascadingLLMClient:
     def __init__(self, clients: list[LLMClient]) -> None:
         self.clients = clients
 
-    def complete(self, *, system: str, user: str, json_mode: bool = False) -> str:
+    def complete(self, *, system: str, user: str, json_mode: bool = False, **kwargs: Any) -> str:
         for client in self.clients:
             label = getattr(client, "label", client.__class__.__name__)
             try:
-                return client.complete(system=system, user=user, json_mode=json_mode)
+                return client.complete(system=system, user=user, json_mode=json_mode, **kwargs)
             except Exception as exc:  # noqa: BLE001 — cascade to next provider
                 logger.warning("LLM provider %s failed: %s", label, exc)
         if getattr(settings, "MOCK_DREAMDEX", False):
-            return MockLLMClient().complete(system=system, user=user, json_mode=json_mode)
-        return UnavailableLLMClient().complete(system=system, user=user, json_mode=json_mode)
+            return MockLLMClient().complete(system=system, user=user, json_mode=json_mode, **kwargs)
+        return UnavailableLLMClient().complete(system=system, user=user, json_mode=json_mode, **kwargs)
 
 
 def _local_llm_client() -> OpenAICompatibleClient | None:
@@ -435,10 +525,83 @@ def _check_rate_limit(user_id: int | None) -> None:
     _rate_limit[key] = time.monotonic()
 
 
+def _headlines_for_asset(asset: str | None, *, limit: int = 8) -> list[dict]:
+    try:
+        from services.market_news import list_headlines
+
+        return list_headlines(asset=asset, limit=limit)
+    except Exception:
+        logger.warning("headline fetch failed for AI brief asset=%s", asset, exc_info=True)
+        return []
+
+
+def _radar_labels(event: EventContract) -> list[str]:
+    types = getattr(event, "radar_types", None)
+    if types:
+        return [str(t).replace("_", " ").title() for t in types]
+    signals = getattr(event, "radar_signals", None)
+    if signals is None:
+        return []
+    rows = signals.all() if hasattr(signals, "all") else signals
+    labels = []
+    for signal in rows:
+        if getattr(signal, "is_active", True):
+            labels.append(str(signal.signal_type).replace("_", " ").title())
+    return labels
+
+
+def _event_analyst_brief(event: EventContract, *, headlines: list[dict] | None = None) -> str:
+    """Dense, numbered context so explanations can cite the actual book."""
+    from services.event_copy import (
+        as_cents,
+        asset_display_name,
+        dreamlens_score,
+        event_question,
+        event_strike_usd,
+        format_collateral,
+        format_ends_in,
+        minutes_left,
+        yes_no_outcomes,
+    )
+    from services.market_news import format_headlines_for_prompt
+
+    yes, no = yes_no_outcomes(event)
+    score = getattr(event, "dl_score", None) or dreamlens_score(event)
+    strike = event_strike_usd(event)
+    mins = minutes_left(event)
+    window_min = max(1, int((getattr(event, "interval_sec", 0) or 900) / 60))
+    desc = (getattr(event, "description", None) or "").strip()
+    if len(desc) > 280:
+        desc = desc[:277] + "…"
+    news = headlines if headlines is not None else _headlines_for_asset(event.underlying_asset)
+    lines = [
+        f"Question: {event_question(event)}",
+        f"Asset: {asset_display_name(event.underlying_asset)} ({event.underlying_asset})",
+        f"Strike / opening reference: {format_collateral(strike) if strike is not None else 'not indexed'}",
+        f"YES: {as_cents(yes.current_price if yes else None)}  NO: {as_cents(no.current_price if no else None)}",
+        f"Volume: {format_collateral(event.cumulative_quote_volume)}  Trades: {int(event.trade_count or 0)}",
+        f"Window: {window_min}-minute contract  Time left: {format_ends_in(event)} ({mins:.1f} minutes)",
+        (
+            f"DreamLens Score: {score.get('score')}/100 "
+            f"(activity {score.get('activity')}, liquidity {score.get('liquidity')}, "
+            f"trader activity {score.get('trader_activity')}, time {score.get('time_remaining')}). "
+            "This score is an analysis signal, never a probability of winning."
+        ),
+        f"Radar: {', '.join(_radar_labels(event)) or 'none active'}",
+    ]
+    if desc:
+        lines.append(f"Description: {desc}")
+    lines.append("Live headlines:")
+    lines.append(format_headlines_for_prompt(news))
+    return "\n".join(lines)
+
+
 def analyze_event(event: EventContract, *, user=None) -> dict:
     """Return structured DreamLens estimate for an event."""
+    headlines = _headlines_for_asset(event.underlying_asset, limit=6)
+    news_sig = "|".join((row.get("title") or "")[:40] for row in headlines[:3])
     cache_key = (
-        f"ai:analyze:{event.pk}:{event.last_price}:{event.cumulative_quote_volume}"
+        f"ai:analyze:{event.pk}:{event.last_price}:{event.cumulative_quote_volume}:{hash(news_sig)}"
     )
     if user is None:
         cached = cache.get(cache_key)
@@ -449,35 +612,70 @@ def analyze_event(event: EventContract, *, user=None) -> dict:
 
     yes = event.outcomes.filter(outcome_type=EventOutcome.OutcomeType.YES).first()
     market_prob = float(yes.current_price) if yes else 0.5
+    brief = _event_analyst_brief(event, headlines=headlines)
 
     client = get_llm_client()
     prompt = (
-        f"Analyze binary event: {event.title}\n"
-        f"Asset: {event.underlying_asset}\n"
-        f"YES price: {market_prob}\n"
-        f"Volume: {event.cumulative_quote_volume}\n"
-        f"Expiry minutes: {event.minutes_to_expiry:.1f}\n"
-        "Respond with JSON keys: estimated_probability, market_probability, "
-        "confidence, signal, reasons, risks."
+        "Write a senior-desk analysis of this live DreamDEX binary event.\n"
+        "Use only the brief below. Cite YES/NO prices, strike, volume, trades, and time left. "
+        "If headlines are listed, say how they could move this window; do not invent news.\n\n"
+        f"{brief}\n\n"
+        "Respond with JSON keys:\n"
+        "- setup: 3–5 sentences on what the question is and what the book is doing now\n"
+        "- estimated_probability: 0-1 analytical estimate of YES, not a chance of winning\n"
+        "- market_probability: current YES price as 0-1\n"
+        "- confidence: 0-1 how much the book + headlines support that estimate\n"
+        "- signal: LEAN_YES | LEAN_NO | NEUTRAL | INTERESTING\n"
+        "- reasons: exactly 5 strings, each citing a number or headline from the brief\n"
+        "- risks: exactly 4 strings, each a concrete way this window can reverse\n"
+        "Never recommend a trade. Never call DreamLens Score a probability."
     )
     raw = client.complete(
-        system="You are DreamLens AI. Provide estimates only — never guarantees.",
+        system=(
+            "You are DreamLens AI, a careful event-contract analyst. "
+            "Estimates only — never guarantees, never buy/sell instructions."
+        ),
         user=prompt,
         json_mode=True,
+        max_output_tokens=2048,
     )
     data = _parse_llm_object(raw)
 
     result = {
         "event_id": event.pk,
         "title": event.title,
+        "setup": _as_prose(data.get("setup"))
+        or (
+            f"YES is {market_prob:.2f} with {event.minutes_to_expiry:.1f} minutes left. "
+            "This is the market price, not a guaranteed outcome."
+        ),
         "estimated_probability": Decimal(str(data.get("estimated_probability", market_prob + 0.03))).quantize(
             FOUR_PLACES
         ),
         "market_probability": Decimal(str(data.get("market_probability", market_prob))).quantize(FOUR_PLACES),
         "confidence": Decimal(str(data.get("confidence", 0.55))).quantize(FOUR_PLACES),
         "signal": data.get("signal", "NEUTRAL"),
-        "reasons": _as_str_list(data.get("reasons"), "Insufficient LLM detail — using market baseline"),
-        "risks": _as_str_list(data.get("risks"), "Market can move quickly near expiry"),
+        "reasons": _as_str_list(
+            data.get("reasons"),
+            [
+                f"YES is trading at {market_prob:.2f} — that is the live book, not a forecast.",
+                f"Volume is {event.cumulative_quote_volume} with {event.trade_count} trades in this window.",
+                f"{event.minutes_to_expiry:.1f} minutes remain, so a last-print move can still matter.",
+                "DreamLens Score is an activity/liquidity signal, not a chance of winning.",
+                "Headlines can reprice the underlying faster than this window can absorb.",
+            ],
+            limit=5,
+        ),
+        "risks": _as_str_list(
+            data.get("risks"),
+            [
+                "Short expiry — price can reverse in one print.",
+                "Liquidity may thin near settlement, so a small fill moves YES a long way.",
+                "Oracle timing can differ from the spot ticker on screen.",
+                "A headline after you look can reprice BTC/ETH before expiry.",
+            ],
+            limit=4,
+        ),
         "label": "DreamLens estimate",
         "disclaimer": DISCLAIMER,
     }
@@ -725,7 +923,9 @@ def chat(
                 tool_results["events"] = [row]
         amount = tool_results["prepare_params"]["amount"]
         outcome = tool_results["prepare_params"]["outcome"]
-        reply = f"Ready to buy ${amount} {outcome}. Confirm in the trade modal."
+        from services.event_copy import format_collateral
+
+        reply = f"Ready to buy {format_collateral(amount, compact=True)} {outcome}. Confirm in the trade modal."
 
     elif parsed.intent == "GET_PORTFOLIO" and user:
         from services.portfolio_service import get_portfolio_summary
@@ -751,6 +951,273 @@ def chat(
         "intent": parsed.intent,
         "reply": reply,
         "tool_results": tool_results,
+        "disclaimer": DISCLAIMER,
+    }
+
+
+LENS_SYSTEM = (
+    "You are Lens, a senior event-contract analyst for DreamLens covering live DreamDEX "
+    "markets on Somnia Shannon. Write like a desk analyst: specific, numbered, and causal. "
+    "Tie comments to the live book, strike, YES/NO prices, volume, time left, and supplied "
+    "headlines. Do not invent quotes, prices, or news. If a headline is missing, say so. "
+    "Commentary only — never guarantee outcomes, never construct transactions or private keys, "
+    "and never instruct a specific buy or sell. Never describe DreamLens Score as a probability "
+    "of winning. Always end with: " + DISCLAIMER
+)
+
+EXPLAIN_SYSTEM = (
+    "You are Lens explaining one DreamDEX binary event in plain language. "
+    "Respond as JSON with keys: setup, yes_needs, no_needs, in_the_price, could_change. "
+    "Every value MUST be a single plain-English string of 2–4 sentences. "
+    "Never nest objects, lists, or key/value maps inside those fields. "
+    "Cite strike, YES/NO prices, volume, trades, and time left from the brief. "
+    "setup: the question, strike, time left, and current YES/NO. "
+    "yes_needs / no_needs: what must happen to the underlying by expiry. "
+    "in_the_price: what traders already seem to be pricing, using YES/NO and volume. "
+    "could_change: headlines and market risks that could flip this window. "
+    "Do not suggest a trade. Do not invent headlines. Do not call Score a probability of winning."
+)
+
+EXPLAIN_SECTIONS = (
+    ("setup", "What's going on"),
+    ("yes_needs", "What YES needs"),
+    ("no_needs", "What NO needs"),
+    ("in_the_price", "What's already in the price"),
+    ("could_change", "What could change this"),
+)
+
+
+def _live_market_book(limit: int = 12) -> list[dict[str, Any]]:
+    from apps.events.models import EventContract, EventOutcome
+    from django.utils import timezone
+
+    from services.event_copy import as_cents, event_question
+
+    now = timezone.now()
+    qs = (
+        EventContract.objects.filter(
+            status__in=[EventContract.Status.TRADING, EventContract.Status.LIVE],
+            expiry_time__gt=now,
+        )
+        .prefetch_related("outcomes")
+        .order_by("-cumulative_quote_volume")[:limit]
+    )
+    book: list[dict[str, Any]] = []
+    for event in qs:
+        yes = next(
+            (
+                row
+                for row in event.outcomes.all()
+                if row.outcome_type == EventOutcome.OutcomeType.YES
+            ),
+            None,
+        )
+        mins = (event.expiry_time - now).total_seconds() / 60 if event.expiry_time else 0
+        no = next(
+            (
+                row
+                for row in event.outcomes.all()
+                if row.outcome_type == EventOutcome.OutcomeType.NO
+            ),
+            None,
+        )
+        book.append(
+            {
+                "id": event.pk,
+                "title": event_question(event),
+                "underlying_asset": event.underlying_asset,
+                "yes_price": str(yes.current_price) if yes and yes.current_price is not None else None,
+                "yes_cents": as_cents(yes.current_price) if yes else None,
+                "no_price": str(no.current_price) if no and no.current_price is not None else None,
+                "no_cents": as_cents(no.current_price) if no else None,
+                "volume": str(event.cumulative_quote_volume),
+                "trade_count": int(event.trade_count or 0),
+                "minutes_to_expiry": round(mins, 1),
+            }
+        )
+    return book
+
+
+def _format_market_book(book: list[dict[str, Any]]) -> str:
+    if not book:
+        return "No live DreamDEX events are trading right now."
+    lines = []
+    for row in book:
+        lines.append(
+            f"- [id={row['id']}] {row['title']} | {row['underlying_asset']} | "
+            f"YES {row.get('yes_cents') or row.get('yes_price') or 'n/a'} | "
+            f"NO {row.get('no_cents') or row.get('no_price') or 'n/a'} | "
+            f"vol {row.get('volume')} | {row.get('trade_count', 0)} trades | "
+            f"{row['minutes_to_expiry']}m left"
+        )
+    return "\n".join(lines)
+
+
+def _events_mentioned(reply: str, book: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    text = (reply or "").lower()
+    hits: list[dict[str, Any]] = []
+    for row in book:
+        title = (row.get("title") or "").lower()
+        asset = (row.get("underlying_asset") or "").lower()
+        token = f"id={row['id']}"
+        if (title and title in text) or (asset and asset.lower() in text) or token in text:
+            hits.append(
+                {
+                    "id": row["id"],
+                    "title": row["title"],
+                    "underlying_asset": row["underlying_asset"],
+                }
+            )
+    return hits
+
+
+def _as_prose(value: Any) -> str:
+    """Turn nested LLM JSON into readable sentences."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, (int, float, Decimal)):
+        return str(value)
+    if isinstance(value, list):
+        return " ".join(part for part in (_as_prose(item) for item in value) if part)
+    if isinstance(value, dict):
+        parts = []
+        for key, item in value.items():
+            text = _as_prose(item)
+            if not text:
+                continue
+            label = str(key).replace("_", " ").strip()
+            if label.lower() in {"text", "summary", "value", "detail"}:
+                parts.append(text)
+            else:
+                parts.append(f"{label}: {text}")
+        return " ".join(parts)
+    return str(value).strip()
+
+
+def _explanation_from_llm(data: dict[str, Any]) -> dict[str, str] | None:
+    sections: dict[str, str] = {}
+    for key, _label in EXPLAIN_SECTIONS:
+        text = _as_prose(data.get(key))
+        if text:
+            sections[key] = text
+    return sections or None
+
+
+def _reply_from_explanation(sections: dict[str, str]) -> str:
+    parts = []
+    labels = dict(EXPLAIN_SECTIONS)
+    for key, _label in EXPLAIN_SECTIONS:
+        text = (sections.get(key) or "").strip()
+        if text:
+            parts.append(f"{labels[key]}\n{text}")
+    return "\n\n".join(parts)
+
+
+def lens_chat(
+    *,
+    message: str,
+    history: list[dict[str, Any]] | None = None,
+    event_id: int | None = None,
+    structured: bool = False,
+) -> dict[str, Any]:
+    """Financial-analyst chat — no trade preparation."""
+    _check_rate_limit(None)
+    book = _live_market_book()
+    focus = ""
+    focused_event = None
+    headlines: list[dict] = []
+    if event_id:
+        from services.event_copy import event_question
+
+        focused = next((row for row in book if row.get("id") == event_id), None)
+        focused_event = EventContract.objects.prefetch_related("outcomes", "radar_signals").filter(pk=event_id).first()
+        if focused is None and focused_event is not None:
+            focused = {
+                "id": focused_event.pk,
+                "title": event_question(focused_event),
+                "underlying_asset": focused_event.underlying_asset,
+            }
+        if focused:
+            headlines = _headlines_for_asset(focused.get("underlying_asset"))
+            if focused_event is not None:
+                focus = (
+                    "Focus on this event only.\n"
+                    f"{_event_analyst_brief(focused_event, headlines=headlines)}\n\n"
+                )
+            else:
+                from services.market_news import format_headlines_for_prompt
+
+                focus = (
+                    f"Focus on this event only: {focused.get('title')} "
+                    f"(id={focused.get('id')}, {focused.get('underlying_asset')}).\n"
+                    f"Live headlines:\n{format_headlines_for_prompt(headlines)}\n\n"
+                )
+    else:
+        from services.market_news import format_headlines_for_prompt
+
+        headlines = _headlines_for_asset(None, limit=8)
+        focus = f"Live headlines:\n{format_headlines_for_prompt(headlines)}\n\n"
+
+    client = get_llm_client()
+    explanation = None
+    if structured and event_id:
+        prompt = (
+            f"{focus}"
+            "Explain this market in the required JSON. What would have to happen for YES to win? "
+            "Do not suggest a trade.\n\n"
+            f"User question: {message.strip()}"
+        )
+        raw = client.complete(
+            system=EXPLAIN_SYSTEM,
+            user=prompt,
+            history=history or [],
+            json_mode=True,
+            google_search=False,
+            max_output_tokens=2048,
+        )
+        data = _parse_llm_object(raw)
+        explanation = _explanation_from_llm(data)
+        if data.get("available") is False:
+            reasons = data.get("reasons") or ["AI analysis is unavailable."]
+            reply = reasons[0] if isinstance(reasons, list) and reasons else str(reasons)
+        elif explanation:
+            reply = _reply_from_explanation(explanation)
+        else:
+            reply = data.get("message") or raw if data else raw
+            reply = reply if reply else "I could not form a market view just now."
+    else:
+        prompt = (
+            "Live DreamDEX book:\n"
+            f"{_format_market_book(book)}\n\n"
+            f"{focus}"
+            "Write 3–6 short paragraphs. Cite prices, volume, time left, and headlines by name. "
+            "If you mention a contract, use its question and id.\n\n"
+            f"User question: {message.strip()}"
+        )
+        raw = client.complete(
+            system=LENS_SYSTEM,
+            user=prompt,
+            history=history or [],
+            google_search=True,
+            max_output_tokens=3072,
+        )
+        data = _parse_llm_object(raw)
+        if data.get("available") is False:
+            reasons = data.get("reasons") or ["AI analysis is unavailable."]
+            reply = reasons[0] if isinstance(reasons, list) and reasons else str(reasons)
+        else:
+            reply = data.get("message") or raw if data else raw
+            reply = reply if reply else "I could not form a market view just now."
+    if DISCLAIMER.lower() not in str(reply).lower():
+        reply = f"{reply}\n\n{DISCLAIMER}"
+    events = _events_mentioned(str(reply), book)
+    return {
+        "intent": "LENS",
+        "reply": reply,
+        "explanation": explanation,
+        "tool_results": {"events": events, "book": book, "headlines": headlines[:8]},
         "disclaimer": DISCLAIMER,
     }
 

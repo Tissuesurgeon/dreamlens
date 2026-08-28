@@ -1,14 +1,14 @@
 {% extends "base.html" %}
 {% load dreamlens_extras %}
 
-{% block title %}Explore — DreamLens{% endblock %}
+{% block title %}Discover — DreamLens{% endblock %}
 
 {% block content %}
 <div class="dl-container dl-container--home dl-home dl-animate-in">
   <header class="dl-page-header dl-page-header--split">
     <div>
-      <h1 class="dl-page-header__title">Explore</h1>
-      <p class="dl-page-header__subtitle">Live DreamDEX Event Contracts on Somnia Shannon.</p>
+      <h1 class="dl-page-header__title">Discover</h1>
+      <p class="dl-page-header__subtitle">Find an event, understand it, then decide.</p>
     </div>
     <p class="dl-hero__status">
       <span class="dl-hero__pulse" aria-hidden="true"></span>
@@ -16,34 +16,32 @@
     </p>
   </header>
 
-  <form class="dl-ask" id="ai-search-form">
-    {% csrf_token %}
-    <label class="visually-hidden" for="ai-search-input">Ask DreamLens about any event</label>
-    <div class="dl-ask__row">
-      <input
-        type="search"
-        id="ai-search-input"
-        class="dl-ask__input"
-        name="query"
-        placeholder="Ask DreamLens about any event…"
-        autocomplete="off"
-        enterkeyhint="search"
-      >
-      <button type="submit" class="dl-btn dl-btn--primary">Ask</button>
-    </div>
-    <div class="dl-ask__chips">
-      {% for chip in search_chips %}
-      <button type="button" class="dl-chip" data-search-chip="{{ chip }}">{{ chip }}</button>
-      {% endfor %}
-    </div>
-  </form>
-  <div id="ai-ask-reply" class="dl-ask-reply" hidden></div>
-
-  <section class="dl-radar" aria-labelledby="radar-heading">
+  <section class="dl-intent" aria-labelledby="intent-heading">
     <div class="dl-section-head">
       <div>
-        <h2 id="radar-heading" class="dl-section__title">Event Radar</h2>
-        <p class="dl-section__subtitle">Tap a signal to filter the list.</p>
+        <h2 id="intent-heading" class="dl-section__title">What are you looking for?</h2>
+        <p class="dl-section__subtitle">Filter by intent. Technical stats stay in Advanced.</p>
+      </div>
+    </div>
+    <div class="dl-intent__row" id="intent-filters">
+      {% for f in intent_filters %}
+      <button
+        type="button"
+        class="dl-intent-chip{% if f.id == 'all' %} is-active{% endif %}"
+        data-intent-filter="{{ f.id }}"
+        aria-pressed="{% if f.id == 'all' %}true{% else %}false{% endif %}"
+      >{{ f.label }}</button>
+      {% endfor %}
+    </div>
+  </section>
+
+  {% include "components/market_feed.html" with feed_heading_id="discover-feed-heading" %}
+
+  <section class="dl-radar dl-advanced" aria-labelledby="radar-heading">
+    <div class="dl-section-head">
+      <div>
+        <h2 id="radar-heading" class="dl-section__title">Volume, liquidity, spread</h2>
+        <p class="dl-section__subtitle">Optional technical filters.</p>
       </div>
     </div>
     <div class="dl-radar__grid" id="event-radar">
@@ -78,14 +76,14 @@
       {% endfor %}
     </div>
     <div class="dl-empty" id="market-empty" hidden>
-      <p class="dl-empty__title">No events match that signal</p>
+      <p class="dl-empty__title">No events match that filter</p>
       <p>Clear the filter to see everything trading right now.</p>
       <button type="button" class="dl-btn dl-btn--ghost dl-btn--sm" data-radar-reset>Show all events</button>
     </div>
     {% else %}
     <div class="dl-empty dl-empty--large">
       <p class="dl-empty__title">No live events right now</p>
-      <p>DreamDEX Event Contracts appear here as soon as they start trading. Radar signals build up from live fills.</p>
+      <p>DreamDEX Event Contracts appear here as soon as they start trading.</p>
     </div>
     {% endif %}
   </section>

@@ -28,7 +28,7 @@ def test_wallet_login_creates_user_and_unlocks_following(client, settings):
 
     after = client.get("/following/")
     assert b"Connect your wallet to follow traders" not in after.content
-    assert b"Active traders" in after.content
+    assert b"Smart Copy" in after.content
 
 
 @pytest.mark.django_db

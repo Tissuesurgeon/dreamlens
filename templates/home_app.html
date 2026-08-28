@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% load dreamlens_extras %}
+
+{% block title %}Home — DreamLens{% endblock %}
+
+{% block content %}
+<div class="dl-container dl-container--home dl-home dl-animate-in">
+  <header class="dl-page-header dl-page-header--split">
+    <div>
+      <h1 class="dl-page-header__title">Home</h1>
+      <p class="dl-page-header__subtitle">
+        {% if agent %}
+        Your DreamAgent is watching {{ live_count }} live event{{ live_count|pluralize }}.
+        {% else %}
+        {{ live_count }} live event{{ live_count|pluralize }} on DreamDEX.
+        {% endif %}
+      </p>
+    </div>
+    <p class="dl-hero__status">
+      {% if agent_status == "active" %}
+      <span class="dl-smart-pill is-on"><span class="dl-smart-pill__dot" aria-hidden="true"></span> Active</span>
+      {% elif agent_status == "paused" %}
+      <span class="dl-smart-pill is-paused">Paused</span>
+      {% else %}
+      <span class="dl-hero__pulse" aria-hidden="true"></span>
+      {{ live_count }} live
+      {% endif %}
+    </p>
+  </header>
+
+  {% if available %}
+  <p class="dl-home-available">Available collateral {{ available }}</p>
+  {% endif %}
+
+  <section class="dl-section" aria-labelledby="look-heading">
+    <div class="dl-section-head">
+      <div>
+        <h2 id="look-heading" class="dl-section__title">What should I look at?</h2>
+        <p class="dl-section__subtitle">Something meaningful to do right now.</p>
+      </div>
+    </div>
+
+    {% if featured %}
+    <article class="dl-live-now">
+      <p class="dl-live-now__kicker">Live now · Moving quickly</p>
+      <h3 class="dl-live-now__title"><a href="{% url 'event_detail' featured.pk %}">{{ featured|question_copy }}</a></h3>
+      <div class="dl-live-now__prices">
+        {% for o in featured.outcomes.all %}
+          {% if o.outcome_type == "YES" %}<span class="dl-text-yes">YES {{ o.current_price|as_cents }}</span>{% endif %}
+          {% if o.outcome_type == "NO" %}<span class="dl-text-no">NO {{ o.current_price|as_cents }}</span>{% endif %}
+        {% endfor %}
+      </div>
+      {% if featured.dl_score %}
+      <p class="dl-live-now__score">DreamLens Score {{ featured.dl_score.score }}/100</p>
+      <p class="dl-score-why__note">{% score_disclaimer %}</p>
+      {% endif %}
+      <p>Ends in <span class="dl-countdown" data-expiry="{{ featured.expiry_time|date:'c' }}">{{ featured|ends_in }}</span></p>
+      <div class="dl-live-now__actions">
+        <a href="{% url 'event_detail' featured.pk %}" class="dl-btn dl-btn--primary">Understand</a>
+        <button type="button" class="dl-btn dl-btn--ghost" data-explain-event="{{ featured.pk }}" data-explain-question="{{ featured|question_copy }}" data-explain-asset="{{ featured.underlying_asset|upper }}">Explain this</button>
+      </div>
+    </article>
+    {% endif %}
+
+    {% if watching %}
+    <h3 class="dl-section__title dl-section__title--sm">{{ watching|length }} event{{ watching|length|pluralize }} worth watching</h3>
+    <div class="dl-event-list">
+      {% for event in watching %}
+        {% include "components/event_card.html" with event=event %}
+      {% endfor %}
+    </div>
+    {% elif not featured %}
+    <div class="dl-empty">
+      <p class="dl-empty__title">No live events right now</p>
+      <p>DreamDEX Event Contracts appear here as soon as they start trading.</p>
+    </div>
+    {% endif %}
+  </section>
+
+  {% include "components/market_feed.html" with feed_heading_id="home-feed-heading" %}
+
+  {% if copy_relationships %}
+  <section class="dl-section" aria-labelledby="copy-snip-heading">
+    <div class="dl-section-head">
+      <h2 id="copy-snip-heading" class="dl-section__title">Smart Copy</h2>
+      <a href="{% url 'following' %}" class="dl-btn dl-btn--ghost dl-btn--sm">See traders</a>
+    </div>
+    <div class="dl-copy-chip-row">
+      {% for rel in copy_relationships %}
+      <a href="{% url 'trader_detail' rel.trader.pk %}" class="dl-copy-chip">
+        <span class="dl-mono">{{ rel.trader.display_name|default:rel.trader.wallet_address|short_address }}</span>
+        <span class="dl-smart-pill is-on"><span class="dl-smart-pill__dot" aria-hidden="true"></span> Following</span>
+      </a>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if executions %}
+  <section class="dl-section" aria-labelledby="agent-activity-heading">
+    <div class="dl-section-head">
+      <h2 id="agent-activity-heading" class="dl-section__title">Agent activity</h2>
+      <a href="{% url 'copy_activity' %}" class="dl-btn dl-btn--ghost dl-btn--sm">All receipts</a>
+    </div>
+    <div class="dl-receipt-list">
+      {% for ex in executions %}
+        {% include "components/decision_receipt.html" with ex=ex %}
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,6 +1,6 @@
 from django.urls import path
 
-from apps.core.api.ai import AnalyzeEventView, ChatView, SearchView
+from apps.core.api.ai import AnalyzeEventView, ChatView, LensChatView, NewsFeedView, SearchView
 from apps.core.api.wallet_auth import WalletLoginView, WalletLogoutView
 from apps.core.api.agents import (
     DreamAgentEvaluationsView,
@@ -51,8 +51,10 @@ urlpatterns = [
     path("traders/<int:pk>/history/", TraderHistoryView.as_view(), name="api-traders-history"),
     # AI
     path("ai/chat/", ChatView.as_view(), name="api-ai-chat"),
+    path("ai/lens/", LensChatView.as_view(), name="api-ai-lens"),
     path("ai/analyze-event/", AnalyzeEventView.as_view(), name="api-ai-analyze"),
     path("ai/search/", SearchView.as_view(), name="api-ai-search"),
+    path("news/", NewsFeedView.as_view(), name="api-news"),
     # Trading
     path("trades/prepare/", PrepareTradeView.as_view(), name="api-trades-prepare"),
     path("trades/confirm/", ConfirmTradeView.as_view(), name="api-trades-confirm"),

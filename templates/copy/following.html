@@ -1,17 +1,17 @@
 {% extends "base.html" %}
 {% load dreamlens_extras %}
 
-{% block title %}Active traders — DreamLens{% endblock %}
+{% block title %}Smart Copy — DreamLens{% endblock %}
 
 {% block content %}
 <div class="dl-container dl-container--analytics dl-following-page dl-animate-in">
   <header class="dl-page-header dl-page-header--split">
     <div>
-      <h1 class="dl-page-header__title">Active traders</h1>
-      <p class="dl-page-header__subtitle">On-chain DreamDEX wallets. Follow or Smart Copy from any address.</p>
+      <h1 class="dl-page-header__title">Smart Copy</h1>
+      <p class="dl-page-header__subtitle">Find someone whose trading you like. Ask your agent to follow them.</p>
     </div>
     {% if is_authenticated %}
-    <a href="{% url 'copy_activity' %}" class="dl-btn dl-btn--ghost dl-btn--sm">Activity</a>
+    <a href="{% url 'copy_activity' %}" class="dl-btn dl-btn--ghost dl-btn--sm">Decision Receipts</a>
     {% endif %}
   </header>
 
@@ -22,12 +22,12 @@
   {% if copy_relationships %}
   <section class="dl-section" aria-labelledby="your-copies-heading">
     <div class="dl-section-head">
-      <h2 id="your-copies-heading" class="dl-section__title">Your copies</h2>
+      <h2 id="your-copies-heading" class="dl-section__title">Following</h2>
     </div>
     <div class="dl-copy-chip-row">
       {% for rel in copy_relationships %}
       <a href="{% url 'trader_detail' rel.trader.pk %}" class="dl-copy-chip">
-        <span class="dl-mono">{{ rel.trader.wallet_address|short_address }}</span>
+        <span class="dl-mono">{{ rel.trader.display_name|default:rel.trader.wallet_address|short_address }}</span>
         {% if rel.is_smart_on %}
         <span class="dl-smart-pill is-on"><span class="dl-smart-pill__dot" aria-hidden="true"></span> On</span>
         {% else %}
@@ -39,74 +39,102 @@
   </section>
   {% endif %}
 
-  <section class="dl-section" aria-labelledby="active-traders-heading">
-    <div class="dl-section-head dl-section-head--table">
-      <h2 id="active-traders-heading" class="dl-section__title">On-chain</h2>
-      <p class="dl-section__count" id="trader-table-count">{{ active_traders|length }} wallet{% if active_traders|length != 1 %}s{% endif %}</p>
+  <section class="dl-section" aria-labelledby="people-heading">
+    <div class="dl-section-head">
+      <h2 id="people-heading" class="dl-section__title">People</h2>
+      <p class="dl-section__count">{{ active_traders|length }} trader{{ active_traders|length|pluralize }}</p>
     </div>
     {% if active_traders %}
-    <div class="dl-table-toolbar">
-      <label class="visually-hidden" for="trader-table-filter">Filter traders</label>
-      <input
-        id="trader-table-filter"
-        class="dl-input dl-input--search"
-        type="search"
-        placeholder="Filter by address"
-        autocomplete="off"
-      >
+    <div class="dl-people-grid">
+      {% for trader in active_traders %}
+      <article class="dl-person-card">
+        <h3 class="dl-person-card__name">
+          <a href="{% url 'trader_detail' trader.pk %}">{{ trader.display_name|default:trader.wallet_address|short_address }}</a>
+        </h3>
+        <p class="dl-person-card__stat">{% widthratio trader.win_rate 1 100 %}% profitable trades · {{ trader.total_trades }} trades</p>
+        <p class="dl-muted">Past performance does not guarantee future results.</p>
+        <div class="dl-person-card__actions">
+          <a href="{% url 'trader_detail' trader.pk %}" class="dl-btn dl-btn--ghost dl-btn--sm">See what they trade</a>
+          {% if trader.pk in smart_copy_on_ids %}
+          <a href="{% url 'trader_detail' trader.pk %}" class="dl-btn dl-btn--ghost dl-btn--sm">Manage</a>
+          {% else %}
+          <button
+            type="button"
+            class="dl-btn dl-btn--primary dl-btn--sm"
+            data-open-smart-copy
+            data-trader-id="{{ trader.pk }}"
+            data-trader-name="{{ trader.display_name|default:trader.wallet_address|short_address }}"
+          >Follow</button>
+          {% endif %}
+        </div>
+      </article>
+      {% endfor %}
     </div>
-    <div class="dl-table-wrap">
-      <table class="dl-data-table" id="active-traders-table">
-        <thead>
-          <tr>
-            <th scope="col">Address</th>
-            <th scope="col" class="dl-num">Volume</th>
-            <th scope="col" class="dl-num">Fills</th>
-            <th scope="col" class="dl-num">Win rate</th>
-            <th scope="col" class="dl-num">Score</th>
-            <th scope="col">Last fill</th>
-            <th scope="col"><span class="visually-hidden">Actions</span></th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for trader in active_traders %}
-          <tr data-trader-filter="{{ trader.wallet_address|lower }}">
-            <td>
-              <a href="{% url 'trader_detail' trader.pk %}" class="dl-addr-link dl-mono">{{ trader.wallet_address|short_address }}</a>
-            </td>
-            <td class="dl-num">{{ trader.total_volume|usd_amount }}</td>
-            <td class="dl-num">{{ trader.total_trades }}</td>
-            <td class="dl-num">{% widthratio trader.win_rate 1 100 %}%</td>
-            <td class="dl-num">{% widthratio trader.trader_score 1 100 %}</td>
-            <td class="dl-muted">{% if trader.last_active_at %}{{ trader.last_active_at|timesince }} ago{% else %}—{% endif %}</td>
-            <td class="dl-table-actions">
-              {% if trader.pk in followed_trader_ids %}
-              <span class="dl-followed-mark">Following</span>
-              {% else %}
-              <button type="button" class="dl-btn dl-btn--ghost dl-btn--sm" data-follow-trader="{{ trader.pk }}">Follow</button>
-              {% endif %}
-              {% if trader.pk in smart_copy_on_ids %}
-              <a href="{% url 'trader_detail' trader.pk %}" class="dl-btn dl-btn--ghost dl-btn--sm">Manage</a>
-              {% else %}
-              <button
-                type="button"
-                class="dl-btn dl-btn--primary dl-btn--sm"
-                data-open-smart-copy
-                data-trader-id="{{ trader.pk }}"
-                data-trader-name="{{ trader.wallet_address|short_address }}"
-              >Smart Copy</button>
-              {% endif %}
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+
+    <div class="dl-advanced">
+      <div class="dl-table-toolbar">
+        <label class="visually-hidden" for="trader-table-filter">Filter traders</label>
+        <input
+          id="trader-table-filter"
+          class="dl-input dl-input--search"
+          type="search"
+          placeholder="Filter by address"
+          autocomplete="off"
+        >
+      </div>
+      <div class="dl-table-wrap">
+        <table class="dl-data-table" id="active-traders-table">
+          <thead>
+            <tr>
+              <th scope="col">Address</th>
+              <th scope="col" class="dl-num">Volume</th>
+              <th scope="col" class="dl-num">Fills</th>
+              <th scope="col" class="dl-num">Win rate</th>
+              <th scope="col" class="dl-num">Score</th>
+              <th scope="col">Last fill</th>
+              <th scope="col"><span class="visually-hidden">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for trader in active_traders %}
+            <tr data-trader-filter="{{ trader.wallet_address|lower }}">
+              <td>
+                <a href="{% url 'trader_detail' trader.pk %}" class="dl-addr-link dl-mono">{{ trader.wallet_address|short_address }}</a>
+              </td>
+              <td class="dl-num">{{ trader.total_volume|usd_amount }}</td>
+              <td class="dl-num">{{ trader.total_trades }}</td>
+              <td class="dl-num">{% widthratio trader.win_rate 1 100 %}%</td>
+              <td class="dl-num">{% widthratio trader.trader_score 1 100 %}</td>
+              <td class="dl-muted">{% if trader.last_active_at %}{{ trader.last_active_at|timesince }} ago{% else %}—{% endif %}</td>
+              <td class="dl-table-actions">
+                {% if trader.pk in followed_trader_ids %}
+                <span class="dl-followed-mark">Following</span>
+                {% else %}
+                <button type="button" class="dl-btn dl-btn--ghost dl-btn--sm" data-follow-trader="{{ trader.pk }}">Follow</button>
+                {% endif %}
+                {% if trader.pk in smart_copy_on_ids %}
+                <a href="{% url 'trader_detail' trader.pk %}" class="dl-btn dl-btn--ghost dl-btn--sm">Manage</a>
+                {% else %}
+                <button
+                  type="button"
+                  class="dl-btn dl-btn--primary dl-btn--sm"
+                  data-open-smart-copy
+                  data-trader-id="{{ trader.pk }}"
+                  data-trader-name="{{ trader.wallet_address|short_address }}"
+                >Smart Copy</button>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="dl-table-empty" id="trader-table-empty" hidden>No wallets match that filter.</p>
     </div>
-    <p class="dl-table-empty" id="trader-table-empty" hidden>No wallets match that filter.</p>
     {% else %}
     <div class="dl-empty">
-      <p class="dl-empty__title">No on-chain traders indexed yet</p>
-      <p>DreamLens indexes maker and taker wallets from live DreamDEX fills. Check back in a minute.</p>
+      <p class="dl-empty__title">No traders indexed yet</p>
+      <p>DreamLens indexes wallets from live DreamDEX fills.</p>
     </div>
     {% endif %}
   </section>

@@ -13,8 +13,31 @@
 
   <header class="dl-page-header">
     <h1 class="dl-page-header__title">Activate Dream Agent</h1>
-    <p class="dl-page-header__subtitle">Create the account, fund it, then sign one bounded permission on Somnia Shannon.</p>
+    <p class="dl-page-header__subtitle">Let DreamAgent trade for you. Your funds stay in your Smart Account.</p>
   </header>
+
+  <article class="dl-can-card">
+    <h2>Your Dream Agent</h2>
+    <div class="dl-can-grid">
+      <section>
+        <h3>Can</h3>
+        <ul class="dl-check-list">
+          <li>✓ Trade Event Contracts</li>
+          <li>✓ Copy selected traders</li>
+        </ul>
+      </section>
+      <section>
+        <h3>Cannot</h3>
+        <ul class="dl-check-list dl-check-list--no">
+          <li>✕ Withdraw your funds</li>
+          <li>✕ Change your permissions</li>
+          <li>✕ Exceed your limits</li>
+        </ul>
+      </section>
+    </div>
+    <p class="dl-can-card__never">Withdrawal: Never</p>
+  </article>
+  {% include "components/what_happens_next.html" with trader_label="the traders you follow" heading_id="activate-next" %}
 
   {% if not is_authenticated %}
   <div class="dl-empty dl-empty--large">

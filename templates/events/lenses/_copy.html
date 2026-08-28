@@ -2,7 +2,7 @@
   {% if active_copy_trader_ids %}
   <div class="dl-smart-on-banner" id="smart-copy-on-banner">
     <span class="dl-smart-pill is-on"><span class="dl-smart-pill__dot" aria-hidden="true"></span> Smart Copy ON</span>
-    <p>DreamLens is reviewing trades from traders you follow on this event. Manage from <a href="{% url 'following' %}">Active traders</a>.</p>
+    <p>DreamLens is reviewing trades from traders you follow on this event. Manage from <a href="{% url 'following' %}">Smart Copy</a>.</p>
   </div>
   {% endif %}
 
@@ -54,11 +54,11 @@
       <h3 class="dl-lens-heading">Set your limits</h3>
       <p class="dl-wizard-hint">Caps protect you if the trader is active.</p>
       <div class="dl-form-row">
-        <label for="copy-daily-limit" class="dl-label">Daily limit (USD)</label>
+        <label for="copy-daily-limit" class="dl-label">Daily limit ($)</label>
         <input type="number" id="copy-daily-limit" class="dl-input" min="5" step="5" value="50" placeholder="50">
       </div>
       <div class="dl-form-row">
-        <label for="copy-per-trade-limit" class="dl-label">Per-trade max (USD)</label>
+        <label for="copy-per-trade-limit" class="dl-label">Per-trade max ($)</label>
         <input type="number" id="copy-per-trade-limit" class="dl-input" min="1" step="1" value="25" placeholder="25">
       </div>
       <div class="dl-wizard-nav">

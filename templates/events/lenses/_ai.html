@@ -25,6 +25,9 @@
     </div>
 
     <p class="dl-insight-card__summary">{{ ai_insight.summary }}</p>
+    {% if ai_insight.setup %}
+    <p class="dl-insight-card__setup">{{ ai_insight.setup }}</p>
+    {% endif %}
 
     <section class="dl-insight-section">
       <h4 class="dl-insight-section__title">Why</h4>

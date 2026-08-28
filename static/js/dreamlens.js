@@ -1,5 +1,5 @@
 /**
- * DreamLens frontend — wallet, search, trade modal, lenses, countdowns, charts.
+ * DreamLens frontend — wallet, Lens chat, trade modal, event lenses, countdowns, charts.
  */
 (function () {
   "use strict";
@@ -449,169 +449,110 @@
   }
 
 
-  /* ── AI search ── */
-  let lastAskEvent = null;
+  /* ── Lens chat ── */
+  const LENS_CHAT_STORAGE_KEY = "dreamlens_lens_thread";
 
-  function setAskReply(text, isError, extras) {
-    const reply = document.getElementById("ai-ask-reply");
-    if (!reply) {
-      if (text) alert(text);
-      return;
-    }
-    if (!text && !(extras && extras.event)) {
-      reply.hidden = true;
-      reply.innerHTML = "";
-      return;
-    }
-    reply.hidden = false;
-    reply.classList.toggle("is-error", Boolean(isError));
-
-    const parts = [];
-    if (text) {
-      parts.push('<p class="dl-ask-reply__text"></p>');
-    }
-    if (extras && extras.event) {
-      lastAskEvent = extras.event;
-      parts.push(
-        '<div class="dl-ask-reply__pick">' +
-          '<span class="dl-ask-reply__pick-label">Most interesting</span>' +
-          '<strong class="dl-ask-reply__pick-title"></strong>' +
-          "</div>"
-      );
-      parts.push('<div class="dl-ask-reply__actions"></div>');
-    }
-    reply.innerHTML = parts.join("");
-
-    const textEl = reply.querySelector(".dl-ask-reply__text");
-    if (textEl) textEl.textContent = text || "";
-
-    if (extras && extras.event) {
-      const titleEl = reply.querySelector(".dl-ask-reply__pick-title");
-      if (titleEl) titleEl.textContent = extras.event.title || "Event";
-
-      const actions = reply.querySelector(".dl-ask-reply__actions");
-      if (actions) {
-        const view = document.createElement("a");
-        view.href = "/events/" + extras.event.id + "/";
-        view.className = "dl-btn dl-btn--primary dl-btn--sm";
-        view.textContent = "View Event";
-        actions.appendChild(view);
-
-        if (extras.prepare) {
-          const buy = document.createElement("button");
-          buy.type = "button";
-          buy.className = "dl-btn dl-btn--yes dl-btn--sm";
-          const outcome = extras.prepare.outcome || "YES";
-          const amount = extras.prepare.amount || 10;
-          buy.textContent = "Buy $" + amount + " " + outcome;
-          buy.addEventListener("click", function () {
-            openTradeForAskEvent(extras.event, outcome, amount);
-          });
-          actions.appendChild(buy);
-        }
-      }
+  function loadLensThread() {
+    try {
+      const raw = sessionStorage.getItem(LENS_CHAT_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      return [];
     }
   }
 
-  function openTradeForAskEvent(event, outcome, amount) {
-    if (!event || !event.id) return;
-    const card = document.querySelector('.dl-event-card[data-event-id="' + event.id + '"]');
-    let price = "0.5";
-    let title = event.title || "";
-    if (card) {
-      const btn = card.querySelector(
-        '[data-trade][data-outcome="' + String(outcome).toUpperCase() + '"]'
-      );
-      if (btn) {
-        price = btn.getAttribute("data-price") || price;
-        title = btn.getAttribute("data-event-title") || title;
-      }
+  function saveLensThread(thread) {
+    try {
+      sessionStorage.setItem(LENS_CHAT_STORAGE_KEY, JSON.stringify(thread.slice(-40)));
+    } catch (e) {
+      /* ignore quota */
     }
-    const amountInput = document.getElementById("modal-amount");
-    if (amountInput && amount) amountInput.value = String(amount);
-    openTradeModal({
-      eventId: String(event.id),
-      outcome: String(outcome || "YES").toUpperCase(),
-      price: price,
-      eventTitle: title,
-    });
   }
 
-  function applyAskMarketFilter(eventIds, asset) {
-    const cards = document.querySelectorAll(".dl-event-card, .dl-market");
-    if (!cards.length) return;
-    const ids = (eventIds || []).map(function (id) {
-      return Number(id);
-    });
-    cards.forEach(function (card) {
-      const id = Number(card.getAttribute("data-event-id"));
-      const cardAsset = (card.getAttribute("data-asset") || "").toUpperCase();
-      let visible = true;
-      if (ids.length) visible = ids.indexOf(id) !== -1;
-      else if (asset) visible = cardAsset === String(asset).toUpperCase();
-      card.hidden = !visible;
-    });
-    const empty = document.getElementById("market-empty");
-    if (empty) {
-      const anyVisible = Array.prototype.some.call(cards, function (c) {
-        return !c.hidden;
+  function appendLensBubble(threadEl, role, text, extra) {
+    const wrap = document.createElement("div");
+    wrap.className =
+      "dl-lens-bubble dl-lens-bubble--" + (role === "user" ? "user" : "assistant");
+    if (extra && extra.pending) wrap.classList.add("is-pending");
+    if (extra && extra.error) wrap.classList.add("is-error");
+    const p = document.createElement("p");
+    p.textContent = text || "";
+    wrap.appendChild(p);
+    const events = extra && extra.events;
+    if (events && events.length) {
+      const links = document.createElement("div");
+      links.className = "dl-lens-links";
+      events.forEach(function (event) {
+        if (!event || !event.id) return;
+        const a = document.createElement("a");
+        a.href = "/events/" + event.id + "/";
+        a.className = "dl-btn dl-btn--ghost dl-btn--sm";
+        a.textContent = "View " + (event.title || "event");
+        links.appendChild(a);
       });
-      empty.hidden = anyVisible;
+      if (links.childNodes.length) wrap.appendChild(links);
     }
+    threadEl.appendChild(wrap);
+    wrap.scrollIntoView({ block: "end", behavior: "smooth" });
+    return wrap;
   }
 
-  async function submitAiSearch(query) {
-    const text = (query || "").trim();
-    if (!text) return;
+  function renderLensThread(threadEl, emptyEl, thread) {
+    threadEl.querySelectorAll(".dl-lens-bubble").forEach(function (node) {
+      node.remove();
+    });
+    if (emptyEl) emptyEl.hidden = thread.length > 0;
+    thread.forEach(function (item) {
+      appendLensBubble(threadEl, item.role, item.content, { events: item.events });
+    });
+  }
 
-    const submitBtn =
-      document.querySelector("#ai-search-form button[type='submit']") ||
-      document.getElementById("ai-ask-submit");
+  async function sendLensMessage(text, threadEl, emptyEl, input, submitBtn) {
+    const message = (text || "").trim();
+    if (!message) return;
+    const thread = loadLensThread();
+    thread.push({ role: "user", content: message });
+    saveLensThread(thread);
+    if (emptyEl) emptyEl.hidden = true;
+    appendLensBubble(threadEl, "user", message);
+    const pending = appendLensBubble(threadEl, "assistant", "Looking at live markets and news…", {
+      pending: true,
+    });
     if (submitBtn) {
       submitBtn.disabled = true;
       submitBtn.textContent = "Asking…";
     }
-    setAskReply("Looking at live DreamDEX events…");
-
+    const history = thread.slice(0, -1).map(function (item) {
+      return { role: item.role, content: item.content };
+    });
+    const eventId = Number(new URLSearchParams(window.location.search).get("event") || 0) || null;
     try {
-      const res = await csrfFetch("/api/ai/chat/", {
+      const payload = { message: message, history: history };
+      if (eventId) payload.event_id = eventId;
+      const res = await csrfFetch("/api/ai/lens/", {
         method: "POST",
-        body: JSON.stringify({ message: text, query: text }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) {
         const detail =
-          (data && (data.detail || data.message || data.query)) || "Ask failed.";
-        throw new Error(typeof detail === "string" ? detail : "Ask failed.");
+          (data && (data.detail || data.message)) || "Lens could not answer.";
+        throw new Error(typeof detail === "string" ? detail : "Lens could not answer.");
       }
+      if (data.prepare_params || (data.tool_results && data.tool_results.prepare_params)) {
+        throw new Error("Lens does not prepare trades.");
+      }
+      const reply = data.reply || "No reply from Lens.";
       const events = (data.tool_results && data.tool_results.events) || [];
-      const asset = data.tool_results && data.tool_results.asset;
-      const prepare = data.tool_results && data.tool_results.prepare_params;
-      applyAskMarketFilter(
-        events.map(function (event) {
-          return event.id;
-        }),
-        asset
-      );
-
-      const pick = events[0] || lastAskEvent;
-      const extras = {};
-      if (pick) extras.event = pick;
-      if (prepare) {
-        extras.prepare = prepare;
-        if (!extras.event && lastAskEvent) extras.event = lastAskEvent;
-        if (!extras.event && window.DreamLens && window.DreamLens.eventId) {
-          extras.event = {
-            id: window.DreamLens.eventId,
-            title: window.DreamLens.eventTitle || "This event",
-          };
-        }
-      }
-
-      setAskReply(data.reply || "No reply from DreamLens.", false, extras);
+      pending.remove();
+      appendLensBubble(threadEl, "assistant", reply, { events: events });
+      thread.push({ role: "assistant", content: reply, events: events });
+      saveLensThread(thread);
     } catch (err) {
-      console.warn("AI search failed", err);
-      setAskReply(err.message || "Ask failed. Try again.", true);
+      pending.remove();
+      const errText = err.message || "Ask failed. Try again.";
+      appendLensBubble(threadEl, "assistant", errText, { error: true });
     } finally {
       if (submitBtn) {
         submitBtn.disabled = false;
@@ -620,30 +561,26 @@
     }
   }
 
-  function initSearch() {
-    const form = document.getElementById("ai-search-form");
-    const input = document.getElementById("ai-search-input");
+  function initLensChat() {
+    const threadEl = document.getElementById("lens-thread");
+    if (!threadEl) return;
+    const emptyEl = document.getElementById("lens-empty");
+    const form = document.getElementById("lens-form");
+    const input = document.getElementById("lens-input");
+    const submitBtn = document.getElementById("lens-submit");
+    renderLensThread(threadEl, emptyEl, loadLensThread());
     if (form && input) {
       form.addEventListener("submit", function (e) {
         e.preventDefault();
-        submitAiSearch(input.value);
+        const text = input.value;
+        input.value = "";
+        sendLensMessage(text, threadEl, emptyEl, input, submitBtn);
       });
     }
-
-    const heroForm = document.getElementById("hero-search-form");
-    if (heroForm) {
-      heroForm.addEventListener("submit", function (e) {
-        e.preventDefault();
-        const heroInput = heroForm.querySelector("input");
-        if (heroInput) submitAiSearch(heroInput.value);
-      });
-    }
-
-    document.querySelectorAll("[data-search-chip]").forEach(function (chip) {
+    document.querySelectorAll("[data-lens-chip]").forEach(function (chip) {
       chip.addEventListener("click", function () {
-        const q = chip.getAttribute("data-search-chip");
-        if (input) input.value = q;
-        submitAiSearch(q);
+        const q = chip.getAttribute("data-lens-chip");
+        sendLensMessage(q, threadEl, emptyEl, input, submitBtn);
       });
     });
   }
@@ -867,10 +804,84 @@
     return "$" + p.toFixed(2);
   }
 
-  function calcPayout(amount, price) {
+  function formatCents(price) {
+    return formatUsd(price);
+  }
+
+  function payoutParts(pay, price) {
+    const stake = parseFloat(pay) || 0;
     const p = parseFloat(price);
-    if (!p || p <= 0) return amount;
-    return (amount / p).toFixed(2);
+    if (!p || p <= 0 || stake <= 0) {
+      return { pay: stake, payout: 0, profit: 0, loss: stake };
+    }
+    const payout = stake / p;
+    return { pay: stake, payout: payout, profit: payout - stake, loss: stake };
+  }
+
+  function calcPayout(amount, price) {
+    return payoutParts(amount, price).payout.toFixed(2);
+  }
+
+  function renderTradeMath() {
+    const state = DreamLens.tradeState || {};
+    const amountInput = document.getElementById("modal-amount");
+    const amount = parseFloat(amountInput && amountInput.value) || 5;
+    const parts = payoutParts(amount, state.entryPrice);
+    const setText = function (id, text) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = text;
+    };
+    setText("modal-pay", formatUsd(parts.pay));
+    setText("modal-payout", formatUsd(parts.payout));
+    setText("modal-profit", formatUsd(parts.profit));
+    setText("modal-loss", formatUsd(parts.loss));
+    setText("review-risk", formatUsd(parts.loss));
+    setText("review-payout", formatUsd(parts.payout));
+    setText("review-event", state.eventTitle || "—");
+    setText("review-expires", state.eventExpiry ? formatCountdown(state.eventExpiry) : "—");
+    setText("review-buying", state.outcome || "—");
+    setText("review-needs", state.eventTitle || "—");
+    setText("modal-needs", "What needs to happen? " + (state.eventTitle || "—"));
+    setText("modal-ends", state.eventExpiry ? formatCountdown(state.eventExpiry) : "—");
+    const outcomeLine = document.getElementById("modal-outcome-line");
+    if (outcomeLine) {
+      outcomeLine.textContent = (state.outcome || "") + " " + formatCents(state.entryPrice);
+    }
+  }
+
+  function showTradeStep(n) {
+    DreamLens.tradeStep = n;
+    document.querySelectorAll("[data-trade-step]").forEach(function (el) {
+      const match = Number(el.getAttribute("data-trade-step")) === n;
+      el.hidden = !match;
+    });
+    const title = document.getElementById("trade-modal-title");
+    const nextBtn = document.getElementById("modal-next");
+    const backBtn = document.getElementById("modal-back");
+    const confirmBtn = document.getElementById("modal-confirm-trade");
+    const state = DreamLens.tradeState || {};
+    if (title) {
+      title.textContent = n === 1 ? "Buy " + (state.outcome || "") : n === 2 ? "Review trade" : "Trade Check";
+    }
+    if (nextBtn) {
+      nextBtn.hidden = n === 3;
+      nextBtn.textContent = n === 1 ? "Review trade" : "Continue to Trade Check";
+    }
+    if (backBtn) backBtn.hidden = n === 1;
+    if (confirmBtn) confirmBtn.hidden = n !== 3;
+    if (n === 3) {
+      const funded = Boolean(getConnectedAddress());
+      const list = document.getElementById("trade-check-list");
+      if (list) {
+        list.innerHTML =
+          "<li>✓ Event understood</li>" +
+          "<li>✓ Event still active</li>" +
+          "<li>✓ Amount within limit</li>" +
+          "<li>✓ Maximum loss shown</li>" +
+          "<li>" + (funded ? "✓" : "○") + " Smart Account funded</li>" +
+          "<li>✓ Execution through DreamDEX</li>";
+      }
+    }
   }
 
   function openTradeModal(opts) {
@@ -882,30 +893,34 @@
       outcome: opts.outcome,
       entryPrice: opts.price,
       eventTitle: opts.eventTitle,
+      eventExpiry: opts.eventExpiry || "",
       copyExecutionId: opts.copyExecutionId || null,
     };
 
-    document.getElementById("modal-event-title").textContent = opts.eventTitle || "—";
-    document.getElementById("modal-outcome").textContent = opts.outcome || "—";
-    document.getElementById("modal-entry").textContent = formatUsd(opts.price);
+    const titleEl = document.getElementById("modal-event-title");
+    if (titleEl) titleEl.textContent = opts.eventTitle || "—";
+    const outcomeEl = document.getElementById("modal-outcome");
+    if (outcomeEl) outcomeEl.textContent = opts.outcome || "—";
+    const entryEl = document.getElementById("modal-entry");
+    if (entryEl) entryEl.textContent = formatCents(opts.price);
 
     const amountInput = document.getElementById("modal-amount");
-    if (opts.amount != null && amountInput) {
-      amountInput.value = String(opts.amount);
-    }
     if (amountInput) {
+      amountInput.value = String(opts.amount != null ? opts.amount : 5);
       amountInput.readOnly = Boolean(opts.copyExecutionId);
     }
-    const amount = parseFloat(amountInput && amountInput.value) || 10;
-    document.getElementById("modal-payout").textContent = "$" + calcPayout(amount, opts.price);
+    document.querySelectorAll("[data-trade-amount]").forEach(function (chip) {
+      chip.classList.toggle("is-active", chip.getAttribute("data-trade-amount") === String(amountInput && amountInput.value));
+    });
+    const understand = document.getElementById("trade-understand");
+    if (understand) understand.checked = false;
+    const details = document.getElementById("modal-tx-details");
+    if (details) details.textContent = "Transaction details appear after you confirm.";
 
-    document.getElementById("modal-tx-details").textContent = "Preparing transaction…";
+    renderTradeMath();
+    showTradeStep(1);
     modal.classList.add("is-open");
     modal.setAttribute("aria-hidden", "false");
-
-    prepareTrade().catch(function () {
-      /* shown in the modal */
-    });
   }
 
   function closeTradeModal() {
@@ -1082,7 +1097,7 @@
     const address = getConnectedAddress();
 
     document.getElementById("modal-payout").textContent =
-      "$" + calcPayout(amount, state.entryPrice);
+      formatUsd(calcPayout(amount, state.entryPrice));
 
     if (!address) {
       if (details) details.textContent = "Connect your wallet, then confirm to send the order on-chain.";
@@ -1196,7 +1211,7 @@
     } finally {
       if (btn) {
         btn.disabled = false;
-        btn.textContent = "Confirm & Trade";
+        btn.textContent = "Confirm Trade";
       }
     }
   }
@@ -1209,6 +1224,8 @@
           outcome: btn.getAttribute("data-outcome"),
           price: btn.getAttribute("data-price"),
           eventTitle: btn.getAttribute("data-event-title"),
+          eventExpiry: btn.getAttribute("data-event-expiry"),
+          amount: btn.getAttribute("data-amount"),
         });
       });
     });
@@ -1217,16 +1234,46 @@
       el.addEventListener("click", closeTradeModal);
     });
 
+    document.querySelectorAll("[data-trade-amount]").forEach(function (chip) {
+      chip.addEventListener("click", function () {
+        document.querySelectorAll("[data-trade-amount]").forEach(function (c) {
+          c.classList.remove("is-active");
+        });
+        chip.classList.add("is-active");
+        const amountInput = document.getElementById("modal-amount");
+        if (amountInput) amountInput.value = chip.getAttribute("data-trade-amount");
+        renderTradeMath();
+      });
+    });
+
     const amountInput = document.getElementById("modal-amount");
     if (amountInput) {
+      amountInput.addEventListener("input", renderTradeMath);
       amountInput.addEventListener("change", function () {
-        const amount = parseFloat(amountInput.value) || 10;
-        const payout = calcPayout(amount, DreamLens.tradeState.entryPrice);
-        document.getElementById("modal-payout").textContent = "$" + payout;
-        if (DreamLens.tradeState && DreamLens.tradeState.copyExecutionId) return;
-        prepareTrade().catch(function () {
-          /* shown in the modal */
-        });
+        renderTradeMath();
+      });
+    }
+
+    const nextBtn = document.getElementById("modal-next");
+    if (nextBtn) {
+      nextBtn.addEventListener("click", function () {
+        const step = DreamLens.tradeStep || 1;
+        if (step === 1) {
+          showTradeStep(2);
+          return;
+        }
+        const understand = document.getElementById("trade-understand");
+        if (understand && !understand.checked) {
+          alert("Confirm that you understand you can lose the amount you paid.");
+          return;
+        }
+        showTradeStep(3);
+      });
+    }
+    const backBtn = document.getElementById("modal-back");
+    if (backBtn) {
+      backBtn.addEventListener("click", function () {
+        showTradeStep(Math.max(1, (DreamLens.tradeStep || 2) - 1));
       });
     }
 
@@ -1502,23 +1549,31 @@
         return;
       }
 
-      const consider = {};
+      const consider = {
+        trader_confidence: true,
+        historical_performance: true,
+        liquidity: true,
+        market_movement: true,
+        consensus: true,
+        copy_every: false,
+      };
       form.querySelectorAll('input[name="consider"]').forEach(function (cb) {
         consider[cb.value] = cb.checked;
       });
 
       const modeEl = form.querySelector('input[name="scw_mode"]:checked');
-      const rawMode = modeEl ? modeEl.value : "REVIEW";
       let copyMode = "SMART";
-      let autoExecute = false;
-      if (rawMode === "SMART_AUTO") {
-        autoExecute = true;
-      } else if (rawMode === "CONSENSUS") {
-        copyMode = "CONSENSUS";
+      let autoExecute = true;
+      if (modeEl) {
+        autoExecute = false;
+        if (modeEl.value === "SMART_AUTO") autoExecute = true;
+        else if (modeEl.value === "CONSENSUS") copyMode = "CONSENSUS";
       }
 
-      const minWr = Number(document.getElementById("scw-min-wr").value) || 65;
-      const minCons = Number(document.getElementById("scw-min-cons").value) || 60;
+      const minWrEl = document.getElementById("scw-min-wr");
+      const minConsEl = document.getElementById("scw-min-cons");
+      const minWr = Number(minWrEl && minWrEl.value) || 65;
+      const minCons = Number(minConsEl && minConsEl.value) || 60;
 
       const payload = {
         trader_id: Number(traderId),
@@ -2364,6 +2419,255 @@
     });
   }
 
+  function initViewMode() {
+    const stored = sessionStorage.getItem("dreamlens_view") || "simple";
+    const body = document.body;
+    const btn = document.getElementById("view-mode-toggle");
+    function apply(mode) {
+      body.setAttribute("data-view", mode);
+      sessionStorage.setItem("dreamlens_view", mode);
+      if (btn) {
+        btn.textContent = mode === "advanced" ? "Advanced" : "Simple";
+        btn.setAttribute("aria-pressed", mode === "advanced" ? "true" : "false");
+      }
+    }
+    apply(stored === "advanced" ? "advanced" : "simple");
+    if (btn) {
+      btn.addEventListener("click", function () {
+        const next = body.getAttribute("data-view") === "advanced" ? "simple" : "advanced";
+        apply(next);
+      });
+    }
+  }
+
+  function initIntentFilters() {
+    const chips = document.querySelectorAll("[data-intent-filter]");
+    if (!chips.length) return;
+    const empty = document.getElementById("market-empty");
+    function cards() {
+      return document.querySelectorAll(".dl-event-card");
+    }
+    chips.forEach(function (chip) {
+      chip.addEventListener("click", function () {
+        chips.forEach(function (c) {
+          c.classList.remove("is-active");
+          c.setAttribute("aria-pressed", "false");
+        });
+        chip.classList.add("is-active");
+        chip.setAttribute("aria-pressed", "true");
+        const intent = chip.getAttribute("data-intent-filter") || "all";
+        let visible = 0;
+        cards().forEach(function (card) {
+          const tags = (card.getAttribute("data-intent") || "").toLowerCase();
+          const show = intent === "all" || tags.indexOf(intent) !== -1;
+          card.hidden = !show;
+          if (show) visible += 1;
+        });
+        if (empty) empty.hidden = visible > 0;
+      });
+    });
+  }
+
+  function renderHeadlineList(listEl, headlines) {
+    if (!listEl) return;
+    listEl.replaceChildren();
+    if (!headlines || !headlines.length) {
+      const empty = document.createElement("li");
+      empty.className = "dl-feed__empty";
+      empty.textContent = "No headlines right now. Check back in a few minutes.";
+      listEl.appendChild(empty);
+      return;
+    }
+    headlines.forEach(function (row) {
+      const li = document.createElement("li");
+      li.className = "dl-feed__item";
+      const link = document.createElement("a");
+      link.href = row.url || "#";
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = row.title || "Headline";
+      const meta = document.createElement("div");
+      meta.className = "dl-feed__meta";
+      const bits = [row.source, row.ago].filter(Boolean);
+      if (row.assets && row.assets.length) bits.push(row.assets.join(" · "));
+      meta.textContent = bits.join(" · ");
+      li.appendChild(link);
+      li.appendChild(meta);
+      listEl.appendChild(li);
+    });
+  }
+
+  async function fetchHeadlines(asset, limit) {
+    const params = new URLSearchParams();
+    if (asset) params.set("asset", asset);
+    if (limit) params.set("limit", String(limit));
+    const url = "/api/news/" + (params.toString() ? "?" + params.toString() : "");
+    const res = await fetch(url, { headers: { Accept: "application/json" } });
+    const data = await res.json().catch(function () { return {}; });
+    if (!res.ok) throw new Error("Could not load headlines.");
+    return data.headlines || [];
+  }
+
+  function initMarketFeed() {
+    const feeds = document.querySelectorAll("[data-market-feed]");
+    if (!feeds.length) return;
+
+    function loadFeed(root) {
+      const list = root.querySelector("[data-feed-list]");
+      const live = root.querySelector("[data-feed-live]");
+      const asset = (root.getAttribute("data-feed-asset") || "").toUpperCase();
+      const limit = root.getAttribute("data-feed-limit");
+      fetchHeadlines(asset || null, limit)
+        .then(function (headlines) {
+          renderHeadlineList(list, headlines);
+          if (live) live.hidden = headlines.length === 0;
+        })
+        .catch(function () {
+          renderHeadlineList(list, []);
+          if (live) live.hidden = true;
+        });
+    }
+
+    feeds.forEach(loadFeed);
+    window.setInterval(function () {
+      feeds.forEach(loadFeed);
+    }, 180000);
+  }
+
+  const EXPLAIN_SECTIONS = [
+    ["setup", "What's going on"],
+    ["yes_needs", "What YES needs"],
+    ["no_needs", "What NO needs"],
+    ["in_the_price", "What's already in the price"],
+    ["could_change", "What could change this"],
+  ];
+
+  function renderExplanation(body, explanation, fallback) {
+    if (!body) return;
+    body.replaceChildren();
+    if (explanation) {
+      EXPLAIN_SECTIONS.forEach(function (pair) {
+        const text = explanation[pair[0]];
+        if (!text) return;
+        const section = document.createElement("section");
+        section.className = "dl-explain__section";
+        const heading = document.createElement("h3");
+        heading.textContent = pair[1];
+        const para = document.createElement("p");
+        para.textContent = text;
+        section.appendChild(heading);
+        section.appendChild(para);
+        body.appendChild(section);
+      });
+      if (body.childNodes.length) return;
+    }
+    body.textContent = fallback || "No explanation right now.";
+  }
+
+  function initExplainSheet() {
+    const sheet = document.getElementById("explain-sheet");
+    if (!sheet) return;
+    const body = document.getElementById("explain-body");
+    const questionEl = document.getElementById("explain-question");
+    const lensLink = document.getElementById("explain-lens-link");
+    const newsWrap = document.getElementById("explain-news");
+    const newsList = document.getElementById("explain-news-list");
+
+    function close() {
+      sheet.classList.remove("is-open");
+      sheet.setAttribute("aria-hidden", "true");
+    }
+    sheet.querySelectorAll("[data-explain-close]").forEach(function (el) {
+      el.addEventListener("click", close);
+    });
+
+    document.querySelectorAll("[data-explain-event]").forEach(function (btn) {
+      btn.addEventListener("click", async function () {
+        const eventId = btn.getAttribute("data-explain-event");
+        const question = btn.getAttribute("data-explain-question") || "";
+        const asset = (
+          btn.getAttribute("data-explain-asset") ||
+          (btn.closest("[data-asset]") && btn.closest("[data-asset]").getAttribute("data-asset")) ||
+          ""
+        ).toUpperCase();
+        if (questionEl) questionEl.textContent = question;
+        if (body) body.textContent = "DreamLens is reading this market…";
+        if (newsWrap) newsWrap.hidden = true;
+        if (lensLink && eventId) {
+          lensLink.setAttribute("href", "/lens/?event=" + encodeURIComponent(eventId));
+        }
+        sheet.classList.add("is-open");
+        sheet.setAttribute("aria-hidden", "false");
+        if (asset && newsList) {
+          fetchHeadlines(asset, 4)
+            .then(function (headlines) {
+              if (!headlines.length) return;
+              renderHeadlineList(newsList, headlines);
+              if (newsWrap) newsWrap.hidden = false;
+            })
+            .catch(function () { /* keep the explanation even if news fails */ });
+        }
+        try {
+          const res = await csrfFetch("/api/ai/lens/", {
+            method: "POST",
+            body: JSON.stringify({
+              message: "Explain this market in plain language. What would have to happen for YES to win? Do not suggest a trade.",
+              history: [],
+              event_id: Number(eventId),
+              structured: true,
+            }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.detail || "Could not explain this market.");
+          if (data.prepare_params || (data.tool_results && data.tool_results.prepare_params)) {
+            throw new Error("Lens does not prepare trades.");
+          }
+          renderExplanation(body, data.explanation, data.reply);
+        } catch (err) {
+          if (body) body.textContent = err.message || "Could not explain this market.";
+        }
+      });
+    });
+  }
+
+  function initPossibleResult() {
+    const grid = document.getElementById("possible-grid");
+    if (!grid) return;
+    const yesPrice = parseFloat(grid.getAttribute("data-yes-price") || "0.5");
+    const noPrice = parseFloat(grid.getAttribute("data-no-price") || "0.5");
+
+    function fill(side, price, amount) {
+      const parts = payoutParts(amount, price);
+      const pay = grid.querySelector("[data-possible-pay='" + side + "']");
+      const payout = grid.querySelector("[data-possible-payout='" + side + "']");
+      const profit = grid.querySelector("[data-possible-profit='" + side + "']");
+      const loss = grid.querySelector("[data-possible-loss='" + side + "']");
+      if (pay) pay.textContent = formatUsd(parts.pay);
+      if (payout) payout.textContent = formatUsd(parts.payout);
+      if (profit) profit.textContent = formatUsd(parts.profit);
+      if (loss) loss.textContent = formatUsd(parts.loss);
+    }
+
+    function apply(amount) {
+      fill("yes", yesPrice, amount);
+      fill("no", noPrice, amount);
+      document.querySelectorAll(".dl-trade-trigger[data-amount]").forEach(function (btn) {
+        btn.setAttribute("data-amount", String(amount));
+      });
+    }
+
+    document.querySelectorAll("[data-possible-amount]").forEach(function (chip) {
+      chip.addEventListener("click", function () {
+        document.querySelectorAll("[data-possible-amount]").forEach(function (c) {
+          c.classList.remove("is-active");
+        });
+        chip.classList.add("is-active");
+        apply(chip.getAttribute("data-possible-amount") || "5");
+      });
+    });
+    apply(5);
+  }
+
   /* ── Init ── */
   listenForWalletProviders();
   document.addEventListener("DOMContentLoaded", function () {
@@ -2373,11 +2677,16 @@
     const walletBtn = document.getElementById("wallet-connect");
     if (walletBtn) walletBtn.addEventListener("click", connectWallet);
 
-    initSearch();
+    initViewMode();
+    initLensChat();
     initLensTabs();
     initCountdowns();
     initMarketFilters();
     initRadarFilters();
+    initIntentFilters();
+    initMarketFeed();
+    initExplainSheet();
+    initPossibleResult();
     initTradeModal();
     initCopyForm();
     initFollowButtons();
@@ -2681,7 +2990,21 @@
 
     if (pauseBtn) {
       pauseBtn.addEventListener("click", function () {
-        patchStatus("PAUSED").catch(function (e) { toast(e.message, "error"); });
+        const pauseModal = document.getElementById("agent-pause-modal");
+        const confirm = document.getElementById("agent-pause-confirm");
+        if (pauseModal && typeof pauseModal.showModal === "function") {
+          if (confirm) {
+            confirm.onclick = function () {
+              pauseModal.close();
+              patchStatus("PAUSED").catch(function (e) { toast(e.message, "error"); });
+            };
+          }
+          pauseModal.showModal();
+          return;
+        }
+        if (window.confirm("Pause Dream Agent? Your funds stay. No new autonomous trades.")) {
+          patchStatus("PAUSED").catch(function (e) { toast(e.message, "error"); });
+        }
       });
     }
     if (resumeBtn) {

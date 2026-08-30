@@ -14,7 +14,7 @@ from django.core.cache import cache
 from django.db import close_old_connections, transaction
 from django.utils import timezone
 
-from apps.dreamcopy.models import TraderProfile, TraderTrade
+from apps.dreamcopy.models import CopyRelationship, TraderProfile, TraderTrade
 from apps.events.models import EventContract, EventOutcome
 from integrations.dreamdex.adapter import get_adapter
 from integrations.dreamdex.exceptions import DreamDEXUnavailable
@@ -375,19 +375,18 @@ def sync_traders_from_fills() -> dict[str, int]:
         except Exception:
             logger.warning("get_fills failed pool=%s", event.pool_address, exc_info=True)
 
-    if not any(fills_by_event.values()):
-        get_recent = getattr(adapter, "get_recent_fills", None)
-        if callable(get_recent):
-            try:
-                for fill in get_recent(limit=300) or []:
-                    mid = (getattr(fill, "market_id", None) or "").lower()
-                    event = events_by_market.get(mid) or events_by_pool.get(
-                        (fill.pool or "").lower()
-                    )
-                    if event and _fill_belongs_to_event(fill, event):
-                        fills_by_event[event.pk].append(fill)
-            except Exception:
-                logger.warning("get_recent_fills failed", exc_info=True)
+    get_recent = getattr(adapter, "get_recent_fills", None)
+    if callable(get_recent):
+        try:
+            for fill in get_recent(limit=300) or []:
+                mid = (getattr(fill, "market_id", None) or "").lower()
+                event = events_by_market.get(mid) or events_by_pool.get(
+                    (fill.pool or "").lower()
+                )
+                if event and _fill_belongs_to_event(fill, event):
+                    fills_by_event[event.pk].append(fill)
+        except Exception:
+            logger.warning("get_recent_fills failed", exc_info=True)
 
     with transaction.atomic():
         result = _write_indexed_fills(events, fills_by_event)
@@ -460,10 +459,18 @@ def _write_indexed_fills(events, fills_by_event: dict[int, list]) -> dict:
         }
 
     addresses = list(wallet_stats.keys())
-    existing_profiles = {
-        row.wallet_address: row
-        for row in TraderProfile.objects.filter(wallet_address__in=addresses)
-    }
+    existing_profiles: dict[str, TraderProfile] = {}
+    for row in TraderProfile.objects.filter(wallet_address__in=addresses):
+        existing_profiles[row.wallet_address.lower()] = row
+    missing = [addr for addr in addresses if addr not in existing_profiles]
+    if missing:
+        from django.db.models import Q
+
+        lookup = Q()
+        for addr in missing:
+            lookup |= Q(wallet_address__iexact=addr)
+        for row in TraderProfile.objects.filter(lookup):
+            existing_profiles[row.wallet_address.lower()] = row
     new_profiles = [
         TraderProfile(wallet_address=addr, display_name=addr[:10])
         for addr in addresses
@@ -471,10 +478,18 @@ def _write_indexed_fills(events, fills_by_event: dict[int, list]) -> dict:
     ]
     if new_profiles:
         TraderProfile.objects.bulk_create(new_profiles, ignore_conflicts=True, batch_size=200)
-        existing_profiles = {
-            row.wallet_address: row
-            for row in TraderProfile.objects.filter(wallet_address__in=addresses)
-        }
+        existing_profiles = {}
+        for row in TraderProfile.objects.filter(wallet_address__in=addresses):
+            existing_profiles[row.wallet_address.lower()] = row
+        still_missing = [addr for addr in addresses if addr not in existing_profiles]
+        if still_missing:
+            from django.db.models import Q
+
+            lookup = Q()
+            for addr in still_missing:
+                lookup |= Q(wallet_address__iexact=addr)
+            for row in TraderProfile.objects.filter(lookup):
+                existing_profiles[row.wallet_address.lower()] = row
 
     existing_external = set(
         TraderTrade.objects.filter(
@@ -545,15 +560,26 @@ def _write_indexed_fills(events, fills_by_event: dict[int, list]) -> dict:
     )
 
     recent_cutoff = now - timedelta(minutes=45)
-    newly_created_ids = list(
-        TraderTrade.objects.filter(
-            external_trade_id__in=[
-                row["external_trade_id"]
-                for row in pending_trades
-                if row["opened_at"] >= recent_cutoff
-            ]
-        ).values_list("pk", flat=True)
+    new_external = [row.external_trade_id for row in trades_to_create]
+    created_ids = list(
+        TraderTrade.objects.filter(external_trade_id__in=new_external).values_list(
+            "pk", flat=True
+        )
+    ) if new_external else []
+    followed_ids = list(
+        CopyRelationship.objects.filter(
+            status=CopyRelationship.Status.ACTIVE
+        ).values_list("trader_id", flat=True)
     )
+    replay_ids = []
+    if followed_ids:
+        replay_ids = list(
+            TraderTrade.objects.filter(
+                trader_id__in=followed_ids,
+                opened_at__gte=recent_cutoff,
+            ).values_list("pk", flat=True)
+        )
+    newly_created_ids = list({*created_ids, *replay_ids})
 
     logger.info(
         "sync_traders_from_fills profiles_created=%s trades_created=%s",

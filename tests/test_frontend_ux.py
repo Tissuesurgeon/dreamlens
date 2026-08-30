@@ -18,6 +18,7 @@ from services.event_copy import (
     format_payout_block,
     format_window_line,
     payout_math,
+    watching_brief,
 )
 from services import telegram_bot_service
 
@@ -64,6 +65,7 @@ def test_nav_and_testnet_chrome(client):
     res = client.get("/home/")
     assert res.status_code == 200
     body = res.content.decode()
+    assert 'data-authenticated="1"' not in body.split("<body", 1)[-1].split(">", 1)[0]
     assert ">Home<" in body
     assert 'href="/" class="dl-brand"' in body
     assert ">Discover<" in body
@@ -122,6 +124,12 @@ def test_event_detail_both_sides_and_explain(client, sample_event):
     assert "Potential profit" in body
     assert "Maximum loss" in body
     assert "Why DreamLens is watching" in body
+    assert "DreamLens Score" in body
+    assert "YES is" in body
+    assert "Fills" in body
+    assert "Traders" in body
+    assert "Liquidity" in body
+    assert "chance of winning" not in body.lower()
     assert "Explain this market" in body
     assert "News that can move this window" in body
     assert 'id="explain-sheet"' in body
@@ -166,6 +174,29 @@ def test_window_copy_never_says_ends_in_expired(sample_event, expired_event):
     settled = event_window_copy(expired_event)
     assert settled["line"] == "Settled · YES won"
     assert "claim on Portfolio" in settled["blurb"]
+
+
+@pytest.mark.django_db
+def test_watching_brief_has_facts_not_probability(sample_event):
+    brief = watching_brief(sample_event)
+    assert 0 <= brief["score"] <= 100
+    assert brief["lead"]
+    assert brief["reading"]
+    assert any(item.startswith("YES ") for item in brief["facts"])
+    assert any(item.startswith("NO ") for item in brief["facts"])
+    labels = {row["label"] for row in brief["pillars"]}
+    assert labels == {"Fills", "Liquidity", "Traders", "Time"}
+    assert "chance" not in brief["lead"].lower()
+    assert "chance" not in brief["reading"].lower()
+
+
+@pytest.mark.django_db
+def test_watching_brief_closed_window(expired_event):
+    brief = watching_brief(expired_event)
+    assert brief["open"] is False
+    assert "closed" in brief["reading"].lower()
+    time_pillar = next(row for row in brief["pillars"] if row["key"] == "time")
+    assert time_pillar["band"] == "Closed"
 
 
 @pytest.mark.django_db

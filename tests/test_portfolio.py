@@ -164,6 +164,7 @@ def test_portfolio_lists_followed_traders_and_action(client, user, copy_relation
     res = client.get("/portfolio/")
     assert res.status_code == 200
     body = res.content.decode()
+    assert 'data-authenticated="1"' in body
     assert "Following" in body
     assert "AlphaTrader" in body
     assert "Copy now" in body

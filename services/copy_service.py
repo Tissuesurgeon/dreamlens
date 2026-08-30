@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import timedelta
 from decimal import Decimal
 
 from django.db import IntegrityError, transaction
@@ -56,8 +57,14 @@ def _copy_amount(relationship: CopyRelationship, source_trade: TraderTrade) -> D
     return amount
 
 
-@transaction.atomic
 def create_copy_relationship(user, data: dict) -> CopyRelationship:
+    rel = _upsert_copy_relationship(user, data)
+    _replay_recent_followed_trades(rel)
+    return rel
+
+
+@transaction.atomic
+def _upsert_copy_relationship(user, data: dict) -> CopyRelationship:
     from services.trader_service import ensure_trader_profile, normalize_trader_wallet
 
     trader_id = data.get("trader_id")
@@ -102,6 +109,27 @@ def create_copy_relationship(user, data: dict) -> CopyRelationship:
     )
     _include_trader_on_agent_allowlist(user, rel.trader)
     return rel
+
+
+def _replay_recent_followed_trades(relationship: CopyRelationship) -> None:
+    """Catch fills already indexed before this follow was saved."""
+    if relationship.status != CopyRelationship.Status.ACTIVE:
+        return
+    cutoff = timezone.now() - timedelta(minutes=45)
+    trades = (
+        TraderTrade.objects.filter(trader_id=relationship.trader_id, opened_at__gte=cutoff)
+        .select_related("trader", "event", "outcome")
+        .order_by("-opened_at")[:20]
+    )
+    for trade in trades:
+        try:
+            detect_and_process_copy(trade)
+        except Exception:
+            logger.exception(
+                "replay follow alert failed rel=%s trade=%s",
+                relationship.pk,
+                trade.pk,
+            )
 
 
 @transaction.atomic
@@ -217,16 +245,21 @@ def detect_and_process_copy(source_trade: TraderTrade) -> list[CopyExecution]:
         ai_confidence = scored.confidence
         reason = ""
         status = CopyExecution.Status.PENDING
+        extra_risks = list(scored.risks or [])
 
-        if scored.decision == "SKIP":
+        if not rel.auto_execute:
+            # Notify-me: always alert. Score/risk stay on the card for the user.
+            status = CopyExecution.Status.PENDING
+            reason = "Notify me — confirm on DreamLens or skip."
+            if scored.decision == "SKIP":
+                extra_risks.extend(scored.skip_reasons or ["Copy Score below threshold"])
+        elif scored.decision == "SKIP":
             status = CopyExecution.Status.SKIPPED
             reason = "; ".join(scored.skip_reasons) or "Copy Score below threshold"
         else:
             wallet = rel.user.wallets.filter(is_primary=True).first()
             wallet_address = wallet.address if wallet else ""
 
-            # REVIEW mode: allow missing wallet at score time; require it at prepare.
-            # Risk still checks limits / event / relationship.
             ctx = RiskContext(
                 event=source_trade.event,
                 outcome=source_trade.outcome,
@@ -248,11 +281,7 @@ def detect_and_process_copy(source_trade: TraderTrade) -> list[CopyExecution]:
                 ai_decision = "SKIP"
             else:
                 status = CopyExecution.Status.PENDING
-                reason = (
-                    "DreamAgent is not Active — confirm this copy, or start the agent."
-                    if rel.auto_execute
-                    else "Notify me — confirm on DreamLens or skip."
-                )
+                reason = "DreamAgent is not Active — confirm this copy, or start the agent."
 
         try:
             execution = CopyExecution.objects.create(
@@ -263,7 +292,7 @@ def detect_and_process_copy(source_trade: TraderTrade) -> list[CopyExecution]:
                 copy_score=scored.overall,
                 score_json=scored.pillars,
                 why_json=scored.why,
-                risks_json=scored.risks,
+                risks_json=extra_risks,
                 amount=amount,
                 status=status,
                 reason=reason,

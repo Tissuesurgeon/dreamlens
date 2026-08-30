@@ -116,6 +116,11 @@ def notify_copy_pending(user, execution) -> None:
 
     chat_id = _active_chat_id(user)
     if chat_id is None:
+        logger.info(
+            "telegram copy alert skipped — no linked chat user=%s exec=%s",
+            getattr(user, "pk", None),
+            getattr(execution, "pk", None),
+        )
         return
     try:
         send_message(chat_id, body)

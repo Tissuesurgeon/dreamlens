@@ -143,18 +143,39 @@
       {% endif %}
 
       <section class="dl-watching" aria-labelledby="watching-heading">
-        <h2 id="watching-heading" class="dl-section__title">{% if event|window_is_open %}Why DreamLens is watching{% else %}Why DreamLens watched this{% endif %}</h2>
-        {% if event.dl_score %}
-        <p class="dl-watching__score">Score {{ event.dl_score.score }}/100</p>
-        <dl class="dl-score-dl">
-          <div><dt>Activity</dt><dd>{{ event.dl_score.activity }}</dd></div>
-          <div><dt>Liquidity</dt><dd>{{ event.dl_score.liquidity }}</dd></div>
-          <div><dt>Trader activity</dt><dd>{{ event.dl_score.trader_activity }}</dd></div>
-          <div><dt>Time remaining</dt><dd>{{ event.dl_score.time_remaining }}</dd></div>
-        </dl>
-        <p class="dl-score-why__note">{% score_disclaimer %}</p>
+        <header class="dl-watching__head">
+          <p class="dl-trade-kicker">DreamLens Score</p>
+          <h2 id="watching-heading" class="dl-section__title">{% if event.watching_brief.open %}Why DreamLens is watching{% else %}Why DreamLens watched this{% endif %}</h2>
+        </header>
+        {% if event.watching_brief %}
+        <div class="dl-watching__score-row">
+          <p class="dl-watching__score">{{ event.watching_brief.score }}<span>/100</span></p>
+          <p class="dl-watching__reading">{{ event.watching_brief.reading }}</p>
+        </div>
+        <p class="dl-watching__lead">{{ event.watching_brief.lead }}</p>
+        {% if event.watching_brief.facts %}
+        <p class="dl-watching__facts">
+          {% for fact in event.watching_brief.facts %}
+          <span>{{ fact }}</span>
+          {% endfor %}
+        </p>
         {% endif %}
-        <button type="button" class="dl-btn dl-btn--ghost" data-explain-event="{{ event.pk }}" data-explain-question="{{ event|question_copy }}" data-explain-asset="{{ event.underlying_asset|upper }}">Explain this market</button>
+        <ul class="dl-watching__pillars">
+          {% for pillar in event.watching_brief.pillars %}
+          <li class="dl-watching__pillar">
+            <span class="dl-watching__pillar-label">{{ pillar.label }}</span>
+            <strong class="dl-watching__pillar-band is-{{ pillar.band_class }}">{{ pillar.band }}</strong>
+            <p class="dl-watching__pillar-detail">{{ pillar.detail }}</p>
+          </li>
+          {% endfor %}
+        </ul>
+        <p class="dl-score-why__note">{{ event.watching_brief.disclaimer }}</p>
+        {% else %}
+        <p class="dl-watching__lead">DreamLens does not have a score for this window yet.</p>
+        {% endif %}
+        <div class="dl-watching__actions">
+          <button type="button" class="dl-btn dl-btn--ghost" data-explain-event="{{ event.pk }}" data-explain-question="{{ event|question_copy }}" data-explain-asset="{{ event.underlying_asset|upper }}">Explain this market</button>
+        </div>
       </section>
 
       {% include "components/market_feed.html" with feed_asset=event.underlying_asset feed_title="News that can move this window" feed_heading_id="event-feed-heading" feed_limit=6 %}

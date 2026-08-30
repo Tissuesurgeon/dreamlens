@@ -1894,15 +1894,20 @@
       shownIds[current.id] = true;
     });
 
+    function canPollAlerts() {
+      return document.body.getAttribute("data-authenticated") === "1" || !!getConnectedAddress();
+    }
+
     async function poll() {
       if (polling) return;
-      if (document.hidden) return;
-      if (!getConnectedAddress()) return;
+      if (!canPollAlerts()) return;
       polling = true;
       try {
         const res = await csrfFetch("/api/copy/pending/");
         if (res.status === 403 || res.status === 401) {
-          await syncWalletSession(getConnectedAddress(), { skipReload: true });
+          if (getConnectedAddress()) {
+            await syncWalletSession(getConnectedAddress(), { skipReload: true });
+          }
           return;
         }
         if (!res.ok) return;
@@ -1921,8 +1926,11 @@
       }
     }
 
-    setInterval(poll, 15000);
-    setTimeout(poll, 1200);
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden) poll();
+    });
+    setInterval(poll, 8000);
+    setTimeout(poll, 400);
   }
 
   /* ── Following pause / resume / settings ── */

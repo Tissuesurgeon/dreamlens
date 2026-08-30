@@ -148,6 +148,52 @@ def test_notify_mode_does_not_auto_copy_when_agent_is_running(
 
 
 @pytest.mark.django_db
+def test_notify_mode_alerts_even_when_score_skips(copy_relationship, source_trade):
+    from services.copy_score import CopyScoreResult
+
+    copy_relationship.auto_execute = False
+    copy_relationship.save(update_fields=["auto_execute"])
+    skip = CopyScoreResult(
+        decision="SKIP",
+        overall=20,
+        confidence=Decimal("0.2"),
+        pillars={},
+        why=[],
+        risks=["thin book"],
+        skip_reasons=["Copy Score below threshold"],
+        liquidity=Decimal("10"),
+    )
+    with patch("services.copy_service.evaluate_copy_score", return_value=skip):
+        rows = detect_and_process_copy(source_trade)
+
+    assert len(rows) == 1
+    assert rows[0].status == CopyExecution.Status.PENDING
+    assert "Copy Score below threshold" in (rows[0].risks_json or [])
+    assert Notification.objects.filter(
+        user=copy_relationship.user, kind="copy_pending"
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_follow_replays_recent_trade_as_alert(user, wallet, trader, source_trade):
+    rel = create_copy_relationship(
+        user,
+        {
+            "trader_id": trader.pk,
+            "copy_mode": CopyRelationship.CopyMode.SMART,
+            "auto_execute": False,
+            "min_win_rate": Decimal("0"),
+            "min_completed_events": 0,
+        },
+    )
+    assert rel.pk
+    pending = CopyExecution.objects.filter(relationship=rel, source_trade=source_trade)
+    assert pending.exists()
+    assert pending.get().status == CopyExecution.Status.PENDING
+    assert Notification.objects.filter(user=user, kind="copy_pending").exists()
+
+
+@pytest.mark.django_db
 def test_copy_now_uses_agent_when_running(copy_relationship, source_trade):
     copy_relationship.auto_execute = True
     copy_relationship.save(update_fields=["auto_execute"])

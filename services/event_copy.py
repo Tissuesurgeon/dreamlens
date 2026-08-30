@@ -332,6 +332,124 @@ def dreamlens_score(event: EventContract, *, trader_count: int | None = None) ->
         "trader_activity": _band(trader_pts),
         "time_remaining": _band(time_pts),
         "disclaimer": SCORE_DISCLAIMER,
+        "fills": trades,
+        "traders": traders,
+        "minutes_left": mins,
+    }
+
+
+def _score_reading(score: int, *, open_window: bool) -> str:
+    if not open_window:
+        if score >= 55:
+            return "This window was active before it closed."
+        return "This window was quiet before it closed."
+    if score >= 75:
+        return "The book is busy. Worth watching closely."
+    if score >= 55:
+        return "Enough activity to pay attention."
+    if score >= 35:
+        return "A mixed book. Some signal, not a crowd."
+    return "A thin book so far. Size carefully."
+
+
+def _band_class(band: str) -> str:
+    token = (band or "").strip().lower()
+    if token in {"high", "good", "medium", "low", "closed"}:
+        return token
+    return "medium"
+
+
+def watching_brief(event: EventContract, *, trader_count: int | None = None) -> dict[str, Any]:
+    """Plain-language 'why we're watching' for the event page."""
+    scored = dreamlens_score(event, trader_count=trader_count)
+    window = event_window_copy(event)
+    yes, no = yes_no_outcomes(event)
+    strike = event_strike_usd(event)
+    trades = int(scored.get("fills") or 0)
+    traders = int(scored.get("traders") or 0)
+    volume = getattr(event, "cumulative_quote_volume", None)
+    yes_px = as_cents(yes.current_price if yes else None)
+    no_px = as_cents(no.current_price if no else None)
+
+    facts: list[str] = []
+    if strike is not None and strike > 0:
+        facts.append(f"Strike {format_usd_plain(strike)}")
+    facts.append(f"YES {yes_px}")
+    facts.append(f"NO {no_px}")
+    facts.append(window["line"])
+
+    if window["open"]:
+        lead = f"YES is {yes_px} and NO is {no_px}. {window['line']}."
+        if trades:
+            lead += f" {trades} fill{'s' if trades != 1 else ''}"
+            if volume:
+                lead += f" for {format_collateral(volume)}"
+            lead += "."
+        else:
+            lead += " No fills indexed yet."
+        if scored["trader_activity"] in {"High", "Good"}:
+            lead += " DreamLens is watching because wallets are already in this window."
+        elif scored["liquidity"] == "Low":
+            lead += " DreamLens is watching a thin book — prices can jump."
+        elif scored["time_remaining"] in {"High", "Good"}:
+            lead += " DreamLens is watching because there is still time for the book to move."
+        else:
+            lead += " DreamLens is tracking this window against the live book."
+    else:
+        lead = window["blurb"] or "This window is closed."
+
+    volume_detail = (
+        f"{format_collateral(volume)} traded" if volume else "Little size in the book"
+    )
+    fill_detail = (
+        f"{trades} trade{'s' if trades != 1 else ''} this window"
+        if trades
+        else "No fills indexed yet"
+    )
+    trader_detail = (
+        f"{traders} wallet{'s' if traders != 1 else ''} counted"
+        if traders
+        else "No wallets counted yet"
+    )
+    time_band = scored["time_remaining"] if window["open"] else "Closed"
+    pillars = [
+        {
+            "key": "fills",
+            "label": "Fills",
+            "band": scored["activity"],
+            "band_class": _band_class(scored["activity"]),
+            "detail": fill_detail,
+        },
+        {
+            "key": "liquidity",
+            "label": "Liquidity",
+            "band": scored["liquidity"],
+            "band_class": _band_class(scored["liquidity"]),
+            "detail": volume_detail,
+        },
+        {
+            "key": "traders",
+            "label": "Traders",
+            "band": scored["trader_activity"],
+            "band_class": _band_class(scored["trader_activity"]),
+            "detail": trader_detail,
+        },
+        {
+            "key": "time",
+            "label": "Time",
+            "band": time_band,
+            "band_class": _band_class(time_band),
+            "detail": window["line"],
+        },
+    ]
+    return {
+        "score": scored["score"],
+        "reading": _score_reading(int(scored["score"]), open_window=window["open"]),
+        "lead": lead,
+        "facts": facts,
+        "pillars": pillars,
+        "open": window["open"],
+        "disclaimer": SCORE_DISCLAIMER,
     }
 
 
@@ -359,6 +477,7 @@ def annotate_event_display(event: EventContract, *, trader_count: int | None = N
     event.dl_score = dreamlens_score(event, trader_count=trader_count)  # noqa: SLF001
     event.intent_tags = intent_tags(event, event.dl_score)  # noqa: SLF001
     event.window_copy = event_window_copy(event)  # noqa: SLF001
+    event.watching_brief = watching_brief(event, trader_count=trader_count)  # noqa: SLF001
     return event
 
 

@@ -10,9 +10,12 @@
   <div class="dl-event-layout">
     <div class="dl-event-layout__main">
       <header class="dl-event-header">
-        <p class="dl-trade-kicker">What do you think will happen?</p>
+        <p class="dl-trade-kicker">{{ event|window_kicker }}</p>
         <h1 class="dl-event-header__title">{{ event|question_copy }}</h1>
-        <p class="dl-event-header__expiry">when this event expires · Ends in <span class="dl-countdown" data-expiry="{{ event.expiry_time|date:'c' }}">{{ event|ends_in }}</span></p>
+        <p class="dl-event-header__expiry{% if not event|window_is_open %} is-closed{% endif %}">{% include "components/window_line.html" %}</p>
+        {% if event|window_blurb %}
+        <p class="dl-event-header__base">{{ event|window_blurb }}</p>
+        {% endif %}
       </header>
 
       {% if user_positions %}
@@ -44,7 +47,8 @@
       </section>
       {% endif %}
 
-      <div class="dl-payout-tiles" aria-label="Prices">
+      <div class="dl-payout-tiles" aria-label="{% if event|window_is_open %}Prices{% else %}Last prices{% endif %}">
+        {% if event|window_is_open %}
         <button
           type="button"
           class="dl-payout-tile dl-payout-tile--yes dl-trade-trigger"
@@ -69,8 +73,21 @@
           <span class="dl-payout-tile__side">NO</span>
           <span class="dl-payout-tile__price">{% if no_outcome %}{{ no_outcome.current_price|as_cents }}{% else %}—{% endif %}</span>
         </button>
+        {% else %}
+        <div class="dl-payout-tile dl-payout-tile--yes is-closed">
+          <span class="dl-payout-tile__side">YES</span>
+          <span class="dl-payout-tile__price">{% if yes_outcome %}{{ yes_outcome.current_price|as_cents }}{% else %}—{% endif %}</span>
+          <span class="dl-payout-tile__hint">Last price</span>
+        </div>
+        <div class="dl-payout-tile dl-payout-tile--no is-closed">
+          <span class="dl-payout-tile__side">NO</span>
+          <span class="dl-payout-tile__price">{% if no_outcome %}{{ no_outcome.current_price|as_cents }}{% else %}—{% endif %}</span>
+          <span class="dl-payout-tile__hint">Last price</span>
+        </div>
+        {% endif %}
       </div>
 
+      {% if event|window_is_open %}
       <section class="dl-possible" aria-labelledby="possible-heading">
         <h2 id="possible-heading" class="dl-section__title">Your possible result</h2>
         <p class="dl-label">Try an amount</p>
@@ -123,9 +140,10 @@
           </article>
         </div>
       </section>
+      {% endif %}
 
       <section class="dl-watching" aria-labelledby="watching-heading">
-        <h2 id="watching-heading" class="dl-section__title">Why DreamLens is watching</h2>
+        <h2 id="watching-heading" class="dl-section__title">{% if event|window_is_open %}Why DreamLens is watching{% else %}Why DreamLens watched this{% endif %}</h2>
         {% if event.dl_score %}
         <p class="dl-watching__score">Score {{ event.dl_score.score }}/100</p>
         <dl class="dl-score-dl">

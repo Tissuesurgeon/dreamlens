@@ -1,0 +1,6 @@
+{% load dreamlens_extras %}
+<span
+  class="dl-window{% if not event|window_is_open %} is-closed{% endif %}"
+  data-expiry="{{ event.expiry_time|date:'c' }}"
+  data-closed-label="{{ event|window_closed_label }}"
+>{% if event|window_is_open %}Ends in <span class="dl-countdown">{{ event|ends_in }}</span>{% else %}{{ event|window_line }}{% endif %}</span>

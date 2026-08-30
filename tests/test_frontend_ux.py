@@ -8,12 +8,15 @@ import pytest
 from django.urls import reverse
 
 from apps.dreamcopy.models import CopyExecution
+from apps.events.models import EventContract
 from services.event_copy import (
     SCORE_DISCLAIMER,
     as_cents,
     event_question,
+    event_window_copy,
     format_event_card_text,
     format_payout_block,
+    format_window_line,
     payout_math,
 )
 from services import telegram_bot_service
@@ -136,6 +139,52 @@ def test_event_detail_both_sides_and_explain(client, sample_event):
     assert "Review trade" in body
     assert "Trade Check" in body
     assert "I understand that I can lose the amount I paid." in body
+    assert "when this event expires" not in body
+    assert "Ends in Expired" not in body
+
+
+@pytest.mark.django_db
+def test_window_copy_never_says_ends_in_expired(sample_event, expired_event):
+    live = event_window_copy(sample_event)
+    assert live["open"] is True
+    assert live["line"].startswith("Ends in ")
+    assert "Expired" not in live["line"]
+    assert format_window_line(sample_event) == live["line"]
+
+    closed = event_window_copy(expired_event)
+    assert closed["open"] is False
+    assert closed["line"] == "Trading ended · settling"
+    assert closed["kicker"] == "This window has closed"
+    assert "oracle" in closed["blurb"]
+    assert "Ends in" not in closed["line"]
+    card = format_event_card_text(expired_event)
+    assert "Ends in Expired" not in card
+    assert "Trading ended · settling" in card
+
+    expired_event.status = EventContract.Status.RESOLVED
+    expired_event.winning_outcome = "YES"
+    settled = event_window_copy(expired_event)
+    assert settled["line"] == "Settled · YES won"
+    assert "claim on Portfolio" in settled["blurb"]
+
+
+@pytest.mark.django_db
+def test_event_detail_expired_writeup(client, expired_event):
+    res = client.get(reverse("event_detail", args=[expired_event.pk]))
+    assert res.status_code == 200
+    body = res.content.decode()
+    header = body[body.find("dl-event-header") : body.find("dl-payout-tiles")]
+    assert "This window has closed" in header
+    assert "Trading ended · settling" in header
+    assert "waiting on the oracle" in header
+    assert "when this event expires" not in body
+    assert "Ends in Expired" not in body
+    assert "What do you think will happen?" not in header
+    main = body.split('id="trade-modal"', 1)[0]
+    assert "Your possible result" not in main
+    assert "Buy YES" not in main
+    assert "Last price" in body
+    assert "Why DreamLens watched this" in body
 
 
 @pytest.mark.django_db
@@ -186,6 +235,8 @@ def test_smart_copy_follow_sheet_and_sample_size(client, sample_event):
     assert "Minimum DreamLens Score" in body
     assert "What happens next?" in body
     assert "Activate Smart Copy" in body
+    assert "Copy now" in body
+    assert "Notify me" in body
     assert "dl-modal__footer-primary" in body
     assert "Cancel" in body
     assert "Follow a wallet" in body

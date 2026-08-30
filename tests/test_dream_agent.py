@@ -248,6 +248,7 @@ def test_agent_autonomous_copy_creates_evaluation(
     settings.MOCK_SMART_ACCOUNT = True
     settings.MOCK_DREAMDEX = True
     # Lower score threshold / risk so COPY can succeed
+    copy_relationship.auto_execute = True
     copy_relationship.min_copy_score = 1
     copy_relationship.min_win_rate = Decimal("0")
     copy_relationship.min_completed_events = 0
@@ -289,6 +290,8 @@ def test_agent_skip_records_reasons(
     settings,
 ):
     settings.MOCK_SMART_ACCOUNT = True
+    copy_relationship.auto_execute = True
+    copy_relationship.save(update_fields=["auto_execute"])
     perm = DreamAgentPermission.objects.get(agent=running_agent)
     perm.min_copy_score = 99
     perm.save(update_fields=["min_copy_score"])
@@ -419,3 +422,37 @@ def test_portfolio_prompts_to_activate_agent_when_missing(client, user):
     assert res.status_code == 200
     assert b"Activate Dream Agent" in res.content
     assert b"No Dream Agent" in res.content
+
+
+@pytest.mark.django_db
+def test_grant_api_keeps_notify_me_follows(client, user, copy_relationship):
+    copy_relationship.auto_execute = False
+    copy_relationship.save(update_fields=["auto_execute"])
+    client.force_login(user)
+    perm = type(
+        "Perm",
+        (),
+        {
+            "pk": 1,
+            "status": "ACTIVE",
+            "max_trade_amount": Decimal("10"),
+            "max_daily_volume": Decimal("50"),
+            "min_copy_score": 75,
+            "expires_at": timezone.now(),
+        },
+    )()
+    agent = type(
+        "Agent",
+        (),
+        {"pk": 1, "name": "DreamAgent", "status": "RUNNING", "session_address": "0x1"},
+    )()
+    with patch("apps.core.api.agents.smart_account_service.grant_agent", return_value=(agent, perm)):
+        res = client.post(
+            "/api/agent/grant/",
+            data={"activate": True, "signed_delegation": {"mock": True}},
+            content_type="application/json",
+        )
+    assert res.status_code == 201
+    copy_relationship.refresh_from_db()
+    assert copy_relationship.auto_execute is False
+    assert copy_relationship.max_per_trade == Decimal("10")

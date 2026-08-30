@@ -181,7 +181,6 @@ class DreamAgentGrantView(APIView):
             max_per_trade=perm.max_trade_amount,
             max_daily=perm.max_daily_volume,
             min_copy_score=perm.min_copy_score,
-            auto_execute=True,
         )
 
         return Response(

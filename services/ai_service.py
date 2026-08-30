@@ -560,7 +560,9 @@ def _event_analyst_brief(event: EventContract, *, headlines: list[dict] | None =
         event_strike_usd,
         format_collateral,
         format_ends_in,
+        format_window_line,
         minutes_left,
+        event_is_open,
         yes_no_outcomes,
     )
     from services.market_news import format_headlines_for_prompt
@@ -580,7 +582,11 @@ def _event_analyst_brief(event: EventContract, *, headlines: list[dict] | None =
         f"Strike / opening reference: {format_collateral(strike) if strike is not None else 'not indexed'}",
         f"YES: {as_cents(yes.current_price if yes else None)}  NO: {as_cents(no.current_price if no else None)}",
         f"Volume: {format_collateral(event.cumulative_quote_volume)}  Trades: {int(event.trade_count or 0)}",
-        f"Window: {window_min}-minute contract  Time left: {format_ends_in(event)} ({mins:.1f} minutes)",
+        (
+            f"Window: {window_min}-minute contract  Time left: {format_ends_in(event)} ({mins:.1f} minutes)"
+            if event_is_open(event)
+            else f"Window: {window_min}-minute contract  Status: {format_window_line(event)}"
+        ),
         (
             f"DreamLens Score: {score.get('score')}/100 "
             f"(activity {score.get('activity')}, liquidity {score.get('liquidity')}, "

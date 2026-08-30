@@ -181,6 +181,7 @@ def minutes_left(event: EventContract, now=None) -> float:
 
 
 def format_ends_in(event: EventContract, now=None) -> str:
+    """Duration remaining. Prefer format_window_line() for user-facing copy."""
     mins = minutes_left(event, now)
     if mins <= 0:
         return "Expired"
@@ -190,6 +191,103 @@ def format_ends_in(event: EventContract, now=None) -> str:
     if hours:
         return f"{hours}h {minutes}m"
     return f"{minutes}:{seconds:02d}"
+
+
+_CLOSED_STATUSES = frozenset(
+    {
+        EventContract.Status.LOCKED,
+        EventContract.Status.SETTLING,
+        EventContract.Status.RESOLVED,
+        EventContract.Status.VOIDED,
+        EventContract.Status.FINALIZED,
+    }
+)
+
+_WINDOW_CLOSED_LINE = "Trading ended · settling"
+
+
+def event_is_open(event: EventContract, now=None) -> bool:
+    """True while the Event Contract can still be bought or sold."""
+    clock = now or timezone.now()
+    expiry = getattr(event, "expiry_time", None)
+    if expiry is not None and expiry <= clock:
+        return False
+    return getattr(event, "status", None) not in _CLOSED_STATUSES
+
+
+def event_window_copy(event: EventContract, now=None) -> dict[str, Any]:
+    """Kicker, status line, and settled writeup for one Event Contract."""
+    clock = now or timezone.now()
+    winner = str(getattr(event, "winning_outcome", None) or "").strip().upper()
+    status = getattr(event, "status", None)
+
+    if event_is_open(event, clock):
+        return {
+            "open": True,
+            "kicker": "What do you think will happen?",
+            "line": f"Ends in {format_ends_in(event, clock)}",
+            "blurb": "",
+            "closed_label": _WINDOW_CLOSED_LINE,
+        }
+
+    if status == EventContract.Status.VOIDED or winner == "VOID":
+        return {
+            "open": False,
+            "kicker": "This Event Contract was voided",
+            "line": "Voided · stakes returned",
+            "blurb": (
+                "DreamDEX voided this window. Outcome tokens redeem back to collateral. "
+                "If you still hold YES or NO, claim on Portfolio. You cannot buy or sell."
+            ),
+            "closed_label": "Voided · stakes returned",
+        }
+
+    if status == EventContract.Status.RESOLVED or winner in {"YES", "NO"}:
+        if winner == "YES":
+            line = "Settled · YES won"
+            blurb = (
+                "The oracle print finished above the strike, so YES won. "
+                "If you still hold YES, claim on Portfolio. NO is worth nothing. "
+                "Trading is closed."
+            )
+        elif winner == "NO":
+            line = "Settled · NO won"
+            blurb = (
+                "The oracle print did not finish above the strike, so NO won. "
+                "If you still hold NO, claim on Portfolio. YES is worth nothing. "
+                "Trading is closed."
+            )
+        else:
+            line = "Settled"
+            blurb = (
+                "This Event Contract has settled. "
+                "If you still hold the winning side, claim on Portfolio. "
+                "Trading is closed."
+            )
+        return {
+            "open": False,
+            "kicker": "This Event Contract settled",
+            "line": line,
+            "blurb": blurb,
+            "closed_label": line,
+        }
+
+    return {
+        "open": False,
+        "kicker": "This window has closed",
+        "line": _WINDOW_CLOSED_LINE,
+        "blurb": (
+            "The trading window is over. DreamDEX is waiting on the oracle. "
+            "You cannot buy or sell. If you still hold YES or NO, wait for settlement, "
+            "then claim the winning side on Portfolio."
+        ),
+        "closed_label": _WINDOW_CLOSED_LINE,
+    }
+
+
+def format_window_line(event: EventContract, now=None) -> str:
+    """Full timing/status sentence. Never 'Ends in Expired'."""
+    return event_window_copy(event, now)["line"]
 
 
 def _band(score: float) -> str:
@@ -260,6 +358,7 @@ def annotate_event_display(event: EventContract, *, trader_count: int | None = N
     event.question = event_question(event)  # noqa: SLF001 — template helper
     event.dl_score = dreamlens_score(event, trader_count=trader_count)  # noqa: SLF001
     event.intent_tags = intent_tags(event, event.dl_score)  # noqa: SLF001
+    event.window_copy = event_window_copy(event)  # noqa: SLF001
     return event
 
 
@@ -273,7 +372,7 @@ def format_event_card_text(event: EventContract) -> str:
             event_question(event),
             f"YES {as_cents(yes_px)}",
             f"NO {as_cents(no_px)}",
-            f"Ends in {format_ends_in(event)}",
+            format_window_line(event),
         ]
     )
 

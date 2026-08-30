@@ -783,7 +783,7 @@
     const end = new Date(iso).getTime();
     const now = Date.now();
     const diff = end - now;
-    if (diff <= 0) return "Expired";
+    if (diff <= 0) return "";
     const mins = Math.floor(diff / 60000);
     const secs = Math.floor((diff % 60000) / 1000);
     if (mins >= 60) {
@@ -793,10 +793,30 @@
     return mins + "m " + secs + "s";
   }
 
+  function formatWindowLine(iso, closedLabel) {
+    const left = iso ? formatCountdown(iso) : "";
+    return left ? "Ends in " + left : closedLabel || "Trading ended · settling";
+  }
+
   function tickCountdowns() {
-    document.querySelectorAll(".dl-countdown[data-expiry]").forEach(function (el) {
+    document.querySelectorAll(".dl-window[data-expiry]").forEach(function (el) {
       const iso = el.getAttribute("data-expiry");
-      if (iso) el.textContent = formatCountdown(iso);
+      if (!iso) return;
+      const left = formatCountdown(iso);
+      if (left) {
+        const span = el.querySelector(".dl-countdown");
+        if (span) span.textContent = left;
+        else el.textContent = "Ends in " + left;
+        el.classList.remove("is-closed");
+      } else {
+        el.textContent = el.getAttribute("data-closed-label") || "Trading ended · settling";
+        el.classList.add("is-closed");
+      }
+    });
+    document.querySelectorAll(".dl-countdown[data-expiry]").forEach(function (el) {
+      if (el.closest(".dl-window")) return;
+      const iso = el.getAttribute("data-expiry");
+      if (iso) el.textContent = formatCountdown(iso) || "Trading ended · settling";
     });
   }
 
@@ -870,11 +890,22 @@
     setText("review-risk", formatUsd(parts.loss));
     setText("review-payout", formatUsd(parts.payout));
     setText("review-event", state.eventTitle || "—");
-    setText("review-expires", state.eventExpiry ? formatCountdown(state.eventExpiry) : "—");
+    setText("review-expires", state.eventExpiry ? formatWindowLine(state.eventExpiry) : "—");
     setText("review-buying", state.outcome || "—");
     setText("review-needs", state.eventTitle || "—");
     setText("modal-needs", "What needs to happen? " + (state.eventTitle || "—"));
-    setText("modal-ends", state.eventExpiry ? formatCountdown(state.eventExpiry) : "—");
+    const modalWindow = document.getElementById("modal-window");
+    if (modalWindow) {
+      if (state.eventExpiry) {
+        modalWindow.setAttribute("data-expiry", state.eventExpiry);
+        modalWindow.textContent = formatWindowLine(state.eventExpiry);
+      } else {
+        modalWindow.removeAttribute("data-expiry");
+        modalWindow.textContent = "—";
+      }
+    } else {
+      setText("modal-ends", state.eventExpiry ? formatWindowLine(state.eventExpiry) : "—");
+    }
     const outcomeLine = document.getElementById("modal-outcome-line");
     if (outcomeLine) {
       outcomeLine.textContent = (state.outcome || "") + " " + formatCents(state.entryPrice);
@@ -1680,14 +1711,9 @@
         consider[cb.value] = cb.checked;
       });
 
-      const modeEl = form.querySelector('input[name="scw_mode"]:checked');
+      const actionEl = form.querySelector('input[name="scw_action"]:checked');
       let copyMode = "SMART";
-      let autoExecute = true;
-      if (modeEl) {
-        autoExecute = false;
-        if (modeEl.value === "SMART_AUTO") autoExecute = true;
-        else if (modeEl.value === "CONSENSUS") copyMode = "CONSENSUS";
-      }
+      let autoExecute = actionEl ? actionEl.value === "auto" : false;
 
       const minWrEl = document.getElementById("scw-min-wr");
       const minConsEl = document.getElementById("scw-min-cons");
@@ -1943,6 +1969,59 @@
         } catch (err) {
           alert(err.message || "Could not resume.");
           btn.disabled = false;
+        }
+      });
+    });
+
+    document.querySelectorAll("[data-copy-action]").forEach(function (input) {
+      input.addEventListener("change", async function () {
+        if (!input.checked) return;
+        const id = input.getAttribute("data-copy-action");
+        const auto = input.value === "auto";
+        const section = input.closest("[data-agent-running]");
+        const agentOn = section && section.getAttribute("data-agent-running") === "1";
+        if (!getConnectedAddress()) {
+          await connectWallet();
+          return;
+        }
+        input.closest(".dl-follow-action")?.querySelectorAll("input").forEach(function (el) {
+          el.disabled = true;
+        });
+        try {
+          await syncWalletSession(getConnectedAddress());
+          const res = await csrfFetch("/api/copy/" + id + "/", {
+            method: "PATCH",
+            body: JSON.stringify({ auto_execute: auto, copy_mode: "SMART" }),
+          });
+          const data = await res.json().catch(function () {
+            return {};
+          });
+          if (!res.ok) throw new Error(data.detail || "Could not save this follow.");
+          const line = document.querySelector("[data-copy-action-line='" + id + "']");
+          if (line) {
+            const waiting = (line.textContent || "").indexOf("waiting") !== -1
+              ? " · " + ((line.textContent.match(/\d+ waiting/) || [])[0] || "")
+              : "";
+            const paused = (line.textContent || "").indexOf("Paused") !== -1 ? " · Paused" : "";
+            line.textContent = auto
+              ? "DreamAgent copies when they trade" + waiting + paused
+              : "Alerts on Telegram and DreamLens" + waiting + paused;
+          }
+          if (auto && !agentOn) {
+            toast("Saved. DreamAgent must be Active to copy immediately — you'll get alerts until then.", "ok");
+          } else {
+            toast(auto ? "DreamAgent will copy this trader immediately." : "You'll get Telegram and DreamLens alerts instead.", "ok");
+          }
+        } catch (err) {
+          toast(err.message || "Could not save this follow.");
+          const revert = input.closest(".dl-follow-action")?.querySelector(
+            'input[value="' + (auto ? "notify" : "auto") + '"]'
+          );
+          if (revert) revert.checked = true;
+        } finally {
+          input.closest(".dl-follow-action")?.querySelectorAll("input").forEach(function (el) {
+            el.disabled = false;
+          });
         }
       });
     });

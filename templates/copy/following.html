@@ -54,10 +54,10 @@
       {% for rel in copy_relationships %}
       <a href="{% url 'trader_detail' rel.trader.pk %}" class="dl-copy-chip">
         <span class="dl-mono">{{ rel.trader.display_name|default:rel.trader.wallet_address|short_address }}</span>
-        {% if rel.is_smart_on %}
-        <span class="dl-smart-pill is-on"><span class="dl-smart-pill__dot" aria-hidden="true"></span> On</span>
+        {% if rel.auto_execute %}
+        <span class="dl-smart-pill{% if rel.is_smart_on %} is-on{% endif %}"><span class="dl-smart-pill__dot" aria-hidden="true"></span> Copy now</span>
         {% else %}
-        <span class="dl-smart-pill">Paused</span>
+        <span class="dl-smart-pill{% if rel.is_smart_on %} is-on{% endif %}">Notify me</span>
         {% endif %}
       </a>
       {% endfor %}

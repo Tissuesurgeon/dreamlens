@@ -73,7 +73,7 @@
   {% endif %}
 
   <div class="dl-event-card__meta">
-    <span>Ends in <span class="dl-countdown" data-expiry="{{ event.expiry_time|date:'c' }}">{{ event|ends_in }}</span></span>
+    {% include "components/window_line.html" %}
     <span class="dl-event-card__actions">
       <button type="button" class="dl-text-link" data-explain-event="{{ event.pk }}" data-explain-question="{{ event|question_copy }}" data-explain-asset="{{ event.underlying_asset|upper }}">Explain this</button>
       <a href="{% url 'event_detail' event.pk %}" class="dl-event-card__explore">View market</a>

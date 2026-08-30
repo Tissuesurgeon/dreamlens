@@ -50,17 +50,17 @@
       <input type="number" id="set-min-liq" class="dl-input" min="0" value="{{ relationship.min_liquidity|default:1000|floatformat:0 }}">
     </div>
     <fieldset class="dl-copy-fieldset">
-      <legend class="dl-label">Execution</legend>
+      <legend class="dl-label">When they trade</legend>
       <div class="dl-mode-group">
         <label class="dl-mode">
-          <input type="radio" name="set_exec" value="review" {% if not relationship.auto_execute %}checked{% endif %}>
-          <span class="dl-mode__label">Ask before copying</span>
-          <span class="dl-mode__desc">Review mode — confirm each trade.</span>
+          <input type="radio" name="set_exec" value="auto" {% if relationship.auto_execute %}checked{% endif %}>
+          <span class="dl-mode__label">Copy now</span>
+          <span class="dl-mode__desc">DreamAgent places the trade on your Smart Account as soon as they do.</span>
         </label>
         <label class="dl-mode">
-          <input type="radio" name="set_exec" value="auto" {% if relationship.auto_execute %}checked{% endif %}>
-          <span class="dl-mode__label">Auto-queue</span>
-          <span class="dl-mode__desc">Queue approved trades; you still sign in wallet.</span>
+          <input type="radio" name="set_exec" value="review" {% if not relationship.auto_execute %}checked{% endif %}>
+          <span class="dl-mode__label">Notify me</span>
+          <span class="dl-mode__desc">Telegram and a DreamLens alert. You decide whether to copy.</span>
         </label>
       </div>
     </fieldset>

@@ -481,6 +481,9 @@ def portfolio(request):
                 "agent_balance": None,
                 "telegram_link": None,
                 "recent_trades": [],
+                "copy_relationships": [],
+                "pending_copy_count": 0,
+                "agent_can_auto_copy": False,
             },
         )
 
@@ -559,6 +562,23 @@ def portfolio(request):
     if wallet_balances:
         available = wallet_balances.get("collateral_balance") if isinstance(wallet_balances, dict) else getattr(wallet_balances, "collateral_balance", None)
 
+    copy_relationships = list(
+        CopyRelationship.objects.filter(user=request.user)
+        .exclude(status=CopyRelationship.Status.STOPPED)
+        .select_related("trader")
+        .annotate(
+            pending_count=Count(
+                "executions",
+                filter=Q(executions__status=CopyExecution.Status.PENDING),
+            )
+        )
+        .order_by("-updated_at")
+    )
+    pending_copy_count = sum(int(getattr(rel, "pending_count", 0) or 0) for rel in copy_relationships)
+    agent_can_auto_copy = bool(
+        agent and agent.status == DreamAgent.Status.RUNNING
+    )
+
     return render(
         request,
         "portfolio/index.html",
@@ -585,6 +605,9 @@ def portfolio(request):
             "agent_performance": agent_performance,
             "agent_balance": agent_balance,
             "telegram_link": serialize_link(get_link(request.user)),
+            "copy_relationships": copy_relationships,
+            "pending_copy_count": pending_copy_count,
+            "agent_can_auto_copy": agent_can_auto_copy,
         },
     )
 

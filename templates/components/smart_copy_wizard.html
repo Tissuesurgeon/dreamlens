@@ -30,6 +30,21 @@
             <label for="scw-min-score" class="dl-label">Minimum DreamLens Score</label>
             <input type="number" id="scw-min-score" class="dl-input" min="0" max="100" value="75">
           </div>
+          <fieldset class="dl-copy-fieldset">
+            <legend class="dl-label">When they trade</legend>
+            <div class="dl-mode-group">
+              <label class="dl-mode">
+                <input type="radio" name="scw_action" value="auto">
+                <span class="dl-mode__label">Copy now</span>
+                <span class="dl-mode__desc">DreamAgent trades immediately on your Smart Account.</span>
+              </label>
+              <label class="dl-mode">
+                <input type="radio" name="scw_action" value="notify" checked>
+                <span class="dl-mode__label">Notify me</span>
+                <span class="dl-mode__desc">Telegram and a DreamLens alert. You decide.</span>
+              </label>
+            </div>
+          </fieldset>
 
           {% include "components/what_happens_next.html" with heading_id="scw-next" trader_label="this trader" %}
         </div>

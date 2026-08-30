@@ -187,8 +187,9 @@ def detect_and_process_copy(source_trade: TraderTrade) -> list[CopyExecution]:
         ).exists():
             continue
 
-        # Autonomous DreamAgent path — no MetaMask popup per trade.
-        if get_running_agent(rel.user):
+        # Immediate copy only when the user opted in *and* DreamAgent is RUNNING.
+        # Notify-me follows stay on the review path even if the agent is active.
+        if rel.auto_execute and get_running_agent(rel.user):
             try:
                 evaluation = evaluate_and_maybe_execute(source_trade, rel)
             except IntegrityError:
@@ -248,9 +249,9 @@ def detect_and_process_copy(source_trade: TraderTrade) -> list[CopyExecution]:
             else:
                 status = CopyExecution.Status.PENDING
                 reason = (
-                    "Awaiting confirmation"
-                    if not rel.auto_execute
-                    else "Smart Auto — confirm in wallet when ready"
+                    "DreamAgent is not Active — confirm this copy, or start the agent."
+                    if rel.auto_execute
+                    else "Notify me — confirm on DreamLens or skip."
                 )
 
         try:
@@ -283,7 +284,7 @@ def detect_and_process_copy(source_trade: TraderTrade) -> list[CopyExecution]:
 
                 notify_copy_pending(rel.user, execution)
             except Exception:
-                logger.warning("telegram pending copy notify failed", exc_info=True)
+                logger.warning("copy pending notify failed", exc_info=True)
 
     return executions
 

@@ -6,10 +6,13 @@ from services.event_copy import (
     SCORE_DISCLAIMER,
     as_cents as _as_cents,
     collateral_ticker,
+    event_is_open as _event_is_open,
     event_question as _event_question,
+    event_window_copy as _event_window_copy,
     format_collateral,
     format_ends_in as _format_ends_in,
     format_usd_plain,
+    format_window_line as _format_window_line,
     put_one_win,
 )
 
@@ -55,6 +58,31 @@ def put_one(value):
 @register.filter
 def ends_in(event):
     return _format_ends_in(event)
+
+
+@register.filter
+def window_line(event):
+    return _format_window_line(event)
+
+
+@register.filter
+def window_kicker(event):
+    return _event_window_copy(event)["kicker"]
+
+
+@register.filter
+def window_blurb(event):
+    return _event_window_copy(event)["blurb"]
+
+
+@register.filter
+def window_closed_label(event):
+    return _event_window_copy(event)["closed_label"]
+
+
+@register.filter
+def window_is_open(event):
+    return _event_is_open(event)
 
 
 @register.filter

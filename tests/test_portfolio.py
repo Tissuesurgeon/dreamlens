@@ -154,6 +154,22 @@ def test_portfolio_empty_when_wallet_has_no_fills(client, user, wallet):
     assert b"Not linked" in res.content
     assert Trade.objects.filter(user=user).count() == 0
     assert Position.objects.filter(user=user).count() == 0
+    assert b"Following" in res.content
+    assert b"Find traders" in res.content
+
+
+@pytest.mark.django_db
+def test_portfolio_lists_followed_traders_and_action(client, user, copy_relationship):
+    client.force_login(user)
+    res = client.get("/portfolio/")
+    assert res.status_code == 200
+    body = res.content.decode()
+    assert "Following" in body
+    assert "AlphaTrader" in body
+    assert "Copy now" in body
+    assert "Notify me" in body
+    assert "Alerts on Telegram and DreamLens" in body
+    assert f'data-copy-action="{copy_relationship.pk}"' in body
 
 
 @pytest.mark.django_db

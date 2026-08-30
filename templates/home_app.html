@@ -33,7 +33,7 @@
           {% if featured.dl_score %}
           <span class="dl-spotlight__score">Score {{ featured.dl_score.score }}/100</span>
           {% endif %}
-          <span class="dl-spotlight__timer">Ends in <span class="dl-countdown" data-expiry="{{ featured.expiry_time|date:'c' }}">{{ featured|ends_in }}</span></span>
+          <span class="dl-spotlight__timer">{% include "components/window_line.html" with event=featured %}</span>
         </header>
         <h1 class="dl-spotlight__title">
           <a href="{% url 'event_detail' featured.pk %}">{{ featured|question_copy }}</a>

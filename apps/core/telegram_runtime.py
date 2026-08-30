@@ -86,8 +86,20 @@ def run_poll_loop(*, timeout: int = 25) -> None:
         try:
             updates = get_updates(offset=offset, timeout=timeout)
         except TelegramError as exc:
-            logger.warning("telegram getUpdates failed: %s", exc)
-            time.sleep(3)
+            msg = str(exc)
+            logger.warning("telegram getUpdates failed: %s", msg)
+            if "409" in msg:
+                try:
+                    delete_webhook(drop_pending=False)
+                except TelegramError:
+                    pass
+                time.sleep(8)
+            else:
+                time.sleep(3)
+            continue
+        except Exception:
+            logger.exception("telegram poller crashed; retrying")
+            time.sleep(5)
             continue
         for update in updates:
             uid = int(update.get("update_id") or 0)

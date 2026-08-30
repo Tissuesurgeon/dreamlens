@@ -131,9 +131,18 @@ def get_updates(*, offset: int | None = None, timeout: int = 25) -> list[dict[st
     if offset is not None:
         payload["offset"] = int(offset)
     url = f"{API_ROOT}/bot{_token()}/getUpdates"
-    response = httpx.post(url, json=payload, timeout=timeout + 10)
-    response.raise_for_status()
-    data = response.json()
+    try:
+        response = httpx.post(url, json=payload, timeout=timeout + 10)
+        if response.status_code == 409:
+            raise TelegramError(
+                "409 Conflict: another getUpdates or a webhook is already using this bot"
+            )
+        response.raise_for_status()
+        data = response.json()
+    except TelegramError:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise TelegramError(_redact(str(exc))) from exc
     if not data.get("ok"):
         raise TelegramError(data.get("description") or "getUpdates failed")
     return list(data.get("result") or [])

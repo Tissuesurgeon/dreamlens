@@ -8,6 +8,7 @@ from unittest.mock import patch
 import pytest
 
 from apps.dreamcopy.models import CopyExecution, CopyRelationship, TraderProfile
+from apps.notifications.models import Notification
 from services.copy_service import CopyError, create_copy_relationship, detect_and_process_copy
 
 
@@ -103,3 +104,82 @@ def test_copy_api_accepts_wallet_address(client, user, wallet):
     body = res.json()
     assert body["trader"]["wallet_address"] == PASTE_WALLET
     assert CopyRelationship.objects.filter(user=user, trader__wallet_address=PASTE_WALLET).exists()
+
+
+def _approve_score():
+    from services.copy_score import CopyScoreResult
+
+    return CopyScoreResult(
+        decision="COPY",
+        overall=80,
+        confidence=Decimal("0.75"),
+        pillars={},
+        why=["Mock approves copy"],
+        risks=[],
+        skip_reasons=[],
+        liquidity=Decimal("5000"),
+    )
+
+
+@pytest.mark.django_db
+def test_notify_mode_does_not_auto_copy_when_agent_is_running(
+    copy_relationship, source_trade
+):
+    copy_relationship.auto_execute = False
+    copy_relationship.min_win_rate = Decimal("0")
+    copy_relationship.min_completed_events = 0
+    copy_relationship.save(
+        update_fields=["auto_execute", "min_win_rate", "min_completed_events"]
+    )
+
+    with (
+        patch("services.copy_service.evaluate_copy_score", return_value=_approve_score()),
+        patch("services.dream_agent_service.get_running_agent", return_value=object()),
+        patch("services.dream_agent_service.evaluate_and_maybe_execute") as mock_exec,
+    ):
+        rows = detect_and_process_copy(source_trade)
+
+    mock_exec.assert_not_called()
+    assert len(rows) == 1
+    assert rows[0].status == CopyExecution.Status.PENDING
+    note = Notification.objects.get(user=copy_relationship.user, kind="copy_pending")
+    assert note.payload_json.get("execution_id") == rows[0].pk
+    assert "DreamAgent did not copy" in note.body
+
+
+@pytest.mark.django_db
+def test_copy_now_uses_agent_when_running(copy_relationship, source_trade):
+    copy_relationship.auto_execute = True
+    copy_relationship.save(update_fields=["auto_execute"])
+
+    with (
+        patch("services.dream_agent_service.get_running_agent", return_value=object()),
+        patch("services.dream_agent_service.evaluate_and_maybe_execute") as mock_exec,
+    ):
+        mock_exec.return_value = None
+        detect_and_process_copy(source_trade)
+
+    mock_exec.assert_called_once()
+    assert CopyExecution.objects.filter(source_trade=source_trade).count() == 0
+
+
+@pytest.mark.django_db
+def test_patch_follow_action_toggles_auto_execute(client, user, copy_relationship):
+    client.force_login(user)
+    assert copy_relationship.auto_execute is False
+    res = client.patch(
+        f"/api/copy/{copy_relationship.pk}/",
+        data={"auto_execute": True},
+        content_type="application/json",
+    )
+    assert res.status_code == 200
+    copy_relationship.refresh_from_db()
+    assert copy_relationship.auto_execute is True
+    res = client.patch(
+        f"/api/copy/{copy_relationship.pk}/",
+        data={"auto_execute": False},
+        content_type="application/json",
+    )
+    assert res.status_code == 200
+    copy_relationship.refresh_from_db()
+    assert copy_relationship.auto_execute is False

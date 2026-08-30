@@ -25,7 +25,7 @@ from services.event_copy import (
     as_cents,
     event_question,
     format_collateral,
-    format_ends_in,
+    format_window_line,
     format_event_card_text,
     yes_no_outcomes,
 )
@@ -545,7 +545,6 @@ def _send_analysis(chat_id: int, user, event: EventContract) -> None:
     except Exception:
         logger.warning("telegram analyze failed", exc_info=True)
         insight = {}
-    mins = format_ends_in(event)
     reasons = insight.get("reasons") or []
     reason = reasons[0] if reasons else "Market data from DreamDEX."
     yes, no = yes_no_outcomes(event)
@@ -553,7 +552,7 @@ def _send_analysis(chat_id: int, user, event: EventContract) -> None:
         event_question(event),
         f"YES {as_cents(yes.current_price if yes else None)}",
         f"NO {as_cents(no.current_price if no else None)}",
-        f"Ends in {mins}",
+        format_window_line(event),
         reason,
         "This is a market price, not a guarantee.",
     ]
@@ -704,7 +703,7 @@ def _offer_trade(chat_id: int, user, event: EventContract, outcome: str, amount:
                 f"{outcome} {as_cents(price)}",
                 f"You pay {format_collateral(amount)}",
                 f"Maximum loss {format_collateral(amount)}",
-                f"Ends in {format_ends_in(event)}",
+                format_window_line(event),
                 "DreamAgent is placing this on-chain.",
             ]
         ),

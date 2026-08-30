@@ -9,7 +9,8 @@ from django.db.utils import ProgrammingError
 
 from apps.accounts.models import TelegramLink
 from apps.agents.models import AgentEvaluation
-from services.event_copy import format_collateral
+from apps.notifications.models import Notification
+from services.event_copy import as_cents, event_question, format_collateral
 from integrations.telegram.client import TelegramError, explorer_tx_url, send_message
 
 logger = logging.getLogger("dreamlens.telegram.notify")
@@ -66,23 +67,57 @@ def notify_agent_evaluation(user, ev: AgentEvaluation) -> None:
         logger.warning("could not notify chat_id=%s evaluation=%s", chat_id, ev.pk)
 
 
+def _copy_pending_copy(execution) -> tuple[str, str]:
+    source = getattr(execution, "source_trade", None)
+    event = getattr(source, "event", None)
+    trader = getattr(getattr(execution, "relationship", None), "trader", None)
+    name = ""
+    if trader is not None:
+        name = (trader.display_name or trader.wallet_address or "").strip()
+    question = event_question(event) if event is not None else "DreamDEX event"
+    outcome = getattr(getattr(source, "outcome", None), "outcome_type", "") or ""
+    price = getattr(source, "entry_price", None)
+    score = getattr(execution, "copy_score", None)
+    amount = getattr(execution, "amount", None)
+    who = name or "A trader you follow"
+    title = f"{who} just traded"
+    lines = [title, question]
+    if outcome:
+        lines.append(f"{outcome} {as_cents(price)}" if price is not None else outcome)
+    if amount is not None:
+        lines.append(format_collateral(amount, compact=True))
+    if score is not None:
+        lines.append(f"Copy Score: {score}")
+    lines.append("DreamAgent did not copy. Confirm on DreamLens or skip.")
+    return title, "\n".join(lines)
+
+
 def notify_copy_pending(user, execution) -> None:
-    """Tell a linked chat that a follow-only Smart Copy is waiting on the web."""
+    """Alert on Telegram and the web app when a follow is notify-me, not auto-copy."""
+    title, body = _copy_pending_copy(execution)
+    source = getattr(execution, "source_trade", None)
+    event = getattr(source, "event", None)
+    trader = getattr(getattr(execution, "relationship", None), "trader", None)
+    payload = {
+        "execution_id": getattr(execution, "pk", None),
+        "event_id": getattr(event, "pk", None),
+        "trader_id": getattr(trader, "pk", None),
+    }
+    try:
+        Notification.objects.create(
+            user=user,
+            kind="copy_pending",
+            title=title,
+            body=body,
+            payload_json=payload,
+        )
+    except Exception:
+        logger.warning("web copy notification failed exec=%s", getattr(execution, "pk", None), exc_info=True)
+
     chat_id = _active_chat_id(user)
     if chat_id is None:
         return
-    source = getattr(execution, "source_trade", None)
-    event = getattr(source, "event", None)
-    title = getattr(event, "title", None) or "DreamDEX event"
-    score = getattr(execution, "copy_score", None)
-    amount = getattr(execution, "amount", None)
-    line = f"Smart Copy waiting: {title}"
-    if amount is not None:
-        line += f"\n{format_collateral(amount, compact=True)}"
-    if score is not None:
-        line += f"\nCopy Score: {score}"
-    line += "\nConfirm on DreamLens web or ignore."
     try:
-        send_message(chat_id, line)
+        send_message(chat_id, body)
     except TelegramError:
         logger.warning("could not notify pending copy chat_id=%s exec=%s", chat_id, getattr(execution, "pk", None))

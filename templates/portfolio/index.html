@@ -208,6 +208,71 @@
       <p class="dl-telegram-status" id="telegram-link-status" role="status" aria-live="polite"></p>
     </section>
   </div>
+
+  <section class="dl-section" aria-labelledby="following-heading" data-agent-running="{% if agent_can_auto_copy %}1{% else %}0{% endif %}">
+    <div class="dl-section-head dl-section-head--table">
+      <h2 id="following-heading" class="dl-section__title">Following</h2>
+      <p class="dl-section__count">{{ copy_relationships|length }}</p>
+    </div>
+    {% if pending_copy_count %}
+    <p class="dl-follow-pending">
+      {{ pending_copy_count }} trade{{ pending_copy_count|pluralize }} waiting.
+      DreamLens will also alert you here{% if telegram_link.status == "ACTIVE" %} and on Telegram{% endif %}.
+    </p>
+    {% endif %}
+    {% if copy_relationships %}
+    <div class="dl-event-rows">
+      {% for rel in copy_relationships %}
+      <div class="dl-event-row dl-follow-row">
+        <span class="dl-event-row__body">
+          <a href="{% url 'trader_detail' rel.trader.pk %}" class="dl-event-row__title">
+            {{ rel.trader.display_name|default:rel.trader.wallet_address|short_address }}
+          </a>
+          <span class="dl-event-row__line" data-copy-action-line="{{ rel.pk }}">
+            {% if rel.auto_execute %}
+              DreamAgent copies when they trade
+            {% else %}
+              Alerts on Telegram and DreamLens
+            {% endif %}
+            {% if rel.pending_count %} · {{ rel.pending_count }} waiting{% endif %}
+            {% if rel.status != "ACTIVE" %} · Paused{% endif %}
+          </span>
+        </span>
+        <fieldset class="dl-follow-action">
+          <legend class="visually-hidden">When {{ rel.trader.display_name|default:"this trader" }} trades</legend>
+          <label>
+            <input
+              type="radio"
+              name="copy-action-{{ rel.pk }}"
+              value="auto"
+              data-copy-action="{{ rel.pk }}"
+              {% if rel.auto_execute %}checked{% endif %}
+            >
+            <span>Copy now</span>
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="copy-action-{{ rel.pk }}"
+              value="notify"
+              data-copy-action="{{ rel.pk }}"
+              {% if not rel.auto_execute %}checked{% endif %}
+            >
+            <span>Notify me</span>
+          </label>
+        </fieldset>
+      </div>
+      {% endfor %}
+    </div>
+    <p class="dl-muted">Copy now needs an Active DreamAgent. Notify me sends a Telegram message and a DreamLens alert so you can decide.</p>
+    {% else %}
+    <div class="dl-empty">
+      <p class="dl-empty__title">No one yet</p>
+      <p>Follow a trader, then choose whether DreamAgent copies immediately or only alerts you.</p>
+      <a href="{% url 'following' %}" class="dl-btn dl-btn--ghost dl-btn--sm">Find traders</a>
+    </div>
+    {% endif %}
+  </section>
   {% endif %}
 
   {% if not has_positions %}
@@ -234,7 +299,7 @@
             You put in {{ pos.you_put_in|usd_plain }}
             · current {{ pos.current_value|usd_plain }}
             · potential payout {{ pos.potential_payout|usd_plain }}
-            · ends in <span class="dl-countdown" data-expiry="{{ pos.event.expiry_time|date:'c' }}">{{ pos.event|ends_in }}</span>
+            · {% include "components/window_line.html" with event=pos.event %}
           </span>
         </span>
         <span class="dl-event-row__settle">

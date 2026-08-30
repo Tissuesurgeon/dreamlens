@@ -47,6 +47,7 @@
       </ul>
     </section>
 
+    {% if event|window_is_open %}
     <div class="dl-insight-actions">
       <button
         type="button"
@@ -65,5 +66,6 @@
         data-event-title="{{ event.title }}"
       >Buy NO</button>
     </div>
+    {% endif %}
   </article>
 </div>

@@ -19,6 +19,32 @@
   <p class="dl-traders-note">Connect your wallet to follow traders or start Smart Copy.</p>
   {% endif %}
 
+  <section class="dl-section" aria-labelledby="follow-wallet-heading">
+    <div class="dl-section-head">
+      <h2 id="follow-wallet-heading" class="dl-section__title">Follow a wallet</h2>
+    </div>
+    <form id="follow-wallet-form" class="dl-follow-wallet">
+      <label class="dl-label" for="follow-wallet-address">Wallet address</label>
+      <div class="dl-follow-wallet__row">
+        <input
+          id="follow-wallet-address"
+          class="dl-input"
+          type="text"
+          inputmode="text"
+          autocomplete="off"
+          spellcheck="false"
+          maxlength="42"
+          placeholder="0x…"
+          aria-describedby="follow-wallet-hint"
+        >
+        <button type="submit" class="dl-btn dl-btn--ghost" id="follow-wallet-follow">Follow</button>
+        <button type="button" class="dl-btn dl-btn--primary" id="follow-wallet-smart">Smart Copy</button>
+      </div>
+      <p class="dl-muted" id="follow-wallet-hint">Paste any DreamDEX wallet. DreamLens will watch their Event Contract fills even if they are not on this list yet.</p>
+      <p class="dl-follow-wallet__error" id="follow-wallet-error" hidden></p>
+    </form>
+  </section>
+
   {% if copy_relationships %}
   <section class="dl-section" aria-labelledby="your-copies-heading">
     <div class="dl-section-head">

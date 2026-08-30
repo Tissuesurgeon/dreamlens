@@ -226,10 +226,10 @@
     {% if open_positions %}
     <div class="dl-event-rows">
       {% for pos in open_positions %}
-      <a href="{% url 'event_detail' pos.event.pk %}" class="dl-event-row">
+      <div class="dl-event-row">
         <span class="dl-event-row__side dl-event-row__side--{{ pos.outcome.outcome_type|lower }}">{{ pos.outcome.outcome_type }}</span>
         <span class="dl-event-row__body">
-          <span class="dl-event-row__title">{{ pos.event|question_copy }}</span>
+          <a href="{% url 'event_detail' pos.event.pk %}" class="dl-event-row__title">{{ pos.event|question_copy }}</a>
           <span class="dl-event-row__line">
             You put in {{ pos.you_put_in|usd_plain }}
             · current {{ pos.current_value|usd_plain }}
@@ -237,13 +237,23 @@
             · ends in <span class="dl-countdown" data-expiry="{{ pos.event.expiry_time|date:'c' }}">{{ pos.event|ends_in }}</span>
           </span>
         </span>
-        <span class="dl-event-row__value{% if pos.pnl %}{% if pos.pnl >= 0 %} is-pos{% else %} is-neg{% endif %}{% endif %}">
-          {{ pos.current_value|usd_plain }}
-          {% if pos.pnl is not None %}
-          <span class="dl-event-row__pnl">{% if pos.pnl >= 0 %}+{% endif %}{{ pos.pnl|usd_plain }}</span>
+        <span class="dl-event-row__settle">
+          <span class="dl-event-row__value{% if pos.pnl %}{% if pos.pnl >= 0 %} is-pos{% else %} is-neg{% endif %}{% endif %}">
+            {{ pos.current_value|usd_plain }}
+            {% if pos.pnl is not None %}
+            <span class="dl-event-row__pnl">{% if pos.pnl >= 0 %}+{% endif %}{{ pos.pnl|usd_plain }}</span>
+            {% endif %}
+          </span>
+          {% if pos.closeable %}
+          <button
+            type="button"
+            class="dl-btn dl-btn--ghost dl-btn--sm"
+            data-close-position="{{ pos.pk }}"
+            data-close-wallet="{{ pos.close_wallet }}"
+          >Close{% if pos.close_proceeds %} {{ pos.close_proceeds|usd_plain }}{% endif %}</button>
           {% endif %}
         </span>
-      </a>
+      </div>
       {% endfor %}
     </div>
     {% else %}
@@ -300,6 +310,7 @@
             {% elif pos.result == "lost" %}Lost
             {% elif pos.result == "void" %}Void
             {% elif pos.result == "claimed" %}Claimed
+            {% elif pos.result == "closed" %}Closed
             {% else %}Closed{% endif %}
           </span>
           <span class="dl-event-row__value{% if pos.pnl %}{% if pos.pnl >= 0 %} is-pos{% else %} is-neg{% endif %}{% endif %}">
@@ -346,7 +357,7 @@
               <a href="{% url 'event_detail' trade.event.pk %}">{{ trade.event|question_copy }}</a>
             </td>
             <td>
-              <span class="dl-badge dl-badge--{% if trade.outcome.outcome_type == 'YES' %}yes{% else %}no{% endif %}">{{ trade.outcome.outcome_type }}</span>
+              <span class="dl-badge dl-badge--{% if trade.outcome.outcome_type == 'YES' %}yes{% else %}no{% endif %}">{{ trade.side }} {{ trade.outcome.outcome_type }}</span>
             </td>
             <td class="dl-num">{{ trade.amount|floatformat:2 }}</td>
             <td class="dl-num">{{ trade.entry_price|as_usd }}</td>

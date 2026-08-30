@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import re
-import secrets
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -37,6 +36,7 @@ from services.dream_agent_service import (
     agent_performance,
     execute_agent_manual_trade,
     get_running_agent,
+    get_tradable_agent,
 )
 from services.telegram_link_service import (
     TelegramLinkError,
@@ -54,7 +54,7 @@ HELP = (
     "/start /help /connect — link this chat\n"
     "/events /markets — live events\n"
     "/analyze [id|BTC|ETH] — understand a market\n"
-    "/trade <id> YES|NO <amount> — confirm then DreamAgent executes\n"
+    "/trade <id> YES|NO <amount> — DreamAgent places it (no MetaMask)\n"
     "/agent /status /balance — agent + Smart Account\n"
     "/positions /activity — portfolio and evaluations\n"
     "/pause /resume — stop or start autonomous copy\n"
@@ -63,6 +63,7 @@ HELP = (
 )
 
 TRADE_TTL = 300
+_TG_TRADES_KEY = "tg_trades"
 _TRADE_RE = re.compile(
     r"^/trade(?:@\w+)?\s+(\d+)\s+(YES|NO)\s+([0-9]+(?:\.[0-9]+)?)\s*$",
     re.IGNORECASE,
@@ -373,44 +374,70 @@ def _cmd_traders(chat_id: int) -> None:
 
 def _cmd_follow(chat_id: int, user, text: str, *, auto: bool) -> None:
     parts = text.split()
-    if len(parts) < 2 or not parts[1].isdigit():
-        send_message(chat_id, "Usage: /follow <trader_id>  or  /copy <trader_id>")
+    if len(parts) < 2:
+        send_message(
+            chat_id,
+            "Usage: /follow <trader_id|0xaddress>  or  /copy <trader_id|0xaddress>",
+        )
         return
-    _do_follow(chat_id, user, int(parts[1]), auto=auto)
+    arg = parts[1]
+    if arg.lower().startswith("0x"):
+        _do_follow(chat_id, user, auto=auto, wallet_address=arg)
+        return
+    if not arg.isdigit():
+        send_message(
+            chat_id,
+            "Usage: /follow <trader_id|0xaddress>  or  /copy <trader_id|0xaddress>",
+        )
+        return
+    _do_follow(chat_id, user, int(arg), auto=auto)
 
 
-def _do_follow(chat_id: int, user, trader_id: int, *, auto: bool) -> None:
+def _do_follow(
+    chat_id: int,
+    user,
+    trader_id: int | None = None,
+    *,
+    auto: bool,
+    wallet_address: str | None = None,
+) -> None:
     from apps.dreamcopy.models import TraderProfile
 
-    if not TraderProfile.objects.filter(pk=trader_id).exists():
-        send_message(chat_id, f"Trader {trader_id} not found.")
+    payload = {
+        "copy_mode": CopyRelationship.CopyMode.SMART,
+        "auto_execute": False,
+        "max_per_trade": Decimal("10"),
+        "max_daily": Decimal("50"),
+        "min_copy_score": 70,
+    }
+    if wallet_address:
+        payload["wallet_address"] = wallet_address
+    elif trader_id:
+        if not TraderProfile.objects.filter(pk=trader_id).exists():
+            send_message(chat_id, f"Trader {trader_id} not found.")
+            return
+        payload["trader_id"] = trader_id
+    else:
+        send_message(chat_id, "Trader not found.")
         return
     running = get_running_agent(user) is not None
-    auto_execute = bool(auto and running)
+    payload["auto_execute"] = bool(auto and running)
     try:
-        rel = create_copy_relationship(
-            user,
-            {
-                "trader_id": trader_id,
-                "copy_mode": CopyRelationship.CopyMode.SMART,
-                "auto_execute": auto_execute,
-                "max_per_trade": Decimal("10"),
-                "max_daily": Decimal("50"),
-            },
-        )
+        rel = create_copy_relationship(user, payload)
     except (CopyError, Exception) as exc:
         send_message(chat_id, str(exc))
         return
     name = rel.trader.display_name or rel.trader.wallet_address
+    label = f"#{rel.trader_id}"
     if auto and not running:
         send_message(
             chat_id,
-            f"Following {name} (#{trader_id}). Auto-copy needs a RUNNING DreamAgent — "
+            f"Following {name} ({label}). Auto-copy needs a RUNNING DreamAgent — "
             f"activate at {site_origin()}/agent/activate/",
         )
         return
-    mode = "Smart Copy (auto)" if auto_execute else "Follow"
-    send_message(chat_id, f"{mode}: {name} (#{trader_id}).")
+    mode = "Smart Copy (auto)" if payload["auto_execute"] else "Follow"
+    send_message(chat_id, f"{mode}: {name} ({label}).")
 
 
 def _cmd_following(chat_id: int, user) -> None:
@@ -545,7 +572,7 @@ def _send_analysis(chat_id: int, user, event: EventContract) -> None:
 
 
 def _max_trade(user) -> Decimal | None:
-    agent = get_running_agent(user)
+    agent = get_tradable_agent(user)
     if not agent:
         return None
     perm = active_permission(agent)
@@ -559,14 +586,62 @@ def _default_trade_amount(user) -> Decimal:
     return min(Decimal("5"), cap)
 
 
+def _put_pending_trade(user, token: str, payload: dict) -> None:
+    """Cache + DB so Confirm still works when Redis IGNORE_EXCEPTIONS drops the key."""
+    cache.set(f"tg:trade:{token}", payload, TRADE_TTL)
+    agent = get_tradable_agent(user)
+    if not agent:
+        return
+    now = timezone.now().timestamp()
+    meta = dict(agent.metadata_json or {})
+    pending = {
+        key: row
+        for key, row in dict(meta.get(_TG_TRADES_KEY) or {}).items()
+        if float((row or {}).get("exp") or 0) > now
+    }
+    pending[token] = {**payload, "exp": now + TRADE_TTL}
+    meta[_TG_TRADES_KEY] = pending
+    agent.metadata_json = meta
+    agent.save(update_fields=["metadata_json", "updated_at"])
+
+
+def _pop_pending_trade(user, token: str) -> dict | None:
+    key = f"tg:trade:{token}"
+    payload = cache.get(key)
+    cache.delete(key)
+    agent = get_tradable_agent(user) or _user_agent(user)
+    if agent:
+        meta = dict(agent.metadata_json or {})
+        pending = dict(meta.get(_TG_TRADES_KEY) or {})
+        row = pending.pop(token, None)
+        if meta.get(_TG_TRADES_KEY) != pending:
+            meta[_TG_TRADES_KEY] = pending
+            agent.metadata_json = meta
+            agent.save(update_fields=["metadata_json", "updated_at"])
+        if payload is None and isinstance(row, dict):
+            exp = float(row.get("exp") or 0)
+            if exp and exp < timezone.now().timestamp():
+                return None
+            payload = {k: v for k, v in row.items() if k != "exp"}
+    return payload
+
+
 def _require_running_agent(chat_id: int, user) -> bool:
     from apps.agents.models import DreamAgent
 
-    if get_running_agent(user):
+    if get_tradable_agent(user):
         return True
     agent = _user_agent(user)
     if agent and agent.status == DreamAgent.Status.PAUSED:
         send_message(chat_id, "DreamAgent is paused. Send /resume to trade.")
+        return False
+    origin = site_origin()
+    if agent and agent.status == DreamAgent.Status.EXPIRED:
+        send_message(
+            chat_id,
+            f"Your DreamAgent grant expired. Re-sign it at {origin}/agent/activate/ "
+            "in the browser — Telegram cannot use MetaMask.",
+        )
         return False
     send_message(
         chat_id,
@@ -575,7 +650,37 @@ def _require_running_agent(chat_id: int, user) -> bool:
     return False
 
 
+def _send_trade_result(chat_id: int, user, *, event_id: int, outcome: str, amount: Decimal) -> None:
+    try:
+        trade = execute_agent_manual_trade(
+            user,
+            event_id=int(event_id),
+            outcome=str(outcome),
+            amount=Decimal(str(amount)),
+        )
+    except DreamAgentError as exc:
+        msg = str(exc)
+        cap = _max_trade(user)
+        if cap is not None and "exceeds max" in msg.lower():
+            send_message(
+                chat_id,
+                LIMIT_TEMPLATE.format(
+                    max=format_collateral(cap, compact=True),
+                    asked=format_collateral(amount, compact=True),
+                ),
+            )
+        else:
+            send_message(chat_id, msg)
+        return
+    tx = trade.transaction_hash or ""
+    send_message(
+        chat_id,
+        f"Trade submitted ({trade.status}).\n{explorer_tx_url(tx) if tx else ''}".strip(),
+    )
+
+
 def _offer_trade(chat_id: int, user, event: EventContract, outcome: str, amount: Decimal) -> None:
+    """Session-key redeem — no MetaMask popup and no extra Telegram confirm."""
     if not _require_running_agent(chat_id, user):
         return
     cap = _max_trade(user)
@@ -588,17 +693,6 @@ def _offer_trade(chat_id: int, user, event: EventContract, outcome: str, amount:
             ),
         )
         return
-    token = secrets.token_urlsafe(10)
-    cache.set(
-        f"tg:trade:{token}",
-        {
-            "user_id": user.pk,
-            "event_id": event.pk,
-            "outcome": outcome,
-            "amount": str(amount),
-        },
-        TRADE_TTL,
-    )
     yes, no = yes_no_outcomes(event)
     side = yes if outcome.upper() == "YES" else no
     price = side.current_price if side else None
@@ -611,18 +705,11 @@ def _offer_trade(chat_id: int, user, event: EventContract, outcome: str, amount:
                 f"You pay {format_collateral(amount)}",
                 f"Maximum loss {format_collateral(amount)}",
                 f"Ends in {format_ends_in(event)}",
-                "Place this trade via DreamAgent?",
-            ]
-        ),
-        reply_markup=inline_keyboard(
-            [
-                [
-                    ("Confirm trade", f"tr:ok:{token}"),
-                    ("Cancel", f"tr:no:{token}"),
-                ]
+                "DreamAgent is placing this on-chain.",
             ]
         ),
     )
+    _send_trade_result(chat_id, user, event_id=event.pk, outcome=outcome, amount=amount)
 
 
 def _cmd_trade(chat_id: int, user, text: str) -> None:
@@ -796,46 +883,23 @@ def _handle_callback(query: dict[str, Any]) -> None:
 
     if data.startswith("tr:ok:"):
         token = data[6:]
-        payload = cache.get(f"tg:trade:{token}")
-        cache.delete(f"tg:trade:{token}")
+        payload = _pop_pending_trade(user, token)
         if not payload or int(payload.get("user_id") or 0) != user.pk:
             answer_callback(callback_id, "Expired")
             send_message(chat_id, "That trade request expired. Send /trade again.")
             return
         answer_callback(callback_id, "Sending")
-        try:
-            trade = execute_agent_manual_trade(
-                user,
-                event_id=int(payload["event_id"]),
-                outcome=str(payload["outcome"]),
-                amount=Decimal(str(payload["amount"])),
-            )
-        except DreamAgentError as exc:
-            msg = str(exc)
-            cap = _max_trade(user)
-            if cap is not None and "exceeds max" in msg.lower():
-                send_message(
-                    chat_id,
-                    LIMIT_TEMPLATE.format(
-                        max=format_collateral(cap, compact=True),
-                        asked=format_collateral(payload.get("amount"), compact=True),
-                    ),
-                )
-            else:
-                send_message(chat_id, msg)
-            return
-        except TelegramError:
-            send_message(chat_id, "Could not reach Telegram after the trade.")
-            return
-        tx = trade.transaction_hash or ""
-        send_message(
+        _send_trade_result(
             chat_id,
-            f"Trade submitted ({trade.status}).\n{explorer_tx_url(tx) if tx else ''}".strip(),
+            user,
+            event_id=int(payload["event_id"]),
+            outcome=str(payload["outcome"]),
+            amount=Decimal(str(payload["amount"])),
         )
         return
     if data.startswith("tr:no:"):
         token = data[6:]
-        cache.delete(f"tg:trade:{token}")
+        _pop_pending_trade(user, token)
         answer_callback(callback_id, "Cancelled")
         send_message(chat_id, "Trade cancelled.")
         return

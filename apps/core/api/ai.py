@@ -77,6 +77,7 @@ class SearchView(APIView):
 
 
 class NewsFeedView(APIView):
+    authentication_classes = []
     permission_classes = [AllowAny]
 
     def get(self, request):

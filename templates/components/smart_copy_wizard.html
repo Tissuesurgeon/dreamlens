@@ -9,6 +9,7 @@
 
     <form id="smart-copy-wizard-form" class="dl-wizard">
       <input type="hidden" name="trader_id" id="scw-trader-id" value="{{ trader_id|default:'' }}">
+      <input type="hidden" name="wallet_address" id="scw-wallet-address" value="">
       <input type="hidden" id="scw-amount" value="5">
       <input type="hidden" id="scw-min-wr" value="65">
       <input type="hidden" id="scw-min-events" value="30">
@@ -16,22 +17,31 @@
       <input type="hidden" id="scw-min-cons" value="60">
 
       <div class="dl-wizard-panel is-active" data-scw-step="1">
-        <div class="dl-form-row">
-          <label for="scw-max-trade" class="dl-label">Maximum per trade ($)</label>
-          <input type="number" id="scw-max-trade" class="dl-input" min="1" step="1" value="5">
-        </div>
-        <div class="dl-form-row">
-          <label for="scw-max-daily" class="dl-label">Daily maximum ($)</label>
-          <input type="number" id="scw-max-daily" class="dl-input" min="1" step="1" value="20">
-        </div>
-        <div class="dl-form-row">
-          <label for="scw-min-score" class="dl-label">Minimum DreamLens Score</label>
-          <input type="number" id="scw-min-score" class="dl-input" min="0" max="100" value="75">
+        <div class="dl-modal__body">
+          <div class="dl-form-row">
+            <label for="scw-max-trade" class="dl-label">Maximum per trade ($)</label>
+            <input type="number" id="scw-max-trade" class="dl-input" min="1" step="1" value="5">
+          </div>
+          <div class="dl-form-row">
+            <label for="scw-max-daily" class="dl-label">Daily maximum ($)</label>
+            <input type="number" id="scw-max-daily" class="dl-input" min="1" step="1" value="20">
+          </div>
+          <div class="dl-form-row">
+            <label for="scw-min-score" class="dl-label">Minimum DreamLens Score</label>
+            <input type="number" id="scw-min-score" class="dl-input" min="0" max="100" value="75">
+          </div>
+
+          {% include "components/what_happens_next.html" with heading_id="scw-next" trader_label="this trader" %}
         </div>
 
-        {% include "components/what_happens_next.html" with heading_id="scw-next" trader_label="this trader" %}
-
-        <button type="submit" class="dl-btn dl-btn--primary dl-btn--block">Activate Smart Copy</button>
+        <footer class="dl-modal__footer">
+          <div class="dl-modal__footer-secondary">
+            <button type="button" class="dl-btn dl-btn--ghost" data-smart-wizard-close>Cancel</button>
+          </div>
+          <div class="dl-modal__footer-primary">
+            <button type="submit" class="dl-btn dl-btn--primary">Activate Smart Copy</button>
+          </div>
+        </footer>
       </div>
     </form>
   </div>

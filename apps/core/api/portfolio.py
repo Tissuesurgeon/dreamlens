@@ -13,14 +13,22 @@ from rest_framework.views import APIView
 from services.portfolio_service import (
     PortfolioError,
     annotate_positions,
+    confirm_position_close,
     confirm_position_redeem,
     get_portfolio_summary,
     get_wallet_balances_for_user,
     list_positions,
+    prepare_position_close,
     prepare_position_redeem,
 )
 
-from .serializers import PositionRedeemConfirmSerializer, PositionRedeemSerializer, PositionSerializer
+from .serializers import (
+    PositionCloseConfirmSerializer,
+    PositionCloseSerializer,
+    PositionRedeemConfirmSerializer,
+    PositionRedeemSerializer,
+    PositionSerializer,
+)
 
 logger = logging.getLogger("dreamlens.api.portfolio")
 
@@ -88,6 +96,55 @@ class PositionRedeemConfirmView(APIView):
             logger.exception("confirm redeem failed position=%s", pk)
             return Response(
                 {"detail": str(exc) or "Could not record the claim."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response({"position": PositionSerializer(position).data})
+
+
+class PositionCloseView(APIView):
+    permission_classes = [IsAuthenticated]
+    renderer_classes = [JSONRenderer]
+
+    def post(self, request, pk: int):
+        serializer = PositionCloseSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            payload = prepare_position_close(
+                request.user,
+                pk,
+                serializer.validated_data["wallet_address"],
+            )
+        except PortfolioError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as exc:
+            logger.exception("prepare close failed position=%s", pk)
+            return Response(
+                {"detail": str(exc) or "Could not build the close transaction."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(payload)
+
+
+class PositionCloseConfirmView(APIView):
+    permission_classes = [IsAuthenticated]
+    renderer_classes = [JSONRenderer]
+
+    def post(self, request, pk: int):
+        serializer = PositionCloseConfirmSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            position = confirm_position_close(
+                request.user,
+                pk,
+                serializer.validated_data["tx_hash"],
+                trade_id=serializer.validated_data.get("trade_id"),
+            )
+        except PortfolioError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as exc:
+            logger.exception("confirm close failed position=%s", pk)
+            return Response(
+                {"detail": str(exc) or "Could not record the close."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         return Response({"position": PositionSerializer(position).data})

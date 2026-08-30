@@ -407,12 +407,25 @@ def event_detail(request, pk: int):
         logger.debug("consensus unavailable for event %s", event.pk)
 
     active_copy_trader_ids: set[int] = set()
+    user_positions: list = []
     if request.user.is_authenticated:
         active_copy_trader_ids = set(
             CopyRelationship.objects.filter(
                 user=request.user,
                 status=CopyRelationship.Status.ACTIVE,
             ).values_list("trader_id", flat=True)
+        )
+        from services.portfolio_service import annotate_positions
+
+        user_positions = annotate_positions(
+            request.user,
+            list(
+                Position.objects.filter(
+                    user=request.user,
+                    event=event,
+                    status=Position.Status.OPEN,
+                ).select_related("event", "outcome")
+            ),
         )
 
     return render(
@@ -435,6 +448,7 @@ def event_detail(request, pk: int):
             "no_position_share": no_position_share,
             "consensus": consensus,
             "active_copy_trader_ids": active_copy_trader_ids,
+            "user_positions": user_positions,
             "score_disclaimer": SCORE_DISCLAIMER,
             "event_question": event.question,
         },
@@ -510,7 +524,7 @@ def portfolio(request):
     open_positions = [p for p in positions if p.result == "open"]
     settling_positions = [p for p in positions if p.result == "settling"]
     settled_positions = [
-        p for p in positions if p.result in ("won", "lost", "void", "claimed")
+        p for p in positions if p.result in ("won", "lost", "void", "claimed", "closed")
     ]
     recent_trades = list_recent_trades(request.user)
 
@@ -748,7 +762,12 @@ def dream_agent(request):
         except Exception:
             agent_balance = None
     executions = []
+    following_count = 0
     if request.user.is_authenticated:
+        following_count = CopyRelationship.objects.filter(
+            user=request.user,
+            status=CopyRelationship.Status.ACTIVE,
+        ).count()
         executions = list(
             CopyExecution.objects.filter(relationship__user=request.user)
             .select_related(
@@ -764,6 +783,9 @@ def dream_agent(request):
     today_result = None
     if performance.get("pnl") is not None:
         today_result = performance.get("pnl")
+    health = {}
+    if request.user.is_authenticated:
+        health = dream_agent_service.grant_health(request.user)
     return render(
         request,
         "agent/index.html",
@@ -774,7 +796,9 @@ def dream_agent(request):
             "agent_balance": agent_balance,
             "is_authenticated": request.user.is_authenticated,
             "executions": executions,
+            "following_count": following_count,
             "today_result": today_result,
+            "grant_health": health,
         },
     )
 
@@ -784,11 +808,17 @@ def dream_agent_activate(request):
     from services import smart_account_service
 
     grant = smart_account_service.grant_payload_for_ui(request.user) if request.user.is_authenticated else {}
+    health = {}
+    if request.user.is_authenticated:
+        from services import dream_agent_service
+
+        health = dream_agent_service.grant_health(request.user)
     return render(
         request,
         "agent/activate.html",
         {
             "grant": grant,
+            "grant_health": health,
             "is_authenticated": request.user.is_authenticated,
         },
     )

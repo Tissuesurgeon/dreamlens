@@ -97,6 +97,20 @@
     return addr.slice(0, 6) + "…" + addr.slice(-4);
   }
 
+  function isEvmAddress(value) {
+    return /^0x[a-fA-F0-9]{40}$/.test((value || "").trim());
+  }
+
+  function copyApiError(data, fallback) {
+    if (!data) return fallback;
+    if (typeof data.detail === "string") return data.detail;
+    if (Array.isArray(data.detail) && data.detail.length) return String(data.detail[0]);
+    const field = data.wallet_address || data.trader_id;
+    if (Array.isArray(field) && field.length) return String(field[0]);
+    if (typeof field === "string") return field;
+    return fallback;
+  }
+
   function walletButton() {
     return document.getElementById("wallet-connect");
   }
@@ -470,15 +484,33 @@
     }
   }
 
+  function cloneMarketReader(liveText) {
+    const tpl = document.getElementById("market-reader-template");
+    const fallback = liveText || "DreamLens is reading this market…";
+    if (!tpl || !tpl.content || !tpl.content.firstElementChild) {
+      const p = document.createElement("p");
+      p.textContent = fallback;
+      return p;
+    }
+    const node = tpl.content.firstElementChild.cloneNode(true);
+    const live = node.querySelector(".dl-market-reader__live");
+    if (live) live.textContent = fallback;
+    return node;
+  }
+
   function appendLensBubble(threadEl, role, text, extra) {
     const wrap = document.createElement("div");
     wrap.className =
       "dl-lens-bubble dl-lens-bubble--" + (role === "user" ? "user" : "assistant");
     if (extra && extra.pending) wrap.classList.add("is-pending");
     if (extra && extra.error) wrap.classList.add("is-error");
-    const p = document.createElement("p");
-    p.textContent = text || "";
-    wrap.appendChild(p);
+    if (extra && extra.pending) {
+      wrap.appendChild(cloneMarketReader(text || "Looking at live markets and news…"));
+    } else {
+      const p = document.createElement("p");
+      p.textContent = text || "";
+      wrap.appendChild(p);
+    }
     const events = extra && extra.events;
     if (events && events.length) {
       const links = document.createElement("div");
@@ -1460,6 +1492,87 @@
     });
   }
 
+  function initFollowWalletForm() {
+    const form = document.getElementById("follow-wallet-form");
+    if (!form) return;
+    const input = document.getElementById("follow-wallet-address");
+    const followBtn = document.getElementById("follow-wallet-follow");
+    const smartBtn = document.getElementById("follow-wallet-smart");
+    const errorEl = document.getElementById("follow-wallet-error");
+
+    function showError(msg) {
+      if (!errorEl) return;
+      if (!msg) {
+        errorEl.hidden = true;
+        errorEl.textContent = "";
+        return;
+      }
+      errorEl.hidden = false;
+      errorEl.textContent = msg;
+    }
+
+    function readAddress() {
+      return ((input && input.value) || "").trim();
+    }
+
+    async function followAddress() {
+      const address = readAddress();
+      if (!isEvmAddress(address)) {
+        showError("Paste a valid 0x wallet address.");
+        if (input) input.focus();
+        return;
+      }
+      showError("");
+      if (!getConnectedAddress()) {
+        await connectWallet();
+        return;
+      }
+      if (followBtn) followBtn.disabled = true;
+      try {
+        await syncWalletSession(getConnectedAddress());
+        const res = await csrfFetch("/api/copy/", {
+          method: "POST",
+          body: JSON.stringify({
+            wallet_address: address,
+            copy_mode: "SMART",
+            auto_execute: false,
+            status: "ACTIVE",
+          }),
+        });
+        const data = await res.json().catch(function () {
+          return {};
+        });
+        if (!res.ok) {
+          throw new Error(copyApiError(data, "Could not follow this wallet."));
+        }
+        window.location.reload();
+      } catch (err) {
+        showError(err.message || "Could not follow this wallet.");
+      } finally {
+        if (followBtn) followBtn.disabled = false;
+      }
+    }
+
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      followAddress();
+    });
+    if (smartBtn) {
+      smartBtn.addEventListener("click", function () {
+        const address = readAddress();
+        if (!isEvmAddress(address)) {
+          showError("Paste a valid 0x wallet address.");
+          if (input) input.focus();
+          return;
+        }
+        showError("");
+        if (typeof DreamLens.openSmartCopyWizard === "function") {
+          DreamLens.openSmartCopyWizard("", shortAddress(address), address);
+        }
+      });
+    }
+  }
+
   /* ── Smart Copy trader wizard ── */
   function initSmartCopyWizard() {
     const modal = document.getElementById("smart-copy-wizard");
@@ -1483,9 +1596,11 @@
       });
     }
 
-    function openWizard(traderId, traderName) {
+    function openWizard(traderId, traderName, walletAddress) {
       const idInput = document.getElementById("scw-trader-id");
-      if (idInput && traderId) idInput.value = traderId;
+      const walletInput = document.getElementById("scw-wallet-address");
+      if (idInput) idInput.value = traderId || "";
+      if (walletInput) walletInput.value = walletAddress || "";
       const title = document.getElementById("smart-copy-wizard-title");
       if (title) {
         title.textContent = traderName ? "Smart Copy · " + traderName : "Start Smart Copy";
@@ -1494,6 +1609,7 @@
       modal.classList.add("is-open");
       modal.setAttribute("aria-hidden", "false");
     }
+    DreamLens.openSmartCopyWizard = openWizard;
 
     function closeWizard() {
       modal.classList.remove("is-open");
@@ -1544,8 +1660,11 @@
         return;
       }
       const traderId = document.getElementById("scw-trader-id").value;
-      if (!traderId) {
-        alert("Missing trader.");
+      const walletAddress = (
+        (document.getElementById("scw-wallet-address") || {}).value || ""
+      ).trim();
+      if (!traderId && !isEvmAddress(walletAddress)) {
+        alert("Paste a wallet address or pick a trader.");
         return;
       }
 
@@ -1576,7 +1695,6 @@
       const minCons = Number(minConsEl && minConsEl.value) || 60;
 
       const payload = {
-        trader_id: Number(traderId),
         copy_mode: copyMode,
         auto_execute: autoExecute,
         status: "ACTIVE",
@@ -1593,6 +1711,8 @@
         min_consensus: minCons / 100,
         consider_json: consider,
       };
+      if (traderId) payload.trader_id = Number(traderId);
+      if (!traderId && walletAddress) payload.wallet_address = walletAddress;
 
       const submitBtn = form.querySelector('button[type="submit"]');
       if (submitBtn) {
@@ -1609,7 +1729,7 @@
           return {};
         });
         if (!res.ok) {
-          throw new Error(data.detail || data.error || "Could not start Smart Copy.");
+          throw new Error(copyApiError(data, "Could not start Smart Copy."));
         }
         closeWizard();
         window.location.reload();
@@ -1618,7 +1738,7 @@
       } finally {
         if (submitBtn) {
           submitBtn.disabled = false;
-          submitBtn.textContent = "Start Smart Copy";
+          submitBtn.textContent = "Activate Smart Copy";
         }
       }
     });
@@ -2409,12 +2529,91 @@
     }
   }
 
+  async function closePosition(btn) {
+    const positionId = btn.getAttribute("data-close-position");
+    const expectedWallet = (btn.getAttribute("data-close-wallet") || "").toLowerCase();
+    if (!positionId) return;
+    const original = btn.textContent;
+    btn.disabled = true;
+    try {
+      const wallet = await ensureWalletForTrade();
+      if (expectedWallet && wallet.address.toLowerCase() !== expectedWallet) {
+        throw new Error("Switch MetaMask to the wallet that holds these outcome tokens.");
+      }
+      btn.textContent = "Preparing…";
+      const res = await csrfFetch("/api/portfolio/positions/" + positionId + "/close/", {
+        method: "POST",
+        body: JSON.stringify({ wallet_address: wallet.address }),
+      });
+      const prepared = await readJsonResponse(res);
+      if (!res.ok) {
+        throw new Error(prepared.detail || prepared.error || "Could not build the close.");
+      }
+      if (prepared.approval_tx) {
+        btn.textContent = "Approve tokens…";
+        const approveHash = await sendWalletTx(wallet.eth, prepared.approval_tx, wallet.address);
+        const approveReceipt = await waitForWalletReceipt(wallet.eth, approveHash, 120000);
+        const approveOk =
+          approveReceipt.status === "0x1" ||
+          approveReceipt.status === 1 ||
+          approveReceipt.status === "1";
+        if (!approveOk) {
+          throw new Error("Outcome token approval reverted on Shannon.");
+        }
+      }
+      if (!prepared.unsigned_tx) {
+        throw new Error("Could not build the DreamDEX sell.");
+      }
+      btn.textContent = "Selling on-chain…";
+      const txHash = await sendWalletTx(wallet.eth, prepared.unsigned_tx, wallet.address);
+      if (!txHash) {
+        throw new Error("Wallet did not return a transaction hash.");
+      }
+      btn.textContent = "Confirming…";
+      const receipt = await waitForWalletReceipt(wallet.eth, txHash, 120000);
+      const ok =
+        receipt.status === "0x1" || receipt.status === 1 || receipt.status === "1";
+      if (!ok) {
+        throw new Error("Sell reverted on DreamDEX. The position was not closed.");
+      }
+      const confirmBody = { tx_hash: txHash };
+      if (prepared.trade_id) confirmBody.trade_id = prepared.trade_id;
+      const confirmRes = await csrfFetch(
+        "/api/portfolio/positions/" + positionId + "/close/confirm/",
+        {
+          method: "POST",
+          body: JSON.stringify(confirmBody),
+        }
+      );
+      const confirmData = await readJsonResponse(confirmRes).catch(function () {
+        return {};
+      });
+      if (!confirmRes.ok) {
+        throw new Error(confirmData.detail || "Sell sent, but DreamLens could not record it.");
+      }
+      toast("Position closed. Collateral is back in this wallet.", "ok");
+      window.location.reload();
+    } catch (err) {
+      console.warn("Close failed", err);
+      alert(err.message || "Could not close this trade. Check MetaMask and try again.");
+      btn.disabled = false;
+      btn.textContent = original;
+    }
+  }
+
   function initClaimPositions() {
     document.querySelectorAll("[data-claim-position]").forEach(function (btn) {
       btn.addEventListener("click", function (ev) {
         ev.preventDefault();
         ev.stopPropagation();
         claimPosition(btn);
+      });
+    });
+    document.querySelectorAll("[data-close-position]").forEach(function (btn) {
+      btn.addEventListener("click", function (ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        closePosition(btn);
       });
     });
   }
@@ -2546,19 +2745,40 @@
     if (!body) return;
     body.replaceChildren();
     if (explanation) {
+      let split = null;
+      let index = 0;
       EXPLAIN_SECTIONS.forEach(function (pair) {
         const text = explanation[pair[0]];
         if (!text) return;
         const section = document.createElement("section");
         section.className = "dl-explain__section";
+        section.style.setProperty("--i", String(index));
+        index += 1;
+        if (pair[0] === "setup") section.classList.add("dl-explain__section--lead");
+        if (pair[0] === "yes_needs") section.classList.add("dl-explain__section--yes");
+        if (pair[0] === "no_needs") section.classList.add("dl-explain__section--no");
+        if (pair[0] === "could_change") section.classList.add("dl-explain__section--change");
         const heading = document.createElement("h3");
         heading.textContent = pair[1];
         const para = document.createElement("p");
         para.textContent = text;
         section.appendChild(heading);
         section.appendChild(para);
+        if (pair[0] === "yes_needs" || pair[0] === "no_needs") {
+          if (!split) {
+            split = document.createElement("div");
+            split.className = "dl-explain__split";
+          }
+          split.appendChild(section);
+          return;
+        }
+        if (split) {
+          body.appendChild(split);
+          split = null;
+        }
         body.appendChild(section);
       });
+      if (split) body.appendChild(split);
       if (body.childNodes.length) return;
     }
     body.textContent = fallback || "No explanation right now.";
@@ -2591,7 +2811,10 @@
           ""
         ).toUpperCase();
         if (questionEl) questionEl.textContent = question;
-        if (body) body.textContent = "DreamLens is reading this market…";
+        if (body) {
+          body.replaceChildren(cloneMarketReader("DreamLens is reading this market…"));
+        }
+        sheet.setAttribute("aria-busy", "true");
         if (newsWrap) newsWrap.hidden = true;
         if (lensLink && eventId) {
           lensLink.setAttribute("href", "/lens/?event=" + encodeURIComponent(eventId));
@@ -2624,7 +2847,15 @@
           }
           renderExplanation(body, data.explanation, data.reply);
         } catch (err) {
-          if (body) body.textContent = err.message || "Could not explain this market.";
+          if (body) {
+            body.replaceChildren();
+            const p = document.createElement("p");
+            p.className = "dl-explain__error";
+            p.textContent = err.message || "Could not explain this market.";
+            body.appendChild(p);
+          }
+        } finally {
+          sheet.removeAttribute("aria-busy");
         }
       });
     });
@@ -2690,6 +2921,7 @@
     initTradeModal();
     initCopyForm();
     initFollowButtons();
+    initFollowWalletForm();
     initSmartCopyWizard();
     initSmartCopyAlert();
     initCopyManage();
@@ -2930,35 +3162,41 @@
           if (!grant.typed_data) throw new Error("Grant typed data unavailable — check session key + framework");
 
           const typed = grant.typed_data;
-          typed.message.maxTradeAmount = document.getElementById("grant-max-trade")?.value || "10";
-          typed.message.maxDailyVolume = document.getElementById("grant-max-daily")?.value || "50";
-          const days = Number(document.getElementById("grant-expires")?.value || "30");
-          if (Number.isFinite(days) && days > 0) {
-            typed.message.expiresAt = Math.floor(Date.now() / 1000) + Math.round(days * 86400);
-          }
+          const signTyped = {
+            types: typed.types,
+            primaryType: typed.primaryType,
+            domain: typed.domain,
+            message: typed.message,
+          };
 
           const eth = getEthereumProvider() || window.ethereum;
           if (!eth) throw new Error("No wallet found.");
           const signature = await eth.request({
             method: "eth_signTypedData_v4",
-            params: [owner, JSON.stringify(typed)],
+            params: [owner, JSON.stringify(signTyped)],
           });
 
+          const msg = typed.message || {};
           const body = {
-            max_trade_amount: typed.message.maxTradeAmount,
-            max_daily_volume: typed.message.maxDailyVolume,
+            max_trade_amount: document.getElementById("grant-max-trade")?.value || "10",
+            max_daily_volume: document.getElementById("grant-max-daily")?.value || "50",
             min_copy_score: document.getElementById("grant-min-score")?.value || "75",
             expires_in_days: document.getElementById("grant-expires")?.value || "30",
             activate: true,
             signed_delegation: {
-              delegate: grant.session_address,
-              delegator: grant.smart_account.address,
-              authority:
-                "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-              caveats: [],
-              salt: typed.message.salt,
+              delegate: msg.delegate || grant.session_address,
+              delegator: msg.delegator || (grant.smart_account && grant.smart_account.address),
+              authority: msg.authority || "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              caveats: (msg.caveats || []).map(function (c) {
+                return {
+                  enforcer: c.enforcer,
+                  terms: c.terms,
+                  args: c.args || "0x",
+                };
+              }),
+              salt: msg.salt,
               signature: signature,
-              typed_data: typed,
+              typed_data: signTyped,
             },
           };
           const res = await csrfFetch("/api/agent/grant/", {

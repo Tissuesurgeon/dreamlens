@@ -187,6 +187,9 @@ class ConfirmTradeSerializer(serializers.Serializer):
 class CopyRelationshipSerializer(serializers.ModelSerializer):
     trader = TraderProfileSerializer(read_only=True)
     trader_id = serializers.IntegerField(write_only=True, required=False)
+    wallet_address = serializers.CharField(
+        write_only=True, required=False, allow_blank=True, max_length=42
+    )
 
     class Meta:
         model = CopyRelationship
@@ -194,6 +197,7 @@ class CopyRelationshipSerializer(serializers.ModelSerializer):
             "id",
             "trader",
             "trader_id",
+            "wallet_address",
             "status",
             "copy_mode",
             "max_per_trade",
@@ -213,8 +217,28 @@ class CopyRelationshipSerializer(serializers.ModelSerializer):
         read_only_fields = ("id", "trader", "created_at", "updated_at")
 
     def validate(self, attrs):
-        if self.instance is None and not attrs.get("trader_id"):
-            raise serializers.ValidationError({"trader_id": "This field is required."})
+        if self.instance is None and not attrs.get("trader_id") and not (
+            attrs.get("wallet_address") or ""
+        ).strip():
+            raise serializers.ValidationError(
+                {"wallet_address": "Paste a wallet address or pick a trader."}
+            )
+        wallet = (attrs.get("wallet_address") or "").strip()
+        if wallet:
+            from services.trader_service import normalize_trader_wallet
+
+            try:
+                addr = normalize_trader_wallet(wallet)
+            except ValueError as exc:
+                raise serializers.ValidationError({"wallet_address": str(exc)}) from exc
+            request = self.context.get("request")
+            user = getattr(request, "user", None)
+            if user is not None and getattr(user, "is_authenticated", False):
+                if user.wallets.filter(address__iexact=addr).exists():
+                    raise serializers.ValidationError(
+                        {"wallet_address": "You cannot follow your own wallet."}
+                    )
+            attrs["wallet_address"] = addr
         return attrs
 
 
@@ -244,6 +268,7 @@ class PositionSerializer(serializers.ModelSerializer):
     outcome_type = serializers.CharField(source="outcome.outcome_type", read_only=True)
     result = serializers.SerializerMethodField()
     claimable = serializers.SerializerMethodField()
+    closeable = serializers.SerializerMethodField()
 
     class Meta:
         model = Position
@@ -261,6 +286,7 @@ class PositionSerializer(serializers.ModelSerializer):
             "settled_at",
             "result",
             "claimable",
+            "closeable",
         )
 
     def get_result(self, obj):
@@ -269,6 +295,9 @@ class PositionSerializer(serializers.ModelSerializer):
     def get_claimable(self, obj):
         return bool(getattr(obj, "claimable", False))
 
+    def get_closeable(self, obj):
+        return bool(getattr(obj, "closeable", False))
+
 
 class PositionRedeemSerializer(serializers.Serializer):
     wallet_address = serializers.CharField(max_length=42)
@@ -276,6 +305,15 @@ class PositionRedeemSerializer(serializers.Serializer):
 
 class PositionRedeemConfirmSerializer(serializers.Serializer):
     tx_hash = serializers.CharField(max_length=66)
+
+
+class PositionCloseSerializer(serializers.Serializer):
+    wallet_address = serializers.CharField(max_length=42)
+
+
+class PositionCloseConfirmSerializer(serializers.Serializer):
+    tx_hash = serializers.CharField(max_length=66)
+    trade_id = serializers.IntegerField(required=False)
 
 
 class ChatSerializer(serializers.Serializer):

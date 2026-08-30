@@ -92,7 +92,7 @@
         <span class="dl-agent-step__n">2</span>
         <div>
           <strong>Deposit</strong>
-          <p>Send DreamDEX collateral and Shannon STT. DreamAgent pays gas from the STT you deposit here.</p>
+          <p>Send Test USDC to this Smart Account. Telegram gas is paid by the session key below — not this deposit.</p>
         </div>
       </div>
       <div class="dl-agent-step__body dl-agent-deposit">
@@ -167,6 +167,16 @@
       </label>
     </div>
 
+    {% if grant_health.needs_resign %}
+    <article class="dl-agent-callout" role="status">
+      <h3 class="dl-agent-callout__title">Re-sign this grant</h3>
+      <p class="dl-agent-callout__copy">The stored signature does not match DelegationManager. Telegram trades will revert until you grant again.</p>
+      {% if grant_health.reasons %}
+      <p class="dl-muted">{{ grant_health.reasons.0 }}</p>
+      {% endif %}
+    </article>
+    {% endif %}
+    <p class="dl-help">You sign this grant once. DreamAgent’s session key then places trades — no MetaMask popup per trade.</p>
     <button type="button" class="dl-btn dl-btn--primary dl-btn--block" id="grant-permission">
       Grant Permission
     </button>

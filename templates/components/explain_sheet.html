@@ -1,11 +1,14 @@
 <div class="dl-modal" id="explain-sheet" aria-hidden="true" role="dialog" aria-labelledby="explain-sheet-title">
   <div class="dl-modal__backdrop" data-explain-close></div>
-  <div class="dl-modal__panel dl-animate-slide-up">
+  <div class="dl-modal__panel dl-modal__panel--explain dl-animate-slide-up">
     <header class="dl-modal__header">
-      <h2 id="explain-sheet-title" class="dl-modal__title">DreamLens explains</h2>
+      <div>
+        <p class="dl-explain__kicker">Lens</p>
+        <h2 id="explain-sheet-title" class="dl-modal__title">DreamLens explains</h2>
+      </div>
       <button type="button" class="dl-modal__close" data-explain-close aria-label="Close">&times;</button>
     </header>
-    <div class="dl-modal__body">
+    <div class="dl-modal__body dl-explain">
       <p class="dl-explain__question" id="explain-question"></p>
       <div class="dl-explain__body" id="explain-body">DreamLens is reading this market…</div>
       <div class="dl-explain__news" id="explain-news" hidden>
@@ -15,8 +18,34 @@
       <p class="dl-explain__note">This is a market price, not a guarantee.</p>
     </div>
     <footer class="dl-modal__footer">
-      <a href="{% url 'lens' %}" class="dl-btn dl-btn--ghost" id="explain-lens-link">Ask Lens more</a>
-      <button type="button" class="dl-btn dl-btn--primary" data-explain-close>Got it</button>
+      <div class="dl-modal__footer-secondary">
+        <a href="{% url 'lens' %}" class="dl-btn dl-btn--ghost" id="explain-lens-link">Ask Lens more</a>
+      </div>
+      <div class="dl-modal__footer-primary">
+        <button type="button" class="dl-btn dl-btn--primary" data-explain-close>Got it</button>
+      </div>
     </footer>
   </div>
 </div>
+
+<template id="market-reader-template">
+  <div class="dl-market-reader" role="status" aria-live="polite" aria-busy="true">
+    <p class="visually-hidden dl-market-reader__live">DreamLens is reading this market…</p>
+    <div class="dl-market-reader__plane" aria-hidden="true">
+      <div class="dl-market-reader__yes"><span>YES</span></div>
+      <div class="dl-market-reader__no"><span>NO</span></div>
+      <span class="dl-market-reader__split"></span>
+      <span class="dl-market-reader__scan"></span>
+    </div>
+    <p class="dl-market-reader__status" aria-hidden="true">
+      <span>Reading the book…</span>
+      <span>Checking headlines…</span>
+      <span>Writing in plain language…</span>
+    </p>
+    <div class="dl-skeleton" aria-hidden="true">
+      <span class="dl-skeleton__line"></span>
+      <span class="dl-skeleton__line"></span>
+      <span class="dl-skeleton__line"></span>
+    </div>
+  </div>
+</template>

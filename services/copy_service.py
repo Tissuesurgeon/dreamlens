@@ -5,11 +5,11 @@ from __future__ import annotations
 import logging
 from decimal import Decimal
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Sum
 from django.utils import timezone
 
-from apps.dreamcopy.models import CopyExecution, CopyRelationship, TraderTrade
+from apps.dreamcopy.models import CopyExecution, CopyRelationship, TraderProfile, TraderTrade
 from apps.trading.models import Trade
 from integrations.dreamdex.types import UnsignedTxDTO
 from services.copy_score import evaluate_copy_score
@@ -58,7 +58,23 @@ def _copy_amount(relationship: CopyRelationship, source_trade: TraderTrade) -> D
 
 @transaction.atomic
 def create_copy_relationship(user, data: dict) -> CopyRelationship:
-    trader_id = data["trader_id"]
+    from services.trader_service import ensure_trader_profile, normalize_trader_wallet
+
+    trader_id = data.get("trader_id")
+    wallet = (data.get("wallet_address") or "").strip()
+    if wallet and not trader_id:
+        try:
+            addr = normalize_trader_wallet(wallet)
+        except ValueError as exc:
+            raise CopyError(str(exc)) from exc
+        if user.wallets.filter(address__iexact=addr).exists():
+            raise CopyError("You cannot follow your own wallet.")
+        trader_id = ensure_trader_profile(addr).pk
+    if not trader_id:
+        raise CopyError("Pick a trader or paste a wallet address.")
+    if not TraderProfile.objects.filter(pk=trader_id).exists():
+        raise CopyError("Trader not found.")
+
     consider = data.get("consider_json") or {}
     if not isinstance(consider, dict):
         consider = {}
@@ -84,6 +100,7 @@ def create_copy_relationship(user, data: dict) -> CopyRelationship:
         trader_id=trader_id,
         defaults=defaults,
     )
+    _include_trader_on_agent_allowlist(user, rel.trader)
     return rel
 
 
@@ -107,6 +124,8 @@ def update_copy_relationship(relationship: CopyRelationship, data: dict) -> Copy
         if field in data:
             setattr(relationship, field, data[field])
     relationship.save()
+    if relationship.status == CopyRelationship.Status.ACTIVE:
+        _include_trader_on_agent_allowlist(relationship.user, relationship.trader)
     return relationship
 
 
@@ -116,13 +135,39 @@ def delete_copy_relationship(relationship: CopyRelationship) -> None:
     relationship.save(update_fields=["status", "updated_at"])
 
 
-@transaction.atomic
+def _include_trader_on_agent_allowlist(user, trader) -> None:
+    """A later /follow must be copyable even if the grant snapshotted an older list."""
+    if trader is None:
+        return
+    from apps.agents.models import DreamAgentPermission
+
+    tid = str(trader.pk)
+    wallet = (getattr(trader, "wallet_address", "") or "").lower()
+    perms = DreamAgentPermission.objects.filter(
+        agent__user=user,
+        status=DreamAgentPermission.Status.ACTIVE,
+    )
+    for perm in perms:
+        allowed = list(perm.allowed_traders_json or [])
+        if not allowed:
+            continue
+        normalized = {str(x).lower() for x in allowed}
+        if tid.lower() in normalized or (wallet and wallet in normalized):
+            continue
+        allowed.append(tid)
+        perm.allowed_traders_json = allowed
+        perm.save(update_fields=["allowed_traders_json", "updated_at"])
+
+
 def detect_and_process_copy(source_trade: TraderTrade) -> list[CopyExecution]:
     """Process new trader trade: Copy Score → rules → RiskEngine → PENDING/SKIPPED.
 
     If the user has a RUNNING DreamAgent with active delegation, the agent path
     (Policy → Risk → delegated Smart Account execution) owns the outcome instead
     of leaving a user-signature PENDING row.
+
+    On-chain redeem must not sit inside a Django atomic block — the session
+    pooler cannot hold a transaction open for a live `redeemDelegations`.
     """
     from services.dream_agent_service import (
         evaluate_and_maybe_execute,
@@ -144,7 +189,15 @@ def detect_and_process_copy(source_trade: TraderTrade) -> list[CopyExecution]:
 
         # Autonomous DreamAgent path — no MetaMask popup per trade.
         if get_running_agent(rel.user):
-            evaluation = evaluate_and_maybe_execute(source_trade, rel)
+            try:
+                evaluation = evaluate_and_maybe_execute(source_trade, rel)
+            except IntegrityError:
+                logger.info(
+                    "agent_copy already recorded rel=%s trade=%s",
+                    rel.pk,
+                    source_trade.pk,
+                )
+                continue
             if evaluation and evaluation.copy_execution_id:
                 executions.append(evaluation.copy_execution)
                 logger.info(
@@ -200,19 +253,22 @@ def detect_and_process_copy(source_trade: TraderTrade) -> list[CopyExecution]:
                     else "Smart Auto — confirm in wallet when ready"
                 )
 
-        execution = CopyExecution.objects.create(
-            relationship=rel,
-            source_trade=source_trade,
-            ai_decision=ai_decision,
-            ai_confidence=ai_confidence,
-            copy_score=scored.overall,
-            score_json=scored.pillars,
-            why_json=scored.why,
-            risks_json=scored.risks,
-            amount=amount,
-            status=status,
-            reason=reason,
-        )
+        try:
+            execution = CopyExecution.objects.create(
+                relationship=rel,
+                source_trade=source_trade,
+                ai_decision=ai_decision,
+                ai_confidence=ai_confidence,
+                copy_score=scored.overall,
+                score_json=scored.pillars,
+                why_json=scored.why,
+                risks_json=scored.risks,
+                amount=amount,
+                status=status,
+                reason=reason,
+            )
+        except IntegrityError:
+            continue
         executions.append(execution)
         logger.info(
             "copy_exec rel=%s trade=%s status=%s score=%s",

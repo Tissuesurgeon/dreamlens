@@ -160,7 +160,25 @@ def test_follow_creates_relationship(send_msg, user, trader, telegram_settings):
 
 @pytest.mark.django_db
 @patch("services.telegram_link_service.send_message")
-def test_trade_confirm_broadcasts(
+def test_follow_by_wallet_address(send_msg, user, telegram_settings):
+    from apps.dreamcopy.models import TraderProfile
+
+    start_link(user, CHAT_ID)
+    token = TelegramLink.objects.get(user=user).confirm_token
+    with patch("services.telegram_bot_service.send_message"):
+        with patch("services.telegram_bot_service.answer_callback"):
+            handle_update(_callback(f"tg:ok:{token}"))
+    addr = "0xcccccccccccccccccccccccccccccccccccccccc"
+    with patch("services.telegram_bot_service.send_message"):
+        handle_update(_message(f"/follow {addr}"))
+    trader = TraderProfile.objects.get(wallet_address=addr)
+    rel = CopyRelationship.objects.get(user=user, trader=trader)
+    assert rel.status == CopyRelationship.Status.ACTIVE
+
+
+@pytest.mark.django_db
+@patch("services.telegram_link_service.send_message")
+def test_trade_command_broadcasts_without_confirm(
     send_msg, user, wallet, trader, sample_event, running_agent, telegram_settings
 ):
     start_link(user, CHAT_ID)
@@ -169,21 +187,75 @@ def test_trade_confirm_broadcasts(
         with patch("services.telegram_bot_service.answer_callback"):
             handle_update(_callback(f"tg:ok:{token}"))
 
-    with patch("services.telegram_bot_service.send_message") as prompt:
-        handle_update(_message(f"/trade {sample_event.pk} YES 5"))
-    markup = prompt.call_args.kwargs.get("reply_markup")
-    assert markup, prompt.call_args
-    trade_token = markup["inline_keyboard"][0][0]["callback_data"].split(":", 2)[-1]
+    with patch(
+        "services.dream_agent_service.broadcast_delegated_execution",
+        return_value="0x" + "ab" * 32,
+    ) as broadcast:
+        with patch("services.telegram_bot_service.send_message") as bot_send:
+            handle_update(_message(f"/trade {sample_event.pk} YES 5"))
+    broadcast.assert_called_once()
+    assert any("Trade submitted" in (c[0][1] if c[0] else "") for c in bot_send.call_args_list) or bot_send.called
+
+
+@pytest.mark.django_db
+@patch("services.telegram_link_service.send_message")
+def test_authorized_agent_can_confirm_telegram_trade(
+    send_msg, user, wallet, trader, sample_event, telegram_settings
+):
+    sa = smart_account_service.create_account(user, owner_address=wallet.address)
+    smart_account_service.mark_funded(sa, amount=Decimal("50"))
+    agent, _perm = smart_account_service.grant_agent(
+        user,
+        max_trade_amount=Decimal("10"),
+        max_daily_volume=Decimal("50"),
+        expires_in_days=30,
+        min_copy_score=50,
+        allowed_traders=[str(trader.pk)],
+        signed_delegation={
+            "delegate": "0xSession00000000000000000000000000000001",
+            "delegator": sa.address,
+            "authority": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "caveats": [],
+            "salt": "0x1",
+            "signature": "0xmockdeadbeef",
+            "mock": True,
+        },
+        activate=False,
+    )
+    from apps.agents.models import DreamAgent
+
+    assert agent.status == DreamAgent.Status.AUTHORIZED
+
+    start_link(user, CHAT_ID)
+    token = TelegramLink.objects.get(user=user).confirm_token
+    with patch("services.telegram_bot_service.send_message"):
+        with patch("services.telegram_bot_service.answer_callback"):
+            handle_update(_callback(f"tg:ok:{token}"))
 
     with patch(
         "services.dream_agent_service.broadcast_delegated_execution",
         return_value="0x" + "ab" * 32,
     ) as broadcast:
         with patch("services.telegram_bot_service.send_message") as bot_send:
-            with patch("services.telegram_bot_service.answer_callback"):
-                handle_update(_callback(f"tr:ok:{trade_token}"))
+            handle_update(_message(f"/trade {sample_event.pk} YES 5"))
     broadcast.assert_called_once()
-    assert any("Trade submitted" in (c[0][1] if c[0] else "") for c in bot_send.call_args_list) or bot_send.called
+    assert any("Trade submitted" in (c[0][1] if c[0] else "") for c in bot_send.call_args_list)
+
+
+@pytest.mark.django_db
+@patch("services.telegram_link_service.send_message")
+def test_trade_command_does_not_need_cache_token(
+    send_msg, user, wallet, trader, sample_event, running_agent, telegram_settings
+):
+    _activate_link(user)
+    with patch(
+        "services.dream_agent_service.broadcast_delegated_execution",
+        return_value="0x" + "ab" * 32,
+    ) as broadcast:
+        with patch("services.telegram_bot_service.send_message") as bot_send:
+            handle_update(_message(f"/trade {sample_event.pk} YES 5"))
+    broadcast.assert_called_once()
+    assert any("Trade submitted" in (c[0][1] if c[0] else "") for c in bot_send.call_args_list)
 
 
 @pytest.mark.django_db
@@ -283,25 +355,17 @@ def test_over_limit_trade_does_not_broadcast(
 
 @pytest.mark.django_db
 @patch("services.telegram_link_service.send_message")
-def test_nl_buy_opens_confirm(
+def test_nl_buy_broadcasts_without_confirm(
     send_msg, user, sample_event, running_agent, telegram_settings
 ):
     _activate_link(user)
     asset = sample_event.underlying_asset
-    with patch("services.telegram_bot_service.send_message") as prompt:
-        handle_update(_message(f"Buy $5 YES on {asset}"))
-    markup = prompt.call_args.kwargs.get("reply_markup")
-    assert markup
-    data = markup["inline_keyboard"][0][0]["callback_data"]
-    assert data.startswith("tr:ok:")
-    trade_token = data.split(":", 2)[-1]
     with patch(
         "services.dream_agent_service.broadcast_delegated_execution",
         return_value="0x" + "ab" * 32,
     ) as broadcast:
         with patch("services.telegram_bot_service.send_message"):
-            with patch("services.telegram_bot_service.answer_callback"):
-                handle_update(_callback(f"tr:ok:{trade_token}"))
+            handle_update(_message(f"Buy $5 YES on {asset}"))
     broadcast.assert_called_once()
 
 
@@ -342,3 +406,39 @@ def test_positions_shows_imported_fill(
     text = bot_send.call_args[0][1]
     assert "YES" in text
     assert "20" in text
+
+
+@pytest.mark.django_db
+def test_webhook_unconfigured_without_secret(client, settings):
+    settings.TELEGRAM_WEBHOOK_SECRET = ""
+    res = client.post(
+        "/api/telegram/webhook/",
+        data=json.dumps({"update_id": 1}),
+        content_type="application/json",
+    )
+    assert res.status_code == 503
+
+
+def test_site_origin_skips_wildcard(settings, monkeypatch):
+    monkeypatch.delenv("DREAMLENS_PUBLIC_URL", raising=False)
+    monkeypatch.delenv("RAILWAY_PUBLIC_DOMAIN", raising=False)
+    settings.DREAMLENS_PUBLIC_URL = ""
+    settings.CSRF_TRUSTED_ORIGINS = [
+        "https://*.up.railway.app",
+        "https://dreamlens.example",
+    ]
+    from services.telegram_link_service import site_origin
+
+    assert site_origin() == "https://dreamlens.example"
+
+
+def test_telegram_listener_stays_off_under_pytest():
+    from apps.core.telegram_runtime import should_listen
+
+    assert should_listen() is False
+
+
+def test_copy_listener_stays_off_under_pytest():
+    from apps.core.copy_runtime import should_listen
+
+    assert should_listen() is False

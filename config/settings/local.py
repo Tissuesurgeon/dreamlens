@@ -77,6 +77,33 @@ def _ensure_supabase_pg_tunnel() -> None:
 _ensure_supabase_pg_tunnel()
 
 
+def _release_session_pooler_slots() -> None:
+    """Do not pin session-mode pooler slots (EMAXCONNSESSION, pool_size 15).
+
+    Persistent Django connections plus runserver reload, the Telegram poller,
+    and DreamDEX indexer threads exhaust the local tunnel quickly.
+    """
+    db = DATABASES["default"]  # noqa: F405
+    host = (db.get("HOST") or "").lower()
+    hostaddr = str((db.get("OPTIONS") or {}).get("hostaddr") or "")
+    try:
+        port = int(db.get("PORT") or 0)
+    except (TypeError, ValueError):
+        port = 0
+    via_tunnel = port == _PG_TUNNEL_LISTEN[1] or hostaddr in {
+        _PG_TUNNEL_LISTEN[0],
+        "127.0.0.1",
+        "::1",
+    }
+    via_supabase_pooler = "pooler.supabase.com" in host
+    if via_tunnel or via_supabase_pooler:
+        db["CONN_MAX_AGE"] = 0
+        db["CONN_HEALTH_CHECKS"] = True
+
+
+_release_session_pooler_slots()
+
+
 # Local runserver talks to the JSON API from the browser; do not fail POSTs on CSRF.
 REST_FRAMEWORK = {
     **REST_FRAMEWORK,  # noqa: F405
@@ -111,8 +138,14 @@ CSRF_TRUSTED_ORIGINS = list(
     )
 )
 
-# Local runserver should not depend on Redis for login/session.
+# Local runserver should not depend on Redis for login/session or Telegram confirms.
 SESSION_ENGINE = "django.contrib.sessions.backends.db"
+CACHES = {  # noqa: F405
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "dreamlens-local",
+    }
+}
 
 
 def _redis_url_for_this_host(url: str) -> str:
@@ -137,6 +170,5 @@ def _redis_url_for_this_host(url: str) -> str:
 
 
 REDIS_URL = _redis_url_for_this_host(REDIS_URL)  # noqa: F405
-CACHES["default"]["LOCATION"] = REDIS_URL  # noqa: F405
 CELERY_BROKER_URL = REDIS_URL
 CELERY_RESULT_BACKEND = REDIS_URL

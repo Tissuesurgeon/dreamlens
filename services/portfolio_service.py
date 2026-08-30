@@ -89,6 +89,15 @@ def _fill_side_for_wallet(fill, wallet: str) -> str | None:
     return None
 
 
+def _fill_is_buy_for_wallet(fill, wallet: str) -> bool:
+    w = wallet.lower()
+    if fill.taker and fill.taker.lower() == w:
+        return bool(getattr(fill, "taker_is_buy", True))
+    if fill.maker and fill.maker.lower() == w:
+        return bool(getattr(fill, "maker_is_buy", True))
+    return True
+
+
 def _outcome_for_side(event: EventContract, side: str | None):
     want = (side or "").upper()
     if want not in ("YES", "NO"):
@@ -198,7 +207,7 @@ def sync_trades_from_fills(user, *, force: bool = False) -> dict[str, int]:
             user=user,
             event=event,
             outcome=outcome,
-            side=Trade.Side.BUY,
+            side=Trade.Side.BUY if _fill_is_buy_for_wallet(fill, account) else Trade.Side.SELL,
             amount=amount,
             entry_price=fill.fill_price,
             external_trade_id=ext_id,
@@ -267,13 +276,18 @@ def sync_positions(user) -> dict[str, int]:
         grouped.setdefault(key, []).append(trade)
 
     for (event_id, outcome_id), group in grouped.items():
-        total_amount = sum(t.amount for t in group)
-        weighted_price = sum(t.amount * t.entry_price for t in group) / total_amount
+        buys = [t for t in group if t.side != Trade.Side.SELL]
+        sells = [t for t in group if t.side == Trade.Side.SELL]
+        buy_qty = sum((t.amount for t in buys), Decimal("0"))
+        sell_qty = sum((t.amount for t in sells), Decimal("0"))
+        remaining = buy_qty - sell_qty
+        buy_cost = sum((t.amount * t.entry_price for t in buys), Decimal("0"))
+        sell_proceeds = sum((t.amount * t.entry_price for t in sells), Decimal("0"))
+        avg_entry = (buy_cost / buy_qty).quantize(FOUR_PLACES) if buy_qty > 0 else Decimal("0")
         latest = max(group, key=lambda t: t.opened_at)
         earliest = min(t.opened_at for t in group)
 
         outcome = latest.outcome
-        current_value = total_amount * outcome.current_price
         existing = Position.objects.filter(
             user=user,
             event_id=event_id,
@@ -281,16 +295,47 @@ def sync_positions(user) -> dict[str, int]:
         ).first()
         was_closed = bool(existing and existing.status == Position.Status.CLOSED)
 
+        event = EventContract.objects.get(pk=event_id)
+        payout = settlement_payout_price(event, outcome)
+
+        if remaining <= 0:
+            realized = (sell_proceeds - buy_cost).quantize(FOUR_PLACES)
+            position, was_created = Position.objects.update_or_create(
+                user=user,
+                event_id=event_id,
+                outcome_id=outcome_id,
+                defaults={
+                    "amount": buy_qty if buy_qty > 0 else sell_qty,
+                    "entry_price": avg_entry,
+                    "current_value": Decimal("0"),
+                    "status": Position.Status.CLOSED,
+                    "pnl": realized,
+                    "settled_at": timezone.now() if not (existing and existing.settled_at) else existing.settled_at,
+                },
+            )
+            Position.objects.filter(pk=position.pk).update(opened_at=earliest)
+            if was_created:
+                created += 1
+            else:
+                updated += 1
+            continue
+
+        mark = remaining * outcome.current_price
+        avg_sell = (sell_proceeds / sell_qty) if sell_qty > 0 else Decimal("0")
+        realized = (sell_qty * (avg_sell - avg_entry)).quantize(FOUR_PLACES) if sell_qty > 0 else Decimal("0")
+        unrealized = (remaining * (outcome.current_price - avg_entry)).quantize(FOUR_PLACES)
+        current_value = mark.quantize(FOUR_PLACES)
+
         position, was_created = Position.objects.update_or_create(
             user=user,
             event_id=event_id,
             outcome_id=outcome_id,
             defaults={
-                "amount": total_amount,
-                "entry_price": weighted_price.quantize(FOUR_PLACES),
-                "current_value": current_value.quantize(FOUR_PLACES),
+                "amount": remaining,
+                "entry_price": avg_entry,
+                "current_value": current_value,
                 "status": Position.Status.OPEN,
-                "pnl": (current_value - total_amount * weighted_price).quantize(FOUR_PLACES),
+                "pnl": (realized + unrealized).quantize(FOUR_PLACES),
             },
         )
         Position.objects.filter(pk=position.pk).update(opened_at=earliest)
@@ -300,18 +345,16 @@ def sync_positions(user) -> dict[str, int]:
         else:
             updated += 1
 
-        event = EventContract.objects.get(pk=event_id)
-        payout = settlement_payout_price(event, outcome)
         if payout is not None:
-            cost = total_amount * weighted_price
-            settled_value = (total_amount * payout).quantize(FOUR_PLACES)
+            cost = remaining * avg_entry
+            settled_value = (remaining * payout).quantize(FOUR_PLACES)
             position.status = (
                 Position.Status.CLOSED if was_closed else Position.Status.SETTLED
             )
             if position.settled_at is None:
                 position.settled_at = timezone.now()
             position.current_value = settled_value
-            position.pnl = (settled_value - cost).quantize(FOUR_PLACES)
+            position.pnl = (settled_value - cost + realized).quantize(FOUR_PLACES)
             position.save()
 
     logger.info("sync_positions user=%s created=%s updated=%s", user.pk, created, updated)
@@ -380,9 +423,35 @@ def settlement_payout_price(event, outcome) -> Decimal | None:
     return None
 
 
+def _confirmed_net_qty(position) -> Decimal:
+    buy = Decimal("0")
+    sell = Decimal("0")
+    for trade in Trade.objects.filter(
+        user_id=position.user_id,
+        event_id=position.event_id,
+        outcome_id=position.outcome_id,
+        status=Trade.Status.CONFIRMED,
+    ).only("side", "amount"):
+        if trade.side == Trade.Side.SELL:
+            sell += trade.amount
+        else:
+            buy += trade.amount
+    return buy - sell
+
+
 def position_result(position) -> str:
     event = position.event
     payout = settlement_payout_price(event, position.outcome)
+    if _confirmed_net_qty(position) <= 0 and position.status == Position.Status.CLOSED:
+        has_sell = Trade.objects.filter(
+            user_id=position.user_id,
+            event_id=position.event_id,
+            outcome_id=position.outcome_id,
+            side=Trade.Side.SELL,
+            status=Trade.Status.CONFIRMED,
+        ).exists()
+        if has_sell:
+            return "closed"
     if payout is not None:
         if event.status == EventContract.Status.VOIDED:
             return "void"
@@ -394,6 +463,8 @@ def position_result(position) -> str:
         EventContract.Status.SETTLING,
     ) or event.expiry_time <= timezone.now():
         return "settling"
+    if position.status == Position.Status.CLOSED:
+        return "closed"
     return "open"
 
 
@@ -409,7 +480,8 @@ def _position_wallet(user, position) -> str:
         .first()
     )
     if trade:
-        wallet = str((trade.metadata_json or {}).get("wallet") or "").strip()
+        meta = trade.metadata_json or {}
+        wallet = str(meta.get("wallet") or meta.get("wallet_address") or "").strip()
         if wallet:
             return wallet
     row = user.wallets.filter(is_primary=True).first() or user.wallets.first()
@@ -433,6 +505,32 @@ def annotate_positions(user, positions: list[Position]) -> list[Position]:
         position.claimable = False
         position.claim_wallet = ""
         position.claim_payout = None
+        position.closeable = False
+        position.close_wallet = ""
+        position.close_proceeds = None
+        if position.result == "open":
+            wallet = _position_wallet(user, position)
+            position.close_wallet = wallet
+            held = position.amount
+            if wallet and position.event.external_id:
+                try:
+                    if adapter is None:
+                        adapter = get_adapter()
+                    held = _outcome_held(
+                        adapter.get_outcome_balances(wallet, position.event.external_id),
+                        position.outcome.outcome_type,
+                    )
+                except Exception:
+                    logger.warning(
+                        "outcome balance read failed position=%s",
+                        position.pk,
+                        exc_info=True,
+                    )
+            if held > 0:
+                position.closeable = True
+                price = position.outcome.current_price or Decimal("0")
+                position.close_proceeds = (held * price).quantize(FOUR_PLACES)
+            continue
         if position.result not in ("won", "void"):
             continue
         wallet = _position_wallet(user, position)
@@ -599,6 +697,139 @@ def confirm_position_redeem(user, position_id: int, tx_hash: str) -> Position:
     position.save(update_fields=["status"])
     logger.info(
         "position redeem confirmed user=%s position=%s tx=%s",
+        user.pk,
+        position.pk,
+        tx_hash,
+    )
+    return position
+
+
+def prepare_position_close(user, position_id: int, wallet_address: str):
+    """Build a user-signed SELL of the open position's outcome tokens."""
+    from django.conf import settings
+
+    from integrations.dreamdex.adapter import get_adapter
+    from services.trading_service import TradingError, _tx_payload, prepare_sell_trade
+
+    if not wallet_address:
+        raise PortfolioError("Wallet address required")
+    try:
+        position = Position.objects.select_related("event", "outcome").get(
+            pk=position_id,
+            user=user,
+        )
+    except Position.DoesNotExist as exc:
+        raise PortfolioError("Position not found") from exc
+
+    if position_result(position) != "open":
+        raise PortfolioError(
+            "This position can only be closed while the market is still trading. "
+            "After the window ends, wait for settlement and claim."
+        )
+
+    expected = _position_wallet(user, position).lower()
+    if expected and expected != wallet_address.lower():
+        raise PortfolioError(
+            "Switch MetaMask to the wallet that holds these outcome tokens."
+        )
+
+    adapter = get_adapter()
+    held = position.amount
+    try:
+        held = _outcome_held(
+            adapter.get_outcome_balances(wallet_address, position.event.external_id),
+            position.outcome.outcome_type,
+        )
+    except Exception:
+        logger.warning("outcome balance read failed for close position=%s", position.pk)
+    if held <= 0:
+        raise PortfolioError("Nothing left to sell on-chain for this position.")
+
+    try:
+        trade, unsigned, approval = prepare_sell_trade(
+            user=user,
+            event_id=position.event_id,
+            outcome=position.outcome.outcome_type,
+            quantity=held,
+            wallet_address=wallet_address,
+        )
+    except TradingError as exc:
+        raise PortfolioError(str(exc)) from exc
+
+    price = position.outcome.current_price or Decimal("0")
+    qty = trade.amount
+    return {
+        "position_id": position.pk,
+        "trade_id": trade.pk,
+        "unsigned_tx": _tx_payload(unsigned),
+        "approval_tx": _tx_payload(approval) if approval else None,
+        "outcome": position.outcome.outcome_type,
+        "amount": str(qty),
+        "proceeds": str((qty * price).quantize(FOUR_PLACES)),
+        "collateral_symbol": "Test USDC" if int(settings.DREAMDEX_CHAIN_ID) == 50312 else "USDso",
+        "wallet_address": wallet_address,
+    }
+
+
+def confirm_position_close(user, position_id: int, tx_hash: str, *, trade_id: int | None = None) -> Position:
+    """Record a confirmed close (sell) and refresh the position."""
+    from services.trading_service import TradingError, confirm_trade
+
+    if not tx_hash or not str(tx_hash).startswith("0x"):
+        raise PortfolioError("Transaction hash required")
+    try:
+        position = Position.objects.select_related("event", "outcome").get(
+            pk=position_id,
+            user=user,
+        )
+    except Position.DoesNotExist as exc:
+        raise PortfolioError("Position not found") from exc
+
+    trade = None
+    qs = Trade.objects.filter(
+        user=user,
+        event=position.event,
+        outcome=position.outcome,
+        side=Trade.Side.SELL,
+        status__in=(
+            Trade.Status.PREPARED,
+            Trade.Status.AWAITING_CONFIRMATION,
+            Trade.Status.SUBMITTED,
+        ),
+    ).order_by("-opened_at")
+    if trade_id is not None:
+        trade = qs.filter(pk=trade_id).first()
+    if trade is None:
+        trade = qs.first()
+    if trade is None:
+        raise PortfolioError("No pending close order for this position.")
+
+    try:
+        confirm_trade(trade.pk, tx_hash, user=user)
+    except TradingError as exc:
+        raise PortfolioError(str(exc)) from exc
+
+    from integrations.dreamdex.adapter import get_adapter
+
+    adapter = get_adapter()
+    record = getattr(adapter, "record_sell", None)
+    if callable(record):
+        wallet = _position_wallet(user, position) or str(
+            (trade.metadata_json or {}).get("wallet") or ""
+        )
+        try:
+            record(
+                account=wallet,
+                market_id=position.event.external_id,
+                outcome_idx=0 if position.outcome.outcome_type == "YES" else 1,
+                amount=trade.amount,
+            )
+        except Exception:
+            logger.warning("mock sell record failed position=%s", position.pk)
+
+    position.refresh_from_db()
+    logger.info(
+        "position close confirmed user=%s position=%s tx=%s",
         user.pk,
         position.pk,
         tx_hash,

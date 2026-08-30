@@ -62,6 +62,7 @@ def test_nav_and_testnet_chrome(client):
     assert res.status_code == 200
     body = res.content.decode()
     assert ">Home<" in body
+    assert 'href="/" class="dl-brand"' in body
     assert ">Discover<" in body
     assert "Smart Copy" in body
     assert ">Agent<" in body
@@ -121,6 +122,13 @@ def test_event_detail_both_sides_and_explain(client, sample_event):
     assert "Explain this market" in body
     assert "News that can move this window" in body
     assert 'id="explain-sheet"' in body
+    assert 'id="market-reader-template"' in body
+    assert "DreamLens is reading this market" in body
+    assert "dl-modal__footer-primary" in body
+    assert "dl-modal__footer-secondary" in body
+    assert "DreamLens explains" in body
+    assert "Lens" in body[body.find("explain-sheet") : body.find("explain-sheet") + 800]
+    assert "This is a market price, not a guarantee." in body
     assert "Got it" in body
     assert "Buy YES" in body
     explain = body[body.find("explain-sheet") : body.find("explain-sheet") + 2000]
@@ -178,6 +186,11 @@ def test_smart_copy_follow_sheet_and_sample_size(client, sample_event):
     assert "Minimum DreamLens Score" in body
     assert "What happens next?" in body
     assert "Activate Smart Copy" in body
+    assert "dl-modal__footer-primary" in body
+    assert "Cancel" in body
+    assert "Follow a wallet" in body
+    assert 'id="follow-wallet-form"' in body
+    assert 'id="follow-wallet-address"' in body
 
     detail = client.get(reverse("trader_detail", args=[trader.pk]))
     assert detail.status_code == 200

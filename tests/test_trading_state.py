@@ -10,7 +10,7 @@ from django.utils import timezone
 
 from apps.trading.models import Trade
 from integrations.dreamdex.exceptions import DreamDEXNotFound
-from services.trading_service import TradingError, confirm_trade, prepare_trade
+from services.trading_service import TradingError, confirm_trade, prepare_sell_trade, prepare_trade
 
 
 @pytest.mark.django_db
@@ -97,6 +97,24 @@ def test_expired_event_prepare_raises(user, expired_event, wallet):
             amount=Decimal("5"),
             wallet_address=wallet.address,
         )
+
+
+@pytest.mark.django_db
+def test_prepare_sell_creates_sell_trade(user, sample_event, wallet):
+    trade, unsigned, _approval = prepare_sell_trade(
+        user=user,
+        event_id=sample_event.pk,
+        outcome="YES",
+        quantity=Decimal("20"),
+        wallet_address=wallet.address,
+    )
+    assert trade.side == Trade.Side.SELL
+    assert trade.status == Trade.Status.AWAITING_CONFIRMATION
+    assert trade.amount == Decimal("20")
+    assert unsigned.data.startswith("0x")
+    payload = trade.metadata_json["unsigned_tx"]
+    assert payload["chainId"].startswith("0x")
+    assert payload["metadata"]["side"] == "SELL_YES"
 
 
 @pytest.mark.django_db

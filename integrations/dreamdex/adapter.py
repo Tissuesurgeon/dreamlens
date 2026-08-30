@@ -75,7 +75,7 @@ class DreamDEXAdapterProtocol(Protocol):
     ) -> UnsignedTxDTO: ...
 
     def prepare_outcome_operator_approval(
-        self, *, account: str
+        self, *, account: str, spender: str | None = None
     ) -> UnsignedTxDTO | None: ...
 
 

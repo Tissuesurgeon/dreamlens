@@ -77,6 +77,9 @@ def test_news_api_returns_headlines(client, monkeypatch):
             }
         ],
     )
+    from apps.core.api.ai import NewsFeedView
+
+    assert NewsFeedView.authentication_classes == []
     res = client.get("/api/news/?asset=BTC")
     assert res.status_code == 200
     body = res.json()

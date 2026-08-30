@@ -212,10 +212,23 @@ METAMASK_DELEGATION_MANAGER = env("METAMASK_DELEGATION_MANAGER", default="")
 METAMASK_SIMPLE_FACTORY = env("METAMASK_SIMPLE_FACTORY", default="")
 METAMASK_HYBRID_IMPL = env("METAMASK_HYBRID_IMPL", default="")
 METAMASK_ENTRY_POINT = env("METAMASK_ENTRY_POINT", default="")
+# Shannon Delegation Framework enforcers (scripts/metamask/somnia-environment.json).
+METAMASK_ALLOWED_METHODS_ENFORCER = env(
+    "METAMASK_ALLOWED_METHODS_ENFORCER",
+    default="0xcccd0b582412033239a12865b1542b4018dc5c19",
+)
+METAMASK_VALUE_LTE_ENFORCER = env(
+    "METAMASK_VALUE_LTE_ENFORCER",
+    default="0x2435a773fc8832c888d80473e403103d61bc15da",
+)
+METAMASK_TIMESTAMP_ENFORCER = env(
+    "METAMASK_TIMESTAMP_ENFORCER",
+    default="0x1d67e94309d70663628ada61acfedd633ddd20f9",
+)
 # Session EOA private key for redeemDelegations (never the user's owner key).
 # Leave empty in mock mode — a deterministic mock session address is used.
 DREAM_AGENT_SESSION_KEY = env("DREAM_AGENT_SESSION_KEY", default="")
-DREAM_AGENT_GAS_LIMIT = env.int("DREAM_AGENT_GAS_LIMIT", default=800_000)
+DREAM_AGENT_GAS_LIMIT = env.int("DREAM_AGENT_GAS_LIMIT", default=2_000_000)
 # Reimburse session-key gas from the Hybrid Smart Account's STT on each redeem.
 DREAM_AGENT_SA_PAYS_GAS = env.bool("DREAM_AGENT_SA_PAYS_GAS", default=True)
 DREAM_AGENT_GAS_BUFFER_BPS = env.int("DREAM_AGENT_GAS_BUFFER_BPS", default=2500)
@@ -232,8 +245,10 @@ SUPABASE_KEY = env("SUPABASE_KEY", default="")
 TELEGRAM_BOT_TOKEN = env("TELEGRAM_BOT_TOKEN", default="")
 TELEGRAM_BOT_USERNAME = env("TELEGRAM_BOT_USERNAME", default="")
 TELEGRAM_WEBHOOK_SECRET = env("TELEGRAM_WEBHOOK_SECRET", default="")
+DREAMLENS_PUBLIC_URL = env("DREAMLENS_PUBLIC_URL", default="")
 
 # Periodic DreamDEX market sync when Celery Beat is running.
+# Local `runserver` does not start Beat; apps.core.copy_runtime polls fills instead.
 CELERY_BEAT_SCHEDULE = {
     "sync-dreamdex-markets": {
         "task": "workers.event_sync.full_event_sync_task",

@@ -2,21 +2,13 @@
 
 from __future__ import annotations
 
-import time
-
 from django.core.management.base import BaseCommand, CommandError
 
-from integrations.telegram.client import (
-    TelegramError,
-    bot_configured,
-    delete_webhook,
-    get_updates,
-)
-from services.telegram_bot_service import handle_update
+from integrations.telegram.client import bot_configured
 
 
 class Command(BaseCommand):
-    help = "Poll Telegram getUpdates for the DreamAgent bot (local/dev)."
+    help = "Poll Telegram getUpdates for the DreamLens bot (local/dev)."
 
     def add_arguments(self, parser):
         parser.add_argument("--timeout", type=int, default=25)
@@ -24,24 +16,10 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         if not bot_configured():
             raise CommandError("TELEGRAM_BOT_TOKEN is not set")
-        timeout = int(options["timeout"])
-        offset = None
-        try:
-            delete_webhook(drop_pending=False)
-        except TelegramError as exc:
-            self.stderr.write(f"Could not clear webhook (getUpdates may conflict): {exc}")
+        from apps.core.telegram_runtime import run_poll_loop
+
         self.stdout.write("Polling Telegram for DreamLens bot updates…")
-        while True:
-            try:
-                updates = get_updates(offset=offset, timeout=timeout)
-            except TelegramError as exc:
-                self.stderr.write(str(exc))
-                time.sleep(3)
-                continue
-            except KeyboardInterrupt:
-                self.stdout.write("Stopped.")
-                return
-            for update in updates:
-                uid = int(update.get("update_id") or 0)
-                offset = uid + 1
-                handle_update(update)
+        try:
+            run_poll_loop(timeout=int(options["timeout"]))
+        except KeyboardInterrupt:
+            self.stdout.write("Stopped.")

@@ -74,6 +74,23 @@ def is_onchain_trader_wallet(address: str | None) -> bool:
     return bool(_ONCHAIN_ADDRESS.match(normalized))
 
 
+def normalize_trader_wallet(address: str) -> str:
+    """Lowercase 0x + 40 hex. Rejects empty, zero, and non-EVM strings."""
+    normalized = (address or "").strip().lower()
+    if not _ONCHAIN_ADDRESS.match(normalized) or normalized == _ZERO_ADDRESS:
+        raise ValueError("Enter a valid 0x wallet address.")
+    return normalized
+
+
+def ensure_trader_profile(address: str) -> TraderProfile:
+    """Return the profile for this wallet, creating a stub if it is not indexed yet."""
+    addr = normalize_trader_wallet(address)
+    existing = TraderProfile.objects.filter(wallet_address__iexact=addr).first()
+    if existing:
+        return existing
+    return TraderProfile.objects.create(wallet_address=addr, display_name=addr[:10])
+
+
 def purge_seed_traders() -> int:
     """Remove mock/seed trader rows left over from earlier demo syncs."""
     removed = 0

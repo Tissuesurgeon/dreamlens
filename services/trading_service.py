@@ -64,6 +64,15 @@ def _side_for_outcome(outcome_type: str) -> str:
     raise TradingError(f"Invalid outcome type: {outcome_type}")
 
 
+def _sell_side_for_outcome(outcome_type: str) -> str:
+    side = outcome_type.upper()
+    if side == "YES":
+        return "SELL_YES"
+    if side == "NO":
+        return "SELL_NO"
+    raise TradingError(f"Invalid outcome type: {outcome_type}")
+
+
 _FEE_KEYS = ("gas", "gasPrice", "maxFeePerGas", "maxPriorityFeePerGas")
 _MIN_TRADE_HEADROOM_SEC = 90
 
@@ -289,6 +298,140 @@ def prepare_trade(
     trade.save(update_fields=["status"])
 
     logger.info("prepare_trade trade_id=%s event=%s", trade.pk, event.pk)
+    return trade, unsigned, approval
+
+
+def _is_sell_inventory_error(exc: BaseException) -> bool:
+    msg = str(exc).lower().replace("0x", "")
+    return "not enough outcome tokens" in msg or "f4d678b8" in msg
+
+
+@transaction.atomic
+def prepare_sell_trade(
+    user,
+    event_id: int,
+    outcome: str,
+    quantity: Decimal,
+    wallet_address: str,
+) -> tuple[Trade, UnsignedTxDTO, UnsignedTxDTO | None]:
+    """Create a PREPARED SELL of outcome tokens back into the Event Contract book."""
+    if not wallet_address:
+        raise TradingError("Wallet address required")
+    if quantity <= 0:
+        raise TradingError("Amount must be positive")
+
+    event, outcome_obj = _resolve_event_and_outcome(event_id, outcome)
+    if not event.pool_address:
+        raise TradingError("Market has no DreamDEX pool address")
+
+    price = outcome_obj.current_price
+    if price <= 0:
+        raise TradingError("Market price is unavailable")
+
+    now_ts = int(timezone.now().timestamp())
+    expiry_ts = int(event.expiry_time.timestamp())
+    if expiry_ts <= now_ts:
+        raise TradingError("This market has already locked. Wait for settlement to claim.")
+    expire_sec = min(now_ts + 300, max(expiry_ts - 1, now_ts + 1))
+
+    adapter = get_adapter()
+    _ensure_market_is_trading(adapter, event)
+    side = _sell_side_for_outcome(outcome_obj.outcome_type)
+    intent = TradeIntent(
+        market_id=event.external_id,
+        pool=event.pool_address,
+        side=side,
+        price=price,
+        quantity=quantity,
+        order_type="MARKET",
+        account=wallet_address,
+        expire_timestamp_ns=expire_sec * 1_000_000_000,
+    )
+    try:
+        unsigned = adapter.prepare_place_order(intent)
+    except DreamDEXNotFound:
+        raise
+    except (DreamDEXUnavailable, DreamDEXValidationError) as exc:
+        raise TradingError(str(exc)) from exc
+
+    qty_raw_meta = unsigned.metadata.get("quantity_raw") if unsigned.metadata else None
+    if qty_raw_meta:
+        decimals = int(getattr(settings, "DREAMDEX_COLLATERAL_DECIMALS", 6) or 6)
+        snapped = Decimal(qty_raw_meta) / (Decimal(10) ** decimals)
+        if snapped > 0:
+            quantity = snapped.quantize(Decimal("0.000001"))
+
+    approval = None
+    prep_op = getattr(adapter, "prepare_outcome_operator_approval", None)
+    if callable(prep_op):
+        try:
+            approval = prep_op(account=wallet_address, spender=event.pool_address)
+        except TypeError:
+            try:
+                approval = prep_op(account=wallet_address)
+            except Exception:
+                logger.exception("outcome operator approval check failed")
+                approval = None
+        except Exception:
+            logger.exception("outcome operator approval check failed")
+            approval = None
+
+    # Selling reverts in eth_estimateGas until setOperator is mined, same as redeem.
+    try:
+        _quote_wallet_fees(adapter, unsigned, wallet_address, estimate=True)
+    except DreamDEXValidationError as exc:
+        if _is_sell_inventory_error(exc):
+            raise TradingError(str(exc)) from exc
+        if _is_unfillable_taker(exc):
+            unsigned = _fallback_to_limit_or_raise(adapter, intent, exc)
+            try:
+                _quote_wallet_fees(
+                    adapter, unsigned, wallet_address, estimate=approval is None
+                )
+            except DreamDEXValidationError as inner:
+                if approval is None:
+                    raise TradingError(str(inner)) from inner
+                _quote_wallet_fees(adapter, unsigned, wallet_address, estimate=False)
+        elif approval is not None:
+            try:
+                _quote_wallet_fees(adapter, unsigned, wallet_address, estimate=False)
+            except Exception:
+                logger.warning("sell fee quote deferred until pool operator is set")
+        else:
+            raise TradingError(str(exc)) from exc
+    except Exception:
+        logger.exception("wallet fee quote failed")
+    if approval is not None:
+        try:
+            _quote_wallet_fees(adapter, approval, wallet_address, estimate=True)
+        except Exception:
+            logger.warning("operator approval fee quote failed")
+            try:
+                _quote_wallet_fees(adapter, approval, wallet_address, estimate=False)
+            except Exception:
+                logger.warning("operator approval default fee quote failed")
+
+    trade = Trade.objects.create(
+        user=user,
+        event=event,
+        outcome=outcome_obj,
+        side=Trade.Side.SELL,
+        amount=quantity,
+        entry_price=price,
+        status=Trade.Status.PREPARED,
+        metadata_json={
+            "wallet_address": wallet_address,
+            "wallet": wallet_address.lower(),
+            "action": "close",
+            "notional_usd": str(quantity * price),
+            "unsigned_tx": _tx_payload(unsigned),
+            "approval_tx": _tx_payload(approval) if approval else None,
+        },
+    )
+    trade.status = Trade.Status.AWAITING_CONFIRMATION
+    trade.save(update_fields=["status"])
+
+    logger.info("prepare_sell_trade trade_id=%s event=%s", trade.pk, event.pk)
     return trade, unsigned, approval
 
 

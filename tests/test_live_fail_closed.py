@@ -66,6 +66,65 @@ def test_live_grant_rejects_mock_signature(user, settings):
 
 
 @pytest.mark.django_db
+def test_live_grant_rejects_caveat_args_typed_data(user, settings):
+    settings.MOCK_SMART_ACCOUNT = False
+    settings.METAMASK_DELEGATION_MANAGER = "0x" + "aa" * 20
+    settings.METAMASK_SIMPLE_FACTORY = "0x" + "bb" * 20
+    settings.DREAM_AGENT_SESSION_KEY = "0x" + "11" * 32
+    sa = smart_account_service.create_account(
+        user,
+        owner_address=OWNER,
+        address=SA,
+    )
+    smart_account_service.mark_funded(sa, amount=Decimal("50"))
+    with pytest.raises(SmartAccountError, match="Caveat.args"):
+        smart_account_service.grant_agent(
+            user,
+            signed_delegation={
+                "delegate": "0x" + "11" * 20,
+                "delegator": sa.address,
+                "authority": "0x" + "ff" * 32,
+                "signature": "0x" + "ab" * 65,
+                "typed_data": {
+                    "primaryType": "Delegation",
+                    "types": {
+                        "Caveat": [
+                            {"name": "enforcer", "type": "address"},
+                            {"name": "terms", "type": "bytes"},
+                            {"name": "args", "type": "bytes"},
+                        ]
+                    },
+                },
+            },
+        )
+
+
+@pytest.mark.django_db
+def test_live_grant_rejects_dreamlens_only_typed_data(user, settings):
+    settings.MOCK_SMART_ACCOUNT = False
+    settings.METAMASK_DELEGATION_MANAGER = "0x" + "aa" * 20
+    settings.METAMASK_SIMPLE_FACTORY = "0x" + "bb" * 20
+    settings.DREAM_AGENT_SESSION_KEY = "0x" + "11" * 32
+    sa = smart_account_service.create_account(
+        user,
+        owner_address=OWNER,
+        address=SA,
+    )
+    smart_account_service.mark_funded(sa, amount=Decimal("50"))
+    with pytest.raises(SmartAccountError, match="Re-sign"):
+        smart_account_service.grant_agent(
+            user,
+            signed_delegation={
+                "delegate": "0x" + "11" * 20,
+                "delegator": sa.address,
+                "authority": "0x" + "ff" * 32,
+                "signature": "0x" + "ab" * 65,
+                "typed_data": {"primaryType": "DreamAgentPermission"},
+            },
+        )
+
+
+@pytest.mark.django_db
 def test_live_deposit_rejects_mock_hash(user, settings):
     settings.MOCK_SMART_ACCOUNT = False
     settings.METAMASK_DELEGATION_MANAGER = "0x" + "aa" * 20

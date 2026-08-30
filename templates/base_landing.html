@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,650;12..96,800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{% static 'css/dreamlens.css' %}?v=20260828g">
+  <link rel="stylesheet" href="{% static 'css/dreamlens.css' %}?v=20260828k">
   {% block extra_head %}{% endblock %}
 </head>
 <body class="dl-body dl-body--landing">
@@ -51,16 +51,14 @@
           <li><a href="{% url 'portfolio' %}">Portfolio</a></li>
         </ul>
       </div>
+      {% if telegram_bot_url %}
       <div>
         <p class="dl-landing-footer__label">Resources</p>
         <ul>
-          <li><a href="https://github.com/Tissuesurgeon/dreamlens/tree/main/docs" target="_blank" rel="noopener noreferrer">Documentation</a></li>
-          <li><a href="https://github.com/Tissuesurgeon/dreamlens" target="_blank" rel="noopener noreferrer">GitHub</a></li>
-          {% if telegram_bot_url %}
           <li><a href="{{ telegram_bot_url }}" target="_blank" rel="noopener noreferrer">Telegram</a></li>
-          {% endif %}
         </ul>
       </div>
+      {% endif %}
     </div>
     <p class="dl-landing-footer__credit">Built for DreamDEX · Powered by Somnia</p>
   </footer>
@@ -68,7 +66,7 @@
   <script>
     window.DreamLensConfig = {{ dreamlens_network_json|safe }};
   </script>
-  <script src="{% static 'js/landing.js' %}?v=20260828g" defer></script>
+  <script src="{% static 'js/landing.js' %}?v=20260828k" defer></script>
   {% block extra_js %}{% endblock %}
 </body>
 </html>

@@ -394,7 +394,7 @@ def grant_payload_for_ui(user, *, owner_address: str = "") -> dict[str, Any]:
     spec = DreamAgentPermissionSpec()
     env = get_environment()
     expires_at = int((timezone.now() + timedelta(days=30)).timestamp())
-    salt = "0x" + timezone.now().strftime("%Y%m%d%H%M%S").ljust(64, "0")[:64]
+    salt = int(timezone.now().timestamp())
     deploy_tx = None
     owner = (owner_address or (sa.owner_address if sa else "") or "").strip()
     if not owner and user is not None:

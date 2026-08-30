@@ -126,6 +126,7 @@
           <p class="dl-ta-identity__meta">
             {% if agent.status == "RUNNING" %}I’m watching your selected traders and Event Contracts.
             {% elif agent.status == "PAUSED" %}Paused — no new autonomous trades. Your funds and positions stay as they are.
+            {% elif agent.status == "AUTHORIZED" %}Grant is signed. Resume to copy followed traders without MetaMask.
             {% elif agent.status == "REVOKED" %}Permission revoked
             {% else %}Grant a permission to start autonomous copy{% endif %}
           </p>
@@ -136,6 +137,8 @@
         <span class="dl-smart-pill is-on"><span class="dl-smart-pill__dot" aria-hidden="true"></span> Active</span>
         {% elif agent.status == "PAUSED" %}
         <span class="dl-smart-pill is-paused">Paused</span>
+        {% elif agent.status == "AUTHORIZED" %}
+        <span class="dl-smart-pill">Ready — resume to copy</span>
         {% else %}
         <span class="dl-smart-pill">Needs grant</span>
         {% endif %}
@@ -165,9 +168,23 @@
       </div>
     </div>
 
+    {% if grant_health.needs_resign %}
+    <article class="dl-agent-callout" role="status">
+      <h3 class="dl-agent-callout__title">This grant cannot redeem on Shannon</h3>
+      <p class="dl-agent-callout__copy">Telegram and Smart Copy use the session key. Re-sign DelegationManager at Activate — older grants revert on-chain.</p>
+      {% if grant_health.reasons %}
+      <p class="dl-muted">{{ grant_health.reasons.0 }}</p>
+      {% endif %}
+      <a href="{% url 'dream_agent_activate' %}" class="dl-btn dl-btn--primary dl-btn--sm">Re-sign grant</a>
+    </article>
+    {% endif %}
+
     <article class="dl-check-card">
       <h3 class="dl-check-card__title">Agent Check</h3>
       <p class="dl-muted">AI proposes. Policy and risk check. Then authorized execution — not “the AI decided, therefore it trades.”</p>
+      {% if agent.status == "RUNNING" and following_count == 0 %}
+      <p class="dl-muted">DreamAgent copies traders you follow. It does not pick Event Contracts on its own. Follow someone on Copy or send <span class="dl-mono">/copy</span> in Telegram.</p>
+      {% endif %}
       <ul class="dl-check-list">
         <li>✓ Trader followed</li>
         <li>✓ Event active</li>
@@ -213,23 +230,41 @@
 
 <dialog class="dl-modal" id="agent-pause-modal">
   <form method="dialog" class="dl-modal__panel">
-    <h2 class="dl-modal__title">Pause Dream Agent?</h2>
-    <p>Your funds stay in your Smart Account. No new autonomous trades. Open positions stay as they are.</p>
-    <div class="dl-modal__footer">
-      <button value="cancel" class="dl-btn dl-btn--ghost">Cancel</button>
-      <button value="confirm" class="dl-btn dl-btn--primary" id="agent-pause-confirm">Pause Agent</button>
+    <header class="dl-modal__header">
+      <h2 class="dl-modal__title">Pause Dream Agent?</h2>
+      <button type="submit" value="cancel" class="dl-modal__close" aria-label="Close">&times;</button>
+    </header>
+    <div class="dl-modal__body">
+      <p class="dl-modal__lede">Your funds stay in your Smart Account. No new autonomous trades. Open positions stay as they are.</p>
     </div>
+    <footer class="dl-modal__footer">
+      <div class="dl-modal__footer-secondary">
+        <button type="submit" value="cancel" class="dl-btn dl-btn--ghost">Cancel</button>
+      </div>
+      <div class="dl-modal__footer-primary">
+        <button type="submit" value="confirm" class="dl-btn dl-btn--primary" id="agent-pause-confirm">Pause Agent</button>
+      </div>
+    </footer>
   </form>
 </dialog>
 
 <dialog class="dl-modal" id="agent-revoke-modal">
   <form method="dialog" class="dl-modal__panel">
-    <h2 class="dl-modal__title">Revoke Dream Agent?</h2>
-    <p>DreamAgent immediately loses permission to place new trades. Your Smart Account stays yours.</p>
-    <div class="dl-modal__footer">
-      <button value="cancel" class="dl-btn dl-btn--ghost">Cancel</button>
-      <button value="confirm" class="dl-btn dl-btn--primary" id="agent-revoke-confirm">Revoke Agent</button>
+    <header class="dl-modal__header">
+      <h2 class="dl-modal__title">Revoke Dream Agent?</h2>
+      <button type="submit" value="cancel" class="dl-modal__close" aria-label="Close">&times;</button>
+    </header>
+    <div class="dl-modal__body">
+      <p class="dl-modal__lede">DreamAgent immediately loses permission to place new trades. Your Smart Account stays yours.</p>
     </div>
+    <footer class="dl-modal__footer">
+      <div class="dl-modal__footer-secondary">
+        <button type="submit" value="cancel" class="dl-btn dl-btn--ghost">Cancel</button>
+      </div>
+      <div class="dl-modal__footer-primary">
+        <button type="submit" value="confirm" class="dl-btn dl-btn--primary" id="agent-revoke-confirm">Revoke Agent</button>
+      </div>
+    </footer>
   </form>
 </dialog>
 {% endblock %}

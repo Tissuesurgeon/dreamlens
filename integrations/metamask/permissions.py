@@ -28,7 +28,7 @@ class DreamAgentPermissionSpec:
             "Buy Event Contract outcomes",
             "Sell/close supported positions",
             "Trade only through DreamDEX",
-            "Pay Shannon gas from your Smart Account STT",
+            "Place trades after one signature — no MetaMask per trade",
         ]
 
     def agent_cannot(self) -> list[str]:

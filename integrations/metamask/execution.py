@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from integrations.dreamdex.types import UnsignedTxDTO
@@ -31,6 +31,7 @@ class DelegatedExecution:
     inner_value: int = 0
     signed_delegation: dict[str, Any] | None = None
     gas_payment_wei: int = 0
+    pre_executions: list[tuple[str, int, str]] = field(default_factory=list)
 
 
 def compute_gas_reimbursement_wei(
@@ -65,6 +66,7 @@ def with_gas_reimbursement(
         target=execution.inner_target,
         call_data=execution.inner_data,
         value=execution.inner_value,
+        pre_executions=list(execution.pre_executions or []),
         extra_executions=[(recipient, int(amount_wei), "0x")],
     )
     return replace(execution, data=data, gas_payment_wei=int(amount_wei))
@@ -75,9 +77,19 @@ def build_delegated_trade_execution(
     signed_delegation: dict[str, Any],
     dreamdex_tx: UnsignedTxDTO,
     chain_id: int | None = None,
+    approval_tx: UnsignedTxDTO | None = None,
 ) -> DelegatedExecution:
     """Wrap a DreamDEX placeBinaryOrder UnsignedTxDTO in redeemDelegations."""
     cid = chain_id or dreamdex_tx.chain_id
+    pre: list[tuple[str, int, str]] = []
+    if approval_tx and approval_tx.to and approval_tx.data:
+        pre.append(
+            (
+                approval_tx.to,
+                int(approval_tx.value or 0),
+                approval_tx.data,
+            )
+        )
     if mock_smart_account_enabled():
         return DelegatedExecution(
             to=dreamdex_tx.to,
@@ -89,6 +101,7 @@ def build_delegated_trade_execution(
             inner_data=dreamdex_tx.data,
             inner_value=int(dreamdex_tx.value or 0),
             signed_delegation=signed_delegation,
+            pre_executions=pre,
         )
 
     env = require_live_environment(chain_id=cid)
@@ -100,6 +113,7 @@ def build_delegated_trade_execution(
         target=dreamdex_tx.to,
         call_data=dreamdex_tx.data,
         value=int(dreamdex_tx.value or 0),
+        pre_executions=pre,
     )
     return DelegatedExecution(
         to=env.delegation_manager,
@@ -111,4 +125,5 @@ def build_delegated_trade_execution(
         inner_data=dreamdex_tx.data,
         inner_value=int(dreamdex_tx.value or 0),
         signed_delegation=signed_delegation,
+        pre_executions=pre,
     )

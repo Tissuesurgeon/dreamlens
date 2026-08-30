@@ -156,6 +156,8 @@ def test_following_page_lists_active_traders_with_copy_actions(client, sample_ev
     assert b"data-follow-trader" in res.content
     assert b"data-open-smart-copy" in res.content
     assert b"data-trader-id=\"%d\"" % trader.pk in res.content
+    assert b"follow-wallet-form" in res.content
+    assert b"Paste any DreamDEX wallet" in res.content
 
 
 @pytest.mark.django_db

@@ -10,8 +10,8 @@ from eth_abi import encode
 from eth_utils import function_signature_to_4byte_selector, to_checksum_address
 
 from integrations.metamask import (
-    EXECUTION_MODE_BATCH_DEFAULT,
     EXECUTION_MODE_SINGLE_DEFAULT,
+    PLACE_BINARY_ORDER_SELECTOR,
     ROOT_AUTHORITY,
 )
 from integrations.metamask.smart_account import get_environment, mock_smart_account_enabled
@@ -38,56 +38,23 @@ def validate_signed_delegation(delegation: dict[str, Any]) -> tuple[bool, list[s
         reasons.append("Mock signatures are not accepted on live Somnia")
     if not (sig.startswith("0x") and len(sig) >= 130):
         reasons.append("Delegation signature looks invalid")
+    typed = delegation.get("typed_data") or {}
+    if isinstance(typed, dict) and typed.get("primaryType") == "DreamAgentPermission":
+        reasons.append(
+            "This grant was signed with a DreamLens-only typed payload. "
+            "Re-sign DreamAgent at /agent/activate/ so the session key can redeem it."
+        )
+    caveat_fields = []
+    if isinstance(typed, dict):
+        for field in (typed.get("types") or {}).get("Caveat") or []:
+            if isinstance(field, dict) and field.get("name"):
+                caveat_fields.append(field["name"])
+    if "args" in caveat_fields:
+        reasons.append(
+            "This grant hashed Caveat.args. DelegationManager hashes "
+            "Caveat(address enforcer,bytes terms) only. Re-sign at /agent/activate/."
+        )
     return (len(reasons) == 0), reasons
-
-
-def build_grant_typed_data(
-    *,
-    chain_id: int,
-    delegator: str,
-    delegate: str,
-    verifying_contract: str,
-    max_trade_amount: str,
-    max_daily_volume: str,
-    expires_at: int,
-    salt: str,
-) -> dict[str, Any]:
-    """EIP-712 payload for eth_signTypedData_v4 (DreamLens grant)."""
-    return {
-        "types": {
-            "EIP712Domain": [
-                {"name": "name", "type": "string"},
-                {"name": "version", "type": "string"},
-                {"name": "chainId", "type": "uint256"},
-                {"name": "verifyingContract", "type": "address"},
-            ],
-            "DreamAgentPermission": [
-                {"name": "delegator", "type": "address"},
-                {"name": "delegate", "type": "address"},
-                {"name": "permission", "type": "string"},
-                {"name": "maxTradeAmount", "type": "string"},
-                {"name": "maxDailyVolume", "type": "string"},
-                {"name": "expiresAt", "type": "uint256"},
-                {"name": "salt", "type": "bytes32"},
-            ],
-        },
-        "primaryType": "DreamAgentPermission",
-        "domain": {
-            "name": "DreamLens DreamAgent",
-            "version": "1",
-            "chainId": chain_id,
-            "verifyingContract": to_checksum_address(verifying_contract),
-        },
-        "message": {
-            "delegator": to_checksum_address(delegator),
-            "delegate": to_checksum_address(delegate),
-            "permission": "TRADE_EVENT_CONTRACT",
-            "maxTradeAmount": str(max_trade_amount),
-            "maxDailyVolume": str(max_daily_volume),
-            "expiresAt": int(expires_at),
-            "salt": salt if salt.startswith("0x") else "0x" + salt,
-        },
-    }
 
 
 DELEGATION_ARRAY_ABI = (
@@ -99,7 +66,126 @@ REDEEM_DELEGATIONS_SIGNATURE = "redeemDelegations(bytes[],bytes32[],bytes[])"
 
 def _hex_to_bytes(value: str) -> bytes:
     raw = value[2:] if str(value).startswith("0x") else str(value)
+    if len(raw) % 2:
+        raw = "0" + raw
     return bytes.fromhex(raw or "")
+
+
+def _selector(signature: str) -> bytes:
+    return function_signature_to_4byte_selector(signature)
+
+
+def function_call_caveats(*, expires_at: int) -> list[dict[str, str]]:
+    """AllowedMethods + valueLte(0) + timestamp — matches FunctionCall scope.
+
+    Pool addresses change every window, so targets are not pinned. The session
+    key may only call placeBinaryOrder / approve and cannot send native value.
+    """
+    from django.conf import settings
+
+    methods = getattr(settings, "METAMASK_ALLOWED_METHODS_ENFORCER", "") or ""
+    value_lte = getattr(settings, "METAMASK_VALUE_LTE_ENFORCER", "") or ""
+    timestamp = getattr(settings, "METAMASK_TIMESTAMP_ENFORCER", "") or ""
+    caveats: list[dict[str, str]] = []
+    if methods:
+        # AllowedMethodsEnforcer.getTermsInfo reads packed 4-byte selectors, not ABI arrays.
+        selectors = [
+            _selector(PLACE_BINARY_ORDER_SELECTOR),
+            _selector("approve(address,uint256)"),
+        ]
+        terms = "0x" + b"".join(selectors).hex()
+        caveats.append(
+            {
+                "enforcer": to_checksum_address(methods),
+                "terms": terms,
+                "args": "0x",
+            }
+        )
+    if value_lte:
+        terms = "0x" + encode(["uint256"], [0]).hex()
+        caveats.append(
+            {
+                "enforcer": to_checksum_address(value_lte),
+                "terms": terms,
+                "args": "0x",
+            }
+        )
+    if timestamp:
+        before = max(int(expires_at), 0)
+        packed = (0).to_bytes(16, "big") + int(before).to_bytes(16, "big")
+        caveats.append(
+            {
+                "enforcer": to_checksum_address(timestamp),
+                "terms": "0x" + packed.hex(),
+                "args": "0x",
+            }
+        )
+    return caveats
+
+
+def build_grant_typed_data(
+    *,
+    chain_id: int,
+    delegator: str,
+    delegate: str,
+    verifying_contract: str,
+    max_trade_amount: str,
+    max_daily_volume: str,
+    expires_at: int,
+    salt: str | int,
+) -> dict[str, Any]:
+    """EIP-712 payload MetaMask signs for DelegationManager.redeemDelegations."""
+    caveats = function_call_caveats(expires_at=expires_at)
+    if isinstance(salt, int):
+        salt_value = int(salt)
+    elif str(salt).startswith("0x"):
+        salt_value = int(str(salt), 16)
+    else:
+        salt_value = int(salt)
+    return {
+        "types": {
+            "EIP712Domain": [
+                {"name": "name", "type": "string"},
+                {"name": "version", "type": "string"},
+                {"name": "chainId", "type": "uint256"},
+                {"name": "verifyingContract", "type": "address"},
+            ],
+            # EncoderLib: Caveat(address enforcer,bytes terms) — args are redemption-only.
+            "Caveat": [
+                {"name": "enforcer", "type": "address"},
+                {"name": "terms", "type": "bytes"},
+            ],
+            "Delegation": [
+                {"name": "delegate", "type": "address"},
+                {"name": "delegator", "type": "address"},
+                {"name": "authority", "type": "bytes32"},
+                {"name": "caveats", "type": "Caveat[]"},
+                {"name": "salt", "type": "uint256"},
+            ],
+        },
+        "primaryType": "Delegation",
+        "domain": {
+            "name": "DelegationManager",
+            "version": "1",
+            "chainId": int(chain_id),
+            "verifyingContract": to_checksum_address(verifying_contract),
+        },
+        "message": {
+            "delegate": to_checksum_address(delegate),
+            "delegator": to_checksum_address(delegator),
+            "authority": ROOT_AUTHORITY,
+            "caveats": [
+                {"enforcer": c["enforcer"], "terms": c["terms"]} for c in caveats
+            ],
+            "salt": salt_value,
+        },
+        "dreamlens": {
+            "permission": "TRADE_EVENT_CONTRACT",
+            "maxTradeAmount": str(max_trade_amount),
+            "maxDailyVolume": str(max_daily_volume),
+            "expiresAt": int(expires_at),
+        },
+    }
 
 
 def encode_execution(target: str, call_data: str, *, value: int = 0) -> bytes:
@@ -128,11 +214,12 @@ def encode_redeem_delegations_calldata(
     call_data: str,
     value: int = 0,
     extra_executions: list[tuple[str, int, str]] | None = None,
+    pre_executions: list[tuple[str, int, str]] | None = None,
 ) -> str:
     """Build redeemDelegations calldata for Delegation Manager.
 
-    extra_executions are additional (target, value, callData) calls in the
-    same redeem — used so the Smart Account can reimburse session-key gas.
+    pre_executions run before the DreamDEX call (USDC approve).
+    extra_executions run after (session-key gas reimbursement).
     """
     caveats = signed_delegation.get("caveats") or []
     caveat_tuples = []
@@ -165,9 +252,18 @@ def encode_redeem_delegations_calldata(
     )
     permission_context = encode([DELEGATION_ARRAY_ABI], [[delegation_tuple]])
 
-    executions: list[tuple[str, int, bytes]] = [
+    executions: list[tuple[str, int, bytes]] = []
+    for pre_target, pre_value, pre_data in pre_executions or []:
+        executions.append(
+            (
+                to_checksum_address(pre_target),
+                int(pre_value),
+                _hex_to_bytes(pre_data),
+            )
+        )
+    executions.append(
         (to_checksum_address(target), int(value), _hex_to_bytes(call_data))
-    ]
+    )
     for extra_target, extra_value, extra_data in extra_executions or []:
         executions.append(
             (
@@ -176,21 +272,25 @@ def encode_redeem_delegations_calldata(
                 _hex_to_bytes(extra_data),
             )
         )
-    batch = len(executions) > 1
-    mode = EXECUTION_MODE_BATCH_DEFAULT if batch else EXECUTION_MODE_SINGLE_DEFAULT
-    if batch:
-        execution_calldata = encode_batch_executions(executions)
-    else:
-        t, v, d = executions[0]
-        execution_calldata = encode_single_execution_packed(t, "0x" + d.hex(), value=v)
-
+    # AllowedMethods / ValueLte only accept Single + Default. One redeem tx can
+    # still carry several permission contexts, each with SingleDefault calldata
+    # (approve, then placeBinaryOrder). BatchDefault Execution[] reverts those
+    # enforcers. See MetaMask DelegationManager + AllowedMethodsEnforcer.
+    packed: list[bytes] = []
+    for target_addr, exec_value, exec_data in executions:
+        packed.append(
+            encode_single_execution_packed(
+                target_addr, "0x" + exec_data.hex(), value=exec_value
+            )
+        )
+    mode = bytes.fromhex(EXECUTION_MODE_SINGLE_DEFAULT[2:])
     selector = function_signature_to_4byte_selector(REDEEM_DELEGATIONS_SIGNATURE)
     encoded = encode(
         ["bytes[]", "bytes32[]", "bytes[]"],
         [
-            [permission_context],
-            [bytes.fromhex(mode[2:])],
-            [execution_calldata],
+            [permission_context] * len(packed),
+            [mode] * len(packed),
+            packed,
         ],
     )
     return "0x" + (selector + encoded).hex()

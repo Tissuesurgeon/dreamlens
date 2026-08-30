@@ -52,6 +52,16 @@ def _quantize_price(value: Decimal) -> Decimal:
     return value.quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
 
 
+def _signed_fill_qty(fill: FillDTO, wallet: str, side: str) -> Decimal:
+    """Net outcome tokens from a fill: buys add, sells subtract."""
+    qty = fill.quantity or Decimal("0")
+    if fill.taker and fill.taker.lower() == wallet and fill.taker_side == side:
+        return qty if getattr(fill, "taker_is_buy", True) else -qty
+    if fill.maker and fill.maker.lower() == wallet and fill.maker_side == side:
+        return qty if getattr(fill, "maker_is_buy", True) else -qty
+    return Decimal("0")
+
+
 def _split_prices(yes_price: Decimal) -> tuple[Decimal, Decimal]:
     yes = _quantize_price(yes_price)
     no = _quantize_price(Decimal("1") - yes)
@@ -70,6 +80,7 @@ class MockDreamDEXAdapter:
         self._fills: dict[str, list[FillDTO]] = {}
         self._price_history: dict[str, list[Decimal]] = {}
         self._redeemed: dict[tuple[str, str], dict[str, Decimal]] = {}
+        self._sold: dict[tuple[str, str], dict[str, Decimal]] = {}
         self._seed_events(now)
         self._seed_fills(now)
         self._seed_finalized(now)
@@ -382,17 +393,18 @@ class MockDreamDEXAdapter:
             for fill in fills:
                 if fill.market_id != market_id:
                     continue
-                if fill.maker.lower() == wallet and fill.maker_side == "YES":
-                    yes += fill.quantity
-                elif fill.maker.lower() == wallet and fill.maker_side == "NO":
-                    no += fill.quantity
-                elif fill.taker.lower() == wallet and fill.taker_side == "YES":
-                    yes += fill.quantity
-                elif fill.taker.lower() == wallet and fill.taker_side == "NO":
-                    no += fill.quantity
+                yes += _signed_fill_qty(fill, wallet, "YES")
+                no += _signed_fill_qty(fill, wallet, "NO")
         redeemed = self._redeemed.get((wallet, market_id), {})
-        yes = max(yes - redeemed.get("yes", Decimal("0")), Decimal("0"))
-        no = max(no - redeemed.get("no", Decimal("0")), Decimal("0"))
+        sold = self._sold.get((wallet, market_id), {})
+        yes = max(
+            yes - redeemed.get("yes", Decimal("0")) - sold.get("yes", Decimal("0")),
+            Decimal("0"),
+        )
+        no = max(
+            no - redeemed.get("no", Decimal("0")) - sold.get("no", Decimal("0")),
+            Decimal("0"),
+        )
         return OutcomeBalancesDTO(yes_balance=yes, no_balance=no)
 
     def get_wallet_balances(self, account: str) -> WalletBalancesDTO:
@@ -457,7 +469,9 @@ class MockDreamDEXAdapter:
     ) -> UnsignedTxDTO | None:
         return None
 
-    def prepare_outcome_operator_approval(self, *, account: str) -> UnsignedTxDTO | None:
+    def prepare_outcome_operator_approval(
+        self, *, account: str, spender: str | None = None
+    ) -> UnsignedTxDTO | None:
         return None
 
     def record_redeem(
@@ -476,6 +490,19 @@ class MockDreamDEXAdapter:
         key = (account.lower(), market_id)
         bag = self._redeemed.setdefault(key, {"yes": Decimal("0"), "no": Decimal("0")})
         bag[side] = bag.get(side, Decimal("0")) + human
+
+    def record_sell(
+        self,
+        *,
+        account: str,
+        market_id: str,
+        outcome_idx: int,
+        amount: Decimal,
+    ) -> None:
+        side = "yes" if int(outcome_idx) == 0 else "no"
+        key = (account.lower(), market_id)
+        bag = self._sold.setdefault(key, {"yes": Decimal("0"), "no": Decimal("0")})
+        bag[side] = bag.get(side, Decimal("0")) + Decimal(str(amount))
 
     def list_finalized_events(
         self,

@@ -116,6 +116,16 @@ def delete_webhook(*, drop_pending: bool = False) -> None:
     _post("deleteWebhook", {"drop_pending_updates": bool(drop_pending)})
 
 
+def set_webhook(url: str, secret: str) -> None:
+    payload = {
+        "url": url,
+        "secret_token": secret,
+        "allowed_updates": ["message", "callback_query"],
+        "drop_pending_updates": False,
+    }
+    _post("setWebhook", payload)
+
+
 def get_updates(*, offset: int | None = None, timeout: int = 25) -> list[dict[str, Any]]:
     payload: dict[str, Any] = {"timeout": int(timeout), "allowed_updates": ["message", "callback_query"]}
     if offset is not None:

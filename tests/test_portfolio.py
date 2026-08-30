@@ -270,6 +270,111 @@ def test_redeem_api_claims_winnings(client, user, wallet, sample_event, mock_ada
 
 
 @pytest.mark.django_db
+def test_portfolio_page_shows_close_on_open_position(
+    client, user, wallet, sample_event, mock_adapter
+):
+    _seed_user_fill(mock_adapter, sample_event, taker=wallet.address)
+    client.force_login(user)
+    res = client.get("/portfolio/")
+    assert res.status_code == 200
+    body = res.content.decode()
+    assert "data-close-position" in body
+    assert "Close" in body
+    event_page = client.get(f"/events/{sample_event.pk}/")
+    assert event_page.status_code == 200
+    assert b"data-close-position" in event_page.content
+    assert b"Close trade" in event_page.content
+
+
+@pytest.mark.django_db
+def test_close_api_sells_open_position(client, user, wallet, sample_event, mock_adapter):
+    _seed_user_fill(mock_adapter, sample_event, taker=wallet.address)
+    from services.portfolio_service import refresh_portfolio
+
+    refresh_portfolio(user)
+    position = Position.objects.get(user=user)
+    assert position.status == Position.Status.OPEN
+    client.force_login(user)
+    prepared = client.post(
+        f"/api/portfolio/positions/{position.pk}/close/",
+        data={"wallet_address": wallet.address},
+        content_type="application/json",
+    )
+    assert prepared.status_code == 200
+    payload = prepared.json()
+    assert payload["unsigned_tx"]["to"]
+    assert payload["unsigned_tx"]["data"].startswith("0x")
+    assert payload["trade_id"]
+    assert payload["outcome"] == "YES"
+
+    confirmed = client.post(
+        f"/api/portfolio/positions/{position.pk}/close/confirm/",
+        data={"tx_hash": "0x" + "cd" * 32, "trade_id": payload["trade_id"]},
+        content_type="application/json",
+    )
+    assert confirmed.status_code == 200
+    position.refresh_from_db()
+    assert position.status == Position.Status.CLOSED
+    sell = Trade.objects.get(pk=payload["trade_id"])
+    assert sell.side == Trade.Side.SELL
+    assert sell.status == Trade.Status.CONFIRMED
+    page = client.get("/portfolio/")
+    body = page.content.decode()
+    assert 'data-close-position="' not in body
+    assert "Closed" in body
+
+
+@pytest.mark.django_db
+def test_close_api_rejects_settled_position(
+    client, user, wallet, sample_event, mock_adapter
+):
+    _seed_user_fill(mock_adapter, sample_event, taker=wallet.address)
+    mock_adapter.simulate_settlement(sample_event.external_id, "YES")
+    from services.portfolio_service import refresh_portfolio
+
+    refresh_portfolio(user)
+    position = Position.objects.get(user=user)
+    client.force_login(user)
+    prepared = client.post(
+        f"/api/portfolio/positions/{position.pk}/close/",
+        data={"wallet_address": wallet.address},
+        content_type="application/json",
+    )
+    assert prepared.status_code == 400
+    assert "claim" in prepared.json()["detail"].lower() or "settlement" in prepared.json()["detail"].lower()
+
+
+@pytest.mark.django_db
+def test_sync_positions_nets_sells(user, sample_event):
+    yes = sample_event.outcomes.get(outcome_type="YES")
+    Trade.objects.create(
+        user=user,
+        event=sample_event,
+        outcome=yes,
+        side=Trade.Side.BUY,
+        amount=Decimal("20"),
+        entry_price=Decimal("0.72"),
+        status=Trade.Status.CONFIRMED,
+    )
+    Trade.objects.create(
+        user=user,
+        event=sample_event,
+        outcome=yes,
+        side=Trade.Side.SELL,
+        amount=Decimal("20"),
+        entry_price=Decimal("0.80"),
+        status=Trade.Status.CONFIRMED,
+    )
+    from services.portfolio_service import position_result, sync_positions
+
+    sync_positions(user)
+    position = Position.objects.get(user=user)
+    assert position.status == Position.Status.CLOSED
+    assert position.pnl == Decimal("1.6000")
+    assert position_result(position) == "closed"
+
+
+@pytest.mark.django_db
 def test_redeem_api_returns_json_when_gas_estimate_reverts(
     client, user, wallet, sample_event, mock_adapter
 ):

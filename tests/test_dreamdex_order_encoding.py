@@ -100,6 +100,29 @@ def test_market_buy_no_uses_one_tick_yes_price(settings):
     assert price_raw == int(settings.DREAMDEX_TICK)
 
 
+def test_market_sell_yes_encodes_kind_and_crossing_price(settings):
+    from integrations.dreamdex.client import LiveDreamDEXClient
+
+    client = LiveDreamDEXClient()
+    unsigned = client.prepare_place_order(
+        TradeIntent(
+            market_id="0x" + "33" * 32,
+            pool="0xF501C195eCF6b15676cd6b5419986aC94B2022f3",
+            side="SELL_YES",
+            price=Decimal("0.50"),
+            quantity=Decimal("20"),
+            order_type="MARKET",
+        )
+    )
+    kind, price_raw, qty_raw, _expire, order_type, *_rest = _decode_place_binary(
+        unsigned.data
+    )
+    assert kind == 1
+    assert order_type == 2
+    assert price_raw == int(settings.DREAMDEX_TICK)
+    assert qty_raw == 20 * (10 ** int(settings.DREAMDEX_COLLATERAL_DECIMALS))
+
+
 def test_encode_helper_round_trip():
     data = encode_place_binary_order(
         kind=0,

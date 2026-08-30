@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from eth_utils import function_signature_to_4byte_selector
-from integrations.metamask import EXECUTION_MODE_BATCH_DEFAULT
+from integrations.metamask import EXECUTION_MODE_BATCH_DEFAULT, EXECUTION_MODE_SINGLE_DEFAULT
 from integrations.metamask.delegation import (
     REDEEM_DELEGATIONS_SIGNATURE,
     encode_redeem_delegations_calldata,
@@ -89,26 +89,26 @@ def test_compute_gas_reimbursement_applies_buffer_and_cap():
     )
 
 
-def test_encode_redeem_batch_includes_gas_payment():
+def test_encode_redeem_multi_uses_single_default_modes():
     single = encode_redeem_delegations_calldata(
         signed_delegation=DELEGATION,
         target=POOL,
         call_data="0xabcdef",
     )
-    batch = encode_redeem_delegations_calldata(
+    multi = encode_redeem_delegations_calldata(
         signed_delegation=DELEGATION,
         target=POOL,
         call_data="0xabcdef",
-        extra_executions=[(SESSION, 10**15, "0x")],
+        pre_executions=[("0x" + "33" * 20, 0, "0x095ea7b3")],
     )
     assert single.startswith("0x")
-    assert batch.startswith("0x")
+    assert multi.startswith("0x")
     selector = function_signature_to_4byte_selector(REDEEM_DELEGATIONS_SIGNATURE).hex()
     assert single[2:].startswith(selector)
-    assert batch[2:].startswith(selector)
-    assert len(batch) > len(single)
-    assert EXECUTION_MODE_BATCH_DEFAULT[2:] in batch[2:]
-    assert SESSION[2:].lower() in batch.lower()
+    assert multi[2:].startswith(selector)
+    assert len(multi) > len(single)
+    assert EXECUTION_MODE_BATCH_DEFAULT not in multi
+    assert EXECUTION_MODE_SINGLE_DEFAULT[2:] in multi[2:]
     packed_pool = POOL[2:].lower()
     assert packed_pool in single.lower()
 
@@ -125,7 +125,7 @@ def test_with_gas_reimbursement_rewrites_calldata():
     )
     assert updated.gas_payment_wei == 10**15
     assert updated.data != original
-    assert EXECUTION_MODE_BATCH_DEFAULT[2:] in updated.data[2:]
+    assert EXECUTION_MODE_BATCH_DEFAULT not in updated.data
 
 
 def test_apply_smart_account_gas_payment_when_sa_has_stt(settings):
@@ -157,6 +157,36 @@ def test_apply_smart_account_gas_payment_when_sa_has_stt(settings):
     assert updated.data != original
 
 
+def test_apply_smart_account_gas_payment_skips_function_call_caveats(settings):
+    settings.DREAM_AGENT_SA_PAYS_GAS = True
+
+    class FakeEth:
+        gas_price = 1_000_000_000
+
+        def get_balance(self, _addr):
+            return 10**18
+
+    class FakeW3:
+        eth = FakeEth()
+
+    original = encode_redeem_delegations_calldata(
+        signed_delegation=DELEGATION,
+        target=POOL,
+        call_data="0xabcdef",
+    )
+    caveated = dict(DELEGATION)
+    caveated["caveats"] = [
+        {"enforcer": "0x" + "cc" * 20, "terms": "0xabcdef12", "args": "0x"}
+    ]
+    updated = apply_smart_account_gas_payment(
+        _execution(data=original, signed_delegation=caveated),
+        session_address=SESSION,
+        w3=FakeW3(),
+    )
+    assert updated.gas_payment_wei == 0
+    assert updated.data == original
+
+
 def test_apply_smart_account_gas_payment_skips_empty_sa(settings):
     settings.DREAM_AGENT_SA_PAYS_GAS = True
 
@@ -179,5 +209,36 @@ def test_apply_smart_account_gas_payment_skips_empty_sa(settings):
     assert updated.data == original
 
 
-def test_agent_can_includes_paying_gas():
-    assert any("gas" in item.lower() for item in DreamAgentPermissionSpec().agent_can())
+def test_agent_can_includes_one_signature_trades():
+    assert any("signature" in item.lower() for item in DreamAgentPermissionSpec().agent_can())
+
+
+def test_legacy_session_tx_is_not_eip1559():
+    from eth_account import Account
+
+    from integrations.metamask.transactions import legacy_session_tx
+
+    acct = Account.from_key("0x" + "11" * 32)
+    tx = legacy_session_tx(
+        to=POOL,
+        data="0xabcdef",
+        value=0,
+        chain_id=50312,
+        nonce=0,
+        gas=800_000,
+        gas_price=1_000_000_000,
+    )
+    assert "gasPrice" in tx
+    assert "maxFeePerGas" not in tx
+    signed = acct.sign_transaction(tx)
+    raw = getattr(signed, "raw_transaction", None) or signed.rawTransaction
+    assert raw[:1] != b"\x02"
+
+
+def test_humanize_somnia_type2_reject():
+    from integrations.metamask.transactions import _humanize_redeem_revert
+
+    msg = _humanize_redeem_revert(
+        Exception("{'code': -32000, 'message': 'account does not exist', 'data': '0x02'}")
+    )
+    assert "legacy" in msg.lower() or "session" in msg.lower()

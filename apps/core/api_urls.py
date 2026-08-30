@@ -29,6 +29,8 @@ from apps.core.api.portfolio import (
     PortfolioBalancesView,
     PortfolioPositionsView,
     PortfolioSummaryView,
+    PositionCloseConfirmView,
+    PositionCloseView,
     PositionRedeemConfirmView,
     PositionRedeemView,
 )
@@ -73,6 +75,16 @@ urlpatterns = [
         "portfolio/positions/<int:pk>/redeem/confirm/",
         PositionRedeemConfirmView.as_view(),
         name="api-portfolio-redeem-confirm",
+    ),
+    path(
+        "portfolio/positions/<int:pk>/close/",
+        PositionCloseView.as_view(),
+        name="api-portfolio-close",
+    ),
+    path(
+        "portfolio/positions/<int:pk>/close/confirm/",
+        PositionCloseConfirmView.as_view(),
+        name="api-portfolio-close-confirm",
     ),
     # Copy / Smart Copy
     path("copy/", CopyRelationshipListCreateView.as_view(), name="api-copy-list"),

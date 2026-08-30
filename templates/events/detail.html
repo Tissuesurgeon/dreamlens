@@ -15,6 +15,35 @@
         <p class="dl-event-header__expiry">when this event expires · Ends in <span class="dl-countdown" data-expiry="{{ event.expiry_time|date:'c' }}">{{ event|ends_in }}</span></p>
       </header>
 
+      {% if user_positions %}
+      <section class="dl-your-position" aria-label="Your position">
+        {% for pos in user_positions %}
+        {% if pos.result == "open" %}
+        <div class="dl-your-position__card">
+          <div>
+            <p class="dl-your-position__kicker">Your {{ pos.outcome.outcome_type }} position</p>
+            <p class="dl-your-position__line">
+              {{ pos.amount|floatformat:2 }} tokens
+              · now {{ pos.current_value|usd_plain }}
+              {% if pos.pnl is not None %}
+              · {% if pos.pnl >= 0 %}+{% endif %}{{ pos.pnl|usd_plain }}
+              {% endif %}
+            </p>
+          </div>
+          {% if pos.closeable %}
+          <button
+            type="button"
+            class="dl-btn dl-btn--ghost"
+            data-close-position="{{ pos.pk }}"
+            data-close-wallet="{{ pos.close_wallet }}"
+          >Close trade{% if pos.close_proceeds %} · {{ pos.close_proceeds|usd_plain }}{% endif %}</button>
+          {% endif %}
+        </div>
+        {% endif %}
+        {% endfor %}
+      </section>
+      {% endif %}
+
       <div class="dl-payout-tiles" aria-label="Prices">
         <button
           type="button"

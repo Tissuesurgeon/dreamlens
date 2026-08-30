@@ -12,21 +12,15 @@
 
   function initPlane() {
     var hero = document.querySelector(".dl-landing-hero");
-    var plane = document.querySelector("[data-landing-plane]");
-    var yesEl = plane && plane.querySelector("[data-landing-yes]");
-    var noEl = plane && plane.querySelector("[data-landing-no]");
     var split = document.querySelector("[data-landing-split]");
     var optic = document.querySelector("[data-landing-optic]");
-    if (!hero || !yesEl || !noEl) return;
+    if (!hero) return;
 
     var yes = 0.41;
 
     function paint(y) {
-      var n = 1 - y;
       hero.style.setProperty("--yes", String(y));
-      hero.style.setProperty("--no", String(n));
-      yesEl.textContent = "$" + y.toFixed(2);
-      noEl.textContent = "$" + n.toFixed(2);
+      hero.style.setProperty("--no", String(1 - y));
       if (split) {
         split.style.left = y * 100 + "%";
       }

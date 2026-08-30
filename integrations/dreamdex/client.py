@@ -880,10 +880,15 @@ class LiveDreamDEXClient:
             metadata={"spender": pool, "collateral": token},
         )
 
-    def prepare_outcome_operator_approval(self, *, account: str) -> UnsignedTxDTO | None:
-        """ERC-6909 setOperator so BinaryMarketsModule can pull winning tokens."""
+    def prepare_outcome_operator_approval(
+        self, *, account: str, spender: str | None = None
+    ) -> UnsignedTxDTO | None:
+        """ERC-6909 setOperator so a DreamDEX contract can pull outcome tokens.
+
+        Redeem uses BinaryMarketsModule. Selling into the CLOB uses the market pool.
+        """
         token = to_checksum_address(_OUTCOME_TOKEN_6909)
-        module = to_checksum_address(self.binary_module)
+        operator = to_checksum_address(spender or self.binary_module)
         owner = to_checksum_address(account)
         erc6909 = self._web3.eth.contract(
             address=token,
@@ -901,19 +906,24 @@ class LiveDreamDEXClient:
             ],
         )
         try:
-            if bool(erc6909.functions.isOperator(owner, module).call()):
+            if bool(erc6909.functions.isOperator(owner, operator).call()):
                 return None
         except Exception:
             logger.warning("isOperator check failed account=%s", account, exc_info=True)
         selector = function_signature_to_4byte_selector("setOperator(address,bool)")
-        encoded = encode(["address", "bool"], [module, True])
+        encoded = encode(["address", "bool"], [operator, True])
+        redeeming = operator.lower() == to_checksum_address(self.binary_module).lower()
         return UnsignedTxDTO(
             to=token,
             data="0x" + (selector + encoded).hex(),
             value=0,
             chain_id=self.chain_id,
-            description="Allow DreamDEX to redeem outcome tokens",
-            metadata={"spender": module, "token": token},
+            description=(
+                "Allow DreamDEX to redeem outcome tokens"
+                if redeeming
+                else "Allow this market to sell your outcome tokens"
+            ),
+            metadata={"spender": operator, "token": token},
         )
 
     def prepare_redeem(

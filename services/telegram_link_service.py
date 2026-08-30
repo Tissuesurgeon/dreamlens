@@ -200,7 +200,23 @@ def unlink(user) -> None:
 
 
 def site_origin() -> str:
+    import os
+
+    explicit = (
+        getattr(settings, "DREAMLENS_PUBLIC_URL", "")
+        or os.environ.get("DREAMLENS_PUBLIC_URL")
+        or ""
+    ).strip().rstrip("/")
+    if explicit:
+        return explicit
+    railway = (os.environ.get("RAILWAY_PUBLIC_DOMAIN") or "").strip()
+    if railway:
+        host = railway.split("//")[-1].split("/")[0]
+        if host:
+            return f"https://{host}"
     origins = getattr(settings, "CSRF_TRUSTED_ORIGINS", None) or []
-    if origins:
-        return str(origins[0]).rstrip("/")
+    for origin in origins:
+        origin = str(origin).rstrip("/")
+        if origin and "*" not in origin:
+            return origin
     return "http://127.0.0.1:8000"

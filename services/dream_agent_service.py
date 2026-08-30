@@ -6,7 +6,6 @@ import logging
 from decimal import Decimal
 from typing import Any
 
-from django.db import transaction
 from django.db.models import Count, Q, Sum
 from django.utils import timezone
 
@@ -31,12 +30,33 @@ class DreamAgentError(Exception):
 
 
 def get_running_agent(user) -> DreamAgent | None:
+    """Autonomous copy only. Manual Telegram trades use get_tradable_agent()."""
     return (
         DreamAgent.objects.filter(user=user, status=DreamAgent.Status.RUNNING)
         .select_related("smart_account")
         .order_by("-updated_at")
         .first()
     )
+
+
+def get_tradable_agent(user) -> DreamAgent | None:
+    """Agent that can redeem a live TRADE_EVENT_CONTRACT grant (no MetaMask).
+
+    AUTHORIZED means the owner already signed the delegation; RUNNING additionally
+    turns on autonomous copy. Telegram is an interface, so both can trade.
+    """
+    agents = (
+        DreamAgent.objects.filter(
+            user=user,
+            status__in=(DreamAgent.Status.RUNNING, DreamAgent.Status.AUTHORIZED),
+        )
+        .select_related("smart_account")
+        .order_by("-updated_at")
+    )
+    for agent in agents:
+        if active_permission(agent):
+            return agent
+    return None
 
 
 def active_permission(agent: DreamAgent) -> DreamAgentPermission | None:
@@ -63,6 +83,39 @@ def validate_delegation(permission: DreamAgentPermission) -> tuple[bool, list[st
         return False, ["Delegation is not active or has expired"]
     blob = permission.signed_delegation_json or {}
     return validate_signed_delegation(blob)
+
+
+def grant_health(user) -> dict[str, Any]:
+    """What the agent pages should show about the current grant + session key."""
+    from integrations.metamask.transactions import SessionKeyError, get_session_address
+
+    session = ""
+    try:
+        session = get_session_address()
+    except SessionKeyError:
+        session = ""
+    agent = (
+        DreamAgent.objects.filter(user=user)
+        .exclude(status=DreamAgent.Status.REVOKED)
+        .select_related("smart_account")
+        .order_by("-updated_at")
+        .first()
+    )
+    perm = active_permission(agent) if agent else None
+    reasons: list[str] = []
+    needs_resign = False
+    if perm:
+        ok, reasons = validate_delegation(perm)
+        needs_resign = not ok
+    elif agent:
+        needs_resign = True
+        reasons = ["Sign a DelegationManager grant at /agent/activate/."]
+    return {
+        "session_address": session,
+        "needs_resign": needs_resign,
+        "reasons": reasons,
+        "has_permission": perm is not None,
+    }
 
 
 def _notify_telegram_evaluation(agent: DreamAgent, ev: AgentEvaluation) -> None:
@@ -126,7 +179,6 @@ def _record_evaluation(
     return ev
 
 
-@transaction.atomic
 def evaluate_and_maybe_execute(
     source_trade: TraderTrade,
     relationship: CopyRelationship,
@@ -181,7 +233,6 @@ def evaluate_and_maybe_execute(
     )
 
 
-@transaction.atomic
 def execute_trade(
     *,
     agent: DreamAgent,
@@ -309,7 +360,7 @@ def execute_trade(
 
     # EXECUTE — AI said COPY and all gates passed
     try:
-        trade, unsigned, _approval = prepare_trade(
+        trade, unsigned, approval = prepare_trade(
             user=relationship.user,
             event_id=source_trade.event_id,
             outcome=source_trade.outcome.outcome_type,
@@ -321,6 +372,7 @@ def execute_trade(
             signed_delegation=permission.signed_delegation_json or {},
             dreamdex_tx=unsigned,
             chain_id=sa.chain_id,
+            approval_tx=approval,
         )
         tx_hash = broadcast_delegated_execution(
             delegated,
@@ -411,13 +463,13 @@ def execute_agent_manual_trade(
     outcome: str,
     amount: Decimal,
 ) -> Trade:
-    """Place a DreamDEX order via the user's RUNNING DreamAgent (no MetaMask)."""
+    """Place a DreamDEX order via the user's granted DreamAgent (no MetaMask)."""
     from apps.events.models import EventContract
 
     if amount <= 0:
         raise DreamAgentError("Amount must be positive")
 
-    agent = get_running_agent(user)
+    agent = get_tradable_agent(user)
     if not agent:
         raise DreamAgentError(
             "Activate DreamAgent on /agent/activate/ — Telegram cannot sign MetaMask."
@@ -425,7 +477,7 @@ def execute_agent_manual_trade(
     permission = active_permission(agent)
     if not permission:
         raise DreamAgentError(
-            "Activate DreamAgent on /agent/activate/ — Telegram cannot sign MetaMask."
+            "Your DreamAgent grant expired. Re-sign it on /agent/activate/ in the browser."
         )
     del_ok, del_reasons = validate_delegation(permission)
     if not del_ok:
@@ -486,7 +538,7 @@ def execute_agent_manual_trade(
         raise DreamAgentError("; ".join(skip_reasons))
 
     try:
-        trade, unsigned, _approval = prepare_trade(
+        trade, unsigned, approval = prepare_trade(
             user=user,
             event_id=event.pk,
             outcome=side,
@@ -498,6 +550,7 @@ def execute_agent_manual_trade(
             signed_delegation=permission.signed_delegation_json or {},
             dreamdex_tx=unsigned,
             chain_id=sa.chain_id,
+            approval_tx=approval,
         )
         tx_hash = broadcast_delegated_execution(
             delegated,

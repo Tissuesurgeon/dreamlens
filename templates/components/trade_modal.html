@@ -11,6 +11,7 @@
         <p class="dl-trade-kicker">What do you think will happen?</p>
         <p class="dl-trade-question" id="modal-event-title">—</p>
         <p class="dl-trade-side" id="modal-outcome-line">—</p>
+        <p class="dl-muted" id="modal-beginner-line">YES = you think this happens. Price is what you pay now.</p>
 
         <p class="dl-label">Try an amount</p>
         <div class="dl-preset-group" id="modal-amount-chips">
@@ -71,17 +72,13 @@
             <li>✓ Event still active</li>
             <li>✓ Amount within limit</li>
             <li>✓ Maximum loss shown</li>
-            <li>✓ Smart Account funded</li>
-            <li>✓ Execution through DreamDEX</li>
+            <li>○ Trading account ready</li>
           </ul>
           <p class="dl-check-card__ready">Ready to trade</p>
         </article>
       </div>
 
-      <details class="dl-tx-details dl-advanced">
-        <summary>Transaction details</summary>
-        <pre id="modal-tx-details" class="dl-tx-details__pre">Awaiting preparation…</pre>
-      </details>
+      <p class="dl-muted" id="modal-tx-status">Ready when you are.</p>
     </div>
 
     <footer class="dl-modal__footer">
@@ -91,7 +88,7 @@
       </div>
       <div class="dl-modal__footer-primary">
         <button type="button" class="dl-btn dl-btn--primary" id="modal-next">Review trade</button>
-        <button type="button" class="dl-btn dl-btn--primary" id="modal-confirm-trade" hidden>Confirm Trade</button>
+        <button type="button" class="dl-btn dl-btn--primary" id="modal-confirm-trade" hidden>Place trade</button>
       </div>
     </footer>
   </div>

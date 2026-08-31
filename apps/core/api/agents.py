@@ -13,6 +13,7 @@ from apps.agents.models import AgentEvaluation, DreamAgent
 from apps.dreamcopy.models import CopyRelationship
 from integrations.metamask.smart_account import SmartAccountConfigError
 from services import dream_agent_service, smart_account_service
+from services.dream_agent_service import DreamAgentError
 from services.smart_account_service import SmartAccountError
 
 
@@ -289,3 +290,52 @@ class DreamAgentEvaluationsView(APIView):
             for ev in qs[:50]
         ]
         return Response({"results": results, "agent_id": agent.pk})
+
+
+class AgentTradeView(APIView):
+    """Web Buy YES/NO through the session key — same path as Telegram /trade."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from apps.core.api.serializers import TradeSerializer
+
+        raw_id = request.data.get("event_id") if isinstance(request.data, dict) else None
+        outcome = (request.data.get("outcome") if isinstance(request.data, dict) else None) or ""
+        try:
+            event_id = int(raw_id)
+        except (TypeError, ValueError):
+            return Response(
+                {"detail": "event_id must be a number."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        amount = _dec(request.data.get("amount") if isinstance(request.data, dict) else None, "0")
+        if amount <= 0:
+            return Response(
+                {"detail": "Amount must be positive."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            trade = dream_agent_service.execute_agent_manual_trade(
+                request.user,
+                event_id=event_id,
+                outcome=str(outcome),
+                amount=amount,
+                source="web",
+            )
+        except DreamAgentError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as exc:
+            return Response(
+                {"detail": str(exc) or "DreamLens could not place this trade."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(
+            {
+                "trade": TradeSerializer(trade).data,
+                "trade_id": trade.pk,
+                "tx_hash": trade.transaction_hash,
+                "via_smart_account": True,
+            },
+            status=status.HTTP_201_CREATED,
+        )

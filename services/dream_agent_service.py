@@ -484,15 +484,23 @@ def execute_agent_manual_trade(
     event_id: int,
     outcome: str,
     amount: Decimal,
+    source: str = "telegram",
 ) -> Trade:
     """Place a DreamDEX order via the user's granted DreamAgent (no MetaMask)."""
     from apps.events.models import EventContract
+
+    origin = (source or "telegram").strip().lower() or "telegram"
+    origin_tag = "WEB" if origin == "web" else "TELEGRAM"
 
     if amount <= 0:
         raise DreamAgentError("Amount must be positive")
 
     agent = get_tradable_agent(user)
     if not agent:
+        if origin == "web":
+            raise DreamAgentError(
+                "Finish setup at /start/ so DreamLens can place this trade."
+            )
         raise DreamAgentError(
             "Activate DreamAgent on /agent/activate/ — Telegram cannot sign MetaMask."
         )
@@ -551,8 +559,8 @@ def execute_agent_manual_trade(
             decision=AgentEvaluation.Decision.SKIPPED,
             copy_score=None,
             amount=amount,
-            skip_reasons=["TELEGRAM"] + skip_reasons,
-            policy_json={"ok": False, "source": "telegram"},
+            skip_reasons=[origin_tag] + skip_reasons,
+            policy_json={"ok": False, "source": origin},
             risk_json={"ok": risk_ok, "reasons": risk_reasons},
             event_title=event.title,
             outcome=side,
@@ -580,9 +588,15 @@ def execute_agent_manual_trade(
                 "agent_id": agent.pk,
                 "trade_id": trade.pk,
                 "smart_account": sa.address,
-                "source": "telegram",
+                "source": origin,
             },
         )
+        trade.metadata_json = {
+            **(trade.metadata_json or {}),
+            "smart_account": sa.address,
+            "source": origin,
+        }
+        trade.save(update_fields=["metadata_json"])
         trade = confirm_trade(trade.pk, tx_hash, user=user)
         _record_evaluation(
             agent=agent,
@@ -591,8 +605,8 @@ def execute_agent_manual_trade(
             decision=AgentEvaluation.Decision.COPY,
             copy_score=None,
             amount=amount,
-            skip_reasons=["TELEGRAM"],
-            policy_json={"ok": True, "source": "telegram"},
+            skip_reasons=[origin_tag],
+            policy_json={"ok": True, "source": origin},
             risk_json={"ok": True},
             tx_hash=tx_hash,
             event_title=event.title,
@@ -602,7 +616,7 @@ def execute_agent_manual_trade(
     except DreamAgentError:
         raise
     except Exception as exc:  # noqa: BLE001
-        logger.exception("telegram agent trade failed: %s", exc)
+        logger.exception("%s agent trade failed: %s", origin, exc)
         _record_evaluation(
             agent=agent,
             source_trade=None,
@@ -610,8 +624,8 @@ def execute_agent_manual_trade(
             decision=AgentEvaluation.Decision.FAILED,
             copy_score=None,
             amount=amount,
-            skip_reasons=["TELEGRAM", str(exc)],
-            policy_json={"ok": True, "source": "telegram"},
+            skip_reasons=[origin_tag, str(exc)],
+            policy_json={"ok": True, "source": origin},
             risk_json={"ok": True},
             event_title=event.title,
             outcome=side,

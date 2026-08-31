@@ -23,6 +23,17 @@ def dreamlens(request):
         explorer = "https://shannon-explorer.somnia.network"
 
     ticker = collateral_ticker()
+    from services.onboarding_service import first_session_state
+
+    try:
+        state = first_session_state(getattr(request, "user", None))
+    except Exception:
+        state = {
+            "incomplete": False,
+            "can_trade": False,
+            "step": "connect",
+            "step_index": 1,
+        }
     network_cfg = {
         "chainId": chain_id,
         "chainIdHex": hex(chain_id),
@@ -32,10 +43,14 @@ def dreamlens(request):
         "nativeCurrency": currency,
         "network": network,
         "collateralSymbol": ticker,
+        "agentCanTrade": bool(state.get("can_trade")),
     }
+    path = getattr(request, "path", "") or ""
     return {
         "dreamlens_network": network_cfg,
         "dreamlens_network_json": json.dumps(network_cfg),
         "collateral_symbol": ticker,
         "telegram_bot_url": bot_url(),
+        "first_session": state,
+        "start_flow": path.startswith("/start"),
     }

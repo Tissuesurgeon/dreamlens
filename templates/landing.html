@@ -23,11 +23,11 @@
 
   <div class="dl-landing-hero__stage">
     <div class="dl-landing-hero__copy">
-      <p class="dl-landing-eyebrow">AI-powered intelligence for DreamDEX Event Contracts</p>
+      <p class="dl-landing-eyebrow">Prediction markets, in plain language</p>
       <h1 id="landing-headline" class="dl-landing-headline">Understand. Decide. Trade with Confidence.</h1>
-      <p class="dl-landing-lede">DreamLens makes prediction markets simple and intelligent. Discover Event Contracts, understand what you're trading, copy experienced traders, or let DreamAgent trade for you within your rules.</p>
+      <p class="dl-landing-lede">A prediction market is a yes-or-no question with a price. DreamLens helps you understand it, then trade — the exchange underneath is DreamDEX, not the product you have to learn.</p>
       <div class="dl-landing-cta">
-        <a href="{% url 'home' %}" class="dl-btn dl-btn--primary dl-btn--landing">Explore DreamLens</a>
+        <a href="{% url 'start' %}" class="dl-btn dl-btn--primary dl-btn--landing">Start trading</a>
         <a class="dl-landing-cta__secondary" href="#how-it-works">How It Works</a>
       </div>
     </div>
@@ -35,7 +35,6 @@
     <article class="dl-event-card dl-landing-spot" aria-label="Example Event Contract">
       <div class="dl-event-card__top">
         <span class="dl-landing-live">LIVE NOW</span>
-        <span class="dl-event-card__score">DreamLens Score 82 / 100</span>
       </div>
       <h2 class="dl-event-card__title">Will Bitcoin be above $118,500 at expiry?</h2>
       <div class="dl-event-card__prices">
@@ -48,6 +47,7 @@
           <span class="dl-event-card__num">$0.59</span>
         </div>
       </div>
+      <p class="dl-event-card__score">DreamLens Score 82 / 100</p>
       <p class="dl-score-why__note dl-landing-spot__note">{% score_disclaimer %}</p>
       <div class="dl-event-card__meta">
         <span>Ends in 04:32</span>
@@ -348,7 +348,7 @@
 <section class="dl-landing-end" data-landing-reveal>
   <p class="dl-landing-end__line">Ready to experience prediction markets differently?</p>
   <p class="dl-landing-section__lede">Try DreamLens on the Somnia Testnet.</p>
-  <a href="{% url 'home' %}" class="dl-btn dl-btn--primary dl-btn--landing">Enter DreamLens</a>
+  <a href="{% url 'start' %}" class="dl-btn dl-btn--primary dl-btn--landing">Start trading</a>
   <p class="dl-landing-fine">Testnet only. No real monetary value.</p>
 </section>
 {% endblock %}

@@ -25,10 +25,10 @@ class DreamAgentPermissionSpec:
 
     def agent_can(self) -> list[str]:
         return [
-            "Buy Event Contract outcomes",
+            "Buy YES or NO on Event Contracts",
             "Sell/close supported positions",
-            "Claim Smart Account winnings from Portfolio or Telegram — no MetaMask",
-            "Trade only through DreamDEX",
+            "Claim winnings into this trading account",
+            "Trade Event Contracts only",
             "Place trades after one signature — no MetaMask per trade",
         ]
 

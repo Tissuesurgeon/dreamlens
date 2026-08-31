@@ -228,6 +228,33 @@ def _chart_data(event: EventContract) -> dict:
     return {"labels": labels, "prices": prices}
 
 
+def start(request):
+    """First-session wizard: Connect → trading account → fund → allow → $1 YES/NO."""
+    from services import dream_agent_service, smart_account_service
+    from services.onboarding_service import first_session_state
+
+    markets, _radar = _live_markets()
+    featured, _watching = _featured_and_watching(markets)
+    state = first_session_state(request.user)
+    grant = {}
+    health = {}
+    if request.user.is_authenticated:
+        grant = smart_account_service.grant_payload_for_ui(request.user)
+        health = dream_agent_service.grant_health(request.user)
+    return render(
+        request,
+        "onboarding/start.html",
+        {
+            "first_session": state,
+            "featured": featured,
+            "grant": grant,
+            "grant_health": health,
+            "start_flow": True,
+            "score_disclaimer": SCORE_DISCLAIMER,
+        },
+    )
+
+
 def landing(request):
     """Marketing landing — no DreamDEX sync; CTA into the app."""
     return render(request, "landing.html", {})
@@ -321,6 +348,8 @@ def home(request):
         for ex in executions:
             annotate_event_display(ex.source_trade.event)
 
+    from services.onboarding_service import first_session_state
+
     return render(
         request,
         "home_app.html",
@@ -334,12 +363,16 @@ def home(request):
             "copy_relationships": copies,
             "executions": executions,
             "score_disclaimer": SCORE_DISCLAIMER,
+            "first_session": first_session_state(request.user),
         },
     )
 
 
 def discover(request):
+    from services.onboarding_service import first_session_state
+
     markets, radar = _live_markets()
+    state = first_session_state(request.user)
     return render(
         request,
         "home.html",
@@ -348,6 +381,7 @@ def discover(request):
             "radar_tiles": radar,
             "intent_filters": INTENT_FILTERS,
             "score_disclaimer": SCORE_DISCLAIMER,
+            "first_session": state,
         },
     )
 

@@ -13,8 +13,14 @@
         <p class="dl-trade-kicker">{{ event|window_kicker }}</p>
         <h1 class="dl-event-header__title">{{ event|question_copy }}</h1>
         <p class="dl-event-header__expiry{% if not event|window_is_open %} is-closed{% endif %}">{% include "components/window_line.html" %}</p>
+        {% if event|window_is_open %}
+        <p class="dl-muted">YES = you think this happens. Price is what you pay now.</p>
+        {% endif %}
         {% if event|window_blurb %}
         <p class="dl-event-header__base">{{ event|window_blurb }}</p>
+        {% endif %}
+        {% if not event|window_is_open %}
+        <p class="dl-muted">Claim is how you get dollars back after the event settles.</p>
         {% endif %}
       </header>
 
@@ -32,6 +38,7 @@
               · {% if pos.pnl >= 0 %}+{% endif %}{{ pos.pnl|usd_plain }}
               {% endif %}
             </p>
+            <p class="dl-muted">This trade is open. When the event ends you claim winnings; Close is selling early.</p>
           </div>
           {% if pos.closeable %}
           <button

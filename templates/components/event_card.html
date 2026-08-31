@@ -9,9 +9,6 @@
 >
   <div class="dl-event-card__top">
     <span class="dl-event-card__asset">{{ event.underlying_asset|upper }}</span>
-    {% if event.dl_score %}
-    <span class="dl-event-card__score">DreamLens Score {{ event.dl_score.score }}/100</span>
-    {% endif %}
   </div>
 
   <h3 class="dl-event-card__title">
@@ -55,9 +52,13 @@
         <span class="dl-event-card__num">{{ o.current_price|as_cents }}</span>
         <span class="dl-event-card__hint">{{ o.current_price|put_one }}</span>
       </button>
-      {% endif %}
-    {% endfor %}
+        {% endif %}
+      {% endfor %}
   </div>
+
+  {% if event.dl_score %}
+  <p class="dl-event-card__score">DreamLens Score {{ event.dl_score.score }}/100</p>
+  {% endif %}
 
   {% if event.dl_score and not compact %}
   <details class="dl-score-why">

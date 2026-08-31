@@ -700,3 +700,54 @@ def test_portfolio_does_not_auto_claim_smart_account_wins(
     assert res.json()["claimed"] == 1
     position.refresh_from_db()
     assert position.status == Position.Status.CLOSED
+
+
+@pytest.mark.django_db
+def test_portfolio_page_after_smart_account_web_trade(
+    client, user, wallet, sample_event, settings
+):
+    settings.MOCK_SMART_ACCOUNT = True
+    from services import smart_account_service
+    from services.onboarding_service import first_session_state
+
+    sa = smart_account_service.create_account(user, owner_address=wallet.address)
+    smart_account_service.mark_funded(sa, amount=Decimal("50"))
+    smart_account_service.grant_agent(
+        user,
+        max_trade_amount=Decimal("10"),
+        max_daily_volume=Decimal("50"),
+        expires_in_days=30,
+        min_copy_score=50,
+        signed_delegation={
+            "delegate": "0xSession00000000000000000000000000000001",
+            "delegator": sa.address,
+            "authority": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "caveats": [],
+            "salt": "0x1",
+            "signature": "0xmockdeadbeef",
+            "mock": True,
+        },
+        activate=True,
+    )
+    yes = sample_event.outcomes.get(outcome_type="YES")
+    Trade.objects.create(
+        user=user,
+        event=sample_event,
+        outcome=yes,
+        side=Trade.Side.BUY,
+        amount=Decimal("1"),
+        entry_price=Decimal("0.41"),
+        transaction_hash="0x" + "ef" * 32,
+        status=Trade.Status.CONFIRMED,
+        metadata_json={"smart_account": sa.address, "source": "web", "wallet": sa.address},
+    )
+    state = first_session_state(user)
+    assert state["has_first_trade"] is True
+    assert state["incomplete"] is False
+    client.force_login(user)
+    res = client.get("/portfolio/")
+    assert res.status_code == 200
+    body = res.content.decode()
+    assert "Available" in body
+    assert "Hybrid" not in body
+    assert "EIP-712" not in body

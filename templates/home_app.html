@@ -5,6 +5,14 @@
 
 {% block content %}
 <div class="dl-container dl-container--home dl-home dl-animate-in">
+  {% if first_session.incomplete %}
+  <a class="dl-next-step" href="{% url 'start' %}">
+    <span class="dl-next-step__kicker">Continue setup</span>
+    <strong>{{ first_session.title }}</strong>
+    <span class="dl-next-step__why">{{ first_session.why }}</span>
+  </a>
+  {% endif %}
+
   <p class="dl-home-strip">
     <span class="dl-home-strip__live">
       <span class="dl-hero__pulse" aria-hidden="true"></span>
@@ -30,9 +38,6 @@
       >
         <header class="dl-spotlight__head">
           <span class="dl-event-card__asset">{{ featured.underlying_asset|upper }}</span>
-          {% if featured.dl_score %}
-          <span class="dl-spotlight__score">Score {{ featured.dl_score.score }}/100</span>
-          {% endif %}
           <span class="dl-spotlight__timer">{% include "components/window_line.html" with event=featured %}</span>
         </header>
         <h1 class="dl-spotlight__title">
@@ -78,6 +83,9 @@
             {% endif %}
           {% endfor %}
         </div>
+        {% if featured.dl_score %}
+        <p class="dl-event-card__score">Score {{ featured.dl_score.score }}/100 · {{ score_disclaimer }}</p>
+        {% endif %}
         <footer class="dl-spotlight__foot">
           <div class="dl-spotlight__actions">
             <a href="{% url 'event_detail' featured.pk %}" class="dl-btn dl-btn--primary">Understand</a>
@@ -92,7 +100,7 @@
       </div>
       {% endif %}
 
-      {% if watching %}
+      {% if watching and not first_session.incomplete %}
       <section class="dl-home-more" aria-labelledby="watching-heading">
         <h2 id="watching-heading" class="dl-section__title">Also watching</h2>
         <div class="dl-event-list dl-event-list--stack">
@@ -118,6 +126,7 @@
       {% endif %}
     </div>
 
+    {% if not first_session.incomplete %}
     <aside class="dl-home-desk__rail">
       {% include "components/market_feed.html" with feed_heading_id="home-feed-heading" feed_class="dl-feed--rail" feed_limit=6 %}
 
@@ -138,6 +147,7 @@
       </section>
       {% endif %}
     </aside>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

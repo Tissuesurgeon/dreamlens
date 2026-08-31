@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% load dreamlens_extras %}
+
+{% block title %}Start trading — DreamLens{% endblock %}
+
+{% block content %}
+<div class="dl-container dl-start dl-animate-in" data-start-step="{{ first_session.step }}">
+  {% if first_session.step != "done" %}
+  <ol class="dl-start__progress" aria-label="Setup progress">
+    {% for n in "12345" %}
+    <li class="{% if first_session.step_index > forloop.counter %}is-done{% elif first_session.step_index == forloop.counter %}is-current{% endif %}">
+      <span class="visually-hidden">Step {{ forloop.counter }} of 5</span>
+    </li>
+    {% endfor %}
+  </ol>
+  {% endif %}
+
+  <header class="dl-start__head">
+    <p class="dl-start__kicker">{% if first_session.step == "done" %}Ready{% else %}Step {{ first_session.step_index }} of 5{% endif %}</p>
+    <h1 class="dl-start__title">{{ first_session.title }}</h1>
+    <p class="dl-start__why">{{ first_session.why }}</p>
+  </header>
+
+  {% if first_session.step == "connect" %}
+  <div class="dl-start__panel">
+    <button type="button" class="dl-btn dl-btn--primary dl-btn--block dl-start__cta" data-start-connect>
+      Connect MetaMask
+    </button>
+    <p class="dl-muted dl-start__hint">Testnet only. These trades have no real monetary value.</p>
+  </div>
+
+  {% elif first_session.step == "create" %}
+  <div class="dl-start__panel">
+    {% if grant.configured == False %}
+    <div class="dl-empty">
+      <p class="dl-empty__title">Trading accounts are not available yet</p>
+      <p>{{ grant.config_error|default:"DreamLens cannot create a trading account on this network right now." }}</p>
+    </div>
+    {% else %}
+    <button type="button" class="dl-btn dl-btn--primary dl-btn--block dl-start__cta" id="sa-create">
+      Create your trading account
+    </button>
+    <p class="dl-muted dl-start__hint">Confirm once in MetaMask. You stay the owner.</p>
+    {% endif %}
+  </div>
+
+  {% elif first_session.step == "fund" %}
+  <div class="dl-start__panel">
+    {% if first_session.account_address %}
+    <p class="dl-start__addr">
+      <span class="dl-mono">{{ first_session.account_address }}</span>
+      <button type="button" class="dl-icon-btn" data-copy-text="{{ first_session.account_address }}" aria-label="Copy trading account address">Copy</button>
+    </p>
+    {% endif %}
+    <label class="dl-start__label" for="sa-deposit-amount">Trading dollars ($)</label>
+    <input id="sa-deposit-amount" type="number" min="1" step="1" value="10" class="dl-input">
+    <button type="button" class="dl-btn dl-btn--primary dl-btn--block dl-start__cta" id="sa-deposit">Add trading dollars</button>
+    <p class="dl-start__split">Then a small network fee</p>
+    <label class="dl-start__label" for="sa-gas-amount">Network fee</label>
+    <input id="sa-gas-amount" type="number" min="0" step="0.01" value="0.2" class="dl-input">
+    <button type="button" class="dl-btn dl-btn--ghost dl-btn--block" id="sa-deposit-gas">Add network fee</button>
+    <p class="dl-start__faucets">
+      Need test funds?
+      <a href="{{ first_session.usdc_faucet }}" target="_blank" rel="noopener">Get test dollars</a>
+      ·
+      <a href="{{ first_session.stt_faucet }}" target="_blank" rel="noopener">Get network fees</a>
+    </p>
+    <p class="dl-muted dl-start__hint">Testnet only. No real monetary value.</p>
+  </div>
+
+  {% elif first_session.step == "allow" %}
+  <div class="dl-start__panel">
+    <ul class="dl-check-list">
+      <li>✓ Buy YES or NO on Event Contracts</li>
+      <li>✓ Claim winnings into this account</li>
+      <li>✕ Withdraw your funds</li>
+    </ul>
+    <p class="dl-can-card__never">Withdrawal: Never</p>
+    <input type="hidden" id="grant-max-trade" value="10">
+    <input type="hidden" id="grant-max-daily" value="50">
+    <input type="hidden" id="grant-min-score" value="75">
+    <input type="hidden" id="grant-expires" value="30">
+    <details class="dl-start__advanced">
+      <summary>Advanced limits</summary>
+      <p class="dl-muted">Max $10 per trade, $50 per day, 30 days. Change these later on Activate.</p>
+    </details>
+    {% if grant_health.needs_resign %}
+    <article class="dl-agent-callout" role="status">
+      <h2 class="dl-agent-callout__title">Sign again to continue</h2>
+      <p class="dl-agent-callout__copy">Your last permission cannot place or claim trades yet.</p>
+    </article>
+    {% endif %}
+    <button type="button" class="dl-btn dl-btn--primary dl-btn--block dl-start__cta" id="grant-permission">
+      Allow DreamLens to trade
+    </button>
+    <p class="dl-muted dl-start__hint">One signature. After this, Buy YES does not need MetaMask each time.</p>
+  </div>
+
+  {% elif first_session.step == "trade" %}
+  <div class="dl-start__panel dl-start__panel--trade">
+    {% if featured %}
+    <p class="dl-start__question">{{ featured|question_copy }}</p>
+    <p class="dl-muted">{{ first_session.why }}</p>
+    <div class="dl-event-card__prices dl-start__prices">
+      {% for o in featured.outcomes.all %}
+        {% if o.outcome_type == "YES" %}
+        <button
+          type="button"
+          class="dl-event-card__price dl-event-card__price--yes"
+          data-trade
+          data-event-id="{{ featured.pk }}"
+          data-event-title="{{ featured|question_copy }}"
+          data-event-expiry="{{ featured.expiry_time|date:'c' }}"
+          data-outcome="YES"
+          data-price="{{ o.current_price }}"
+          data-amount="1"
+          aria-label="Buy Yes at {{ o.current_price|as_cents }}"
+        >
+          <span class="dl-event-card__side">YES</span>
+          <span class="dl-event-card__num">{{ o.current_price|as_cents }}</span>
+          <span class="dl-event-card__hint">{{ o.current_price|put_one }}</span>
+        </button>
+        {% endif %}
+      {% endfor %}
+      {% for o in featured.outcomes.all %}
+        {% if o.outcome_type == "NO" %}
+        <button
+          type="button"
+          class="dl-event-card__price dl-event-card__price--no"
+          data-trade
+          data-event-id="{{ featured.pk }}"
+          data-event-title="{{ featured|question_copy }}"
+          data-event-expiry="{{ featured.expiry_time|date:'c' }}"
+          data-outcome="NO"
+          data-price="{{ o.current_price }}"
+          data-amount="1"
+          aria-label="Buy No at {{ o.current_price|as_cents }}"
+        >
+          <span class="dl-event-card__side">NO</span>
+          <span class="dl-event-card__num">{{ o.current_price|as_cents }}</span>
+          <span class="dl-event-card__hint">{{ o.current_price|put_one }}</span>
+        </button>
+        {% endif %}
+      {% endfor %}
+    </div>
+    <p class="dl-score-why__note">{{ score_disclaimer }}</p>
+    {% else %}
+    <div class="dl-empty">
+      <p class="dl-empty__title">No live events right now</p>
+      <p>Come back when a market is open — your trading account is ready.</p>
+    </div>
+    {% endif %}
+  </div>
+
+  {% else %}
+  <div class="dl-start__panel">
+    <p class="dl-start__success">{{ first_session.why }}</p>
+    <a href="{% url 'portfolio' %}" class="dl-btn dl-btn--primary dl-btn--block dl-start__cta">See your trade</a>
+    <a href="{% url 'home' %}" class="dl-btn dl-btn--ghost dl-btn--block">Go to Home</a>
+    {% if telegram_bot_url %}
+    <p class="dl-muted dl-start__hint">You can send the same kind of trade from <a href="{{ telegram_bot_url }}">the DreamLens bot</a>. Telegram is an interface, not a wallet.</p>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

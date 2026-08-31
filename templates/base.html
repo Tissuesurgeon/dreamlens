@@ -13,10 +13,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{% static 'css/dreamlens.css' %}?v=20260830e">
+  <link rel="stylesheet" href="{% static 'css/dreamlens.css' %}?v=20260831i">
   {% block extra_head %}{% endblock %}
 </head>
-<body class="dl-body" data-view="simple"{% if user.is_authenticated %} data-authenticated="1"{% endif %}>
+<body class="dl-body{% if start_flow %} dl-body--start{% endif %}" data-view="simple"{% if user.is_authenticated %} data-authenticated="1"{% endif %}{% if start_flow %} data-onboarding="1"{% endif %}>
   <a href="#main" class="dl-skip-link">Skip to content</a>
   <div class="dl-atmosphere" aria-hidden="true"></div>
 
@@ -34,6 +34,9 @@
         <a href="{% url 'portfolio' %}" class="dl-nav__link{% if request.resolver_match.url_name == 'portfolio' %} is-active{% endif %}"{% if request.resolver_match.url_name == 'portfolio' %} aria-current="page"{% endif %}>Portfolio</a>
       </nav>
       <div class="dl-header__tools">
+        {% if first_session.incomplete and not start_flow %}
+        <a href="{% url 'start' %}" class="dl-nav-next">Continue setup</a>
+        {% endif %}
         <span class="dl-testnet-pill" tabindex="0">
           <span class="dl-testnet-pill__dot" aria-hidden="true"></span>
           Testnet
@@ -84,7 +87,7 @@
     window.DreamLensConfig = {{ dreamlens_network_json|safe }};
   </script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <script src="{% static 'js/dreamlens.js' %}?v=20260831g" defer></script>
+  <script src="{% static 'js/dreamlens.js' %}?v=20260831i" defer></script>
   {% block extra_js %}{% endblock %}
 </body>
 </html>

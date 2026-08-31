@@ -910,6 +910,13 @@
     if (outcomeLine) {
       outcomeLine.textContent = (state.outcome || "") + " " + formatCents(state.entryPrice);
     }
+    const beginner = document.getElementById("modal-beginner-line");
+    if (beginner) {
+      beginner.textContent =
+        (state.outcome || "").toUpperCase() === "NO"
+          ? "NO = you think this does not happen. Price is what you pay now."
+          : "YES = you think this happens. Price is what you pay now.";
+    }
   }
 
   function showTradeStep(n) {
@@ -931,9 +938,19 @@
       nextBtn.textContent = n === 1 ? "Review trade" : "Continue to Trade Check";
     }
     if (backBtn) backBtn.hidden = n === 1;
-    if (confirmBtn) confirmBtn.hidden = n !== 3;
+    if (confirmBtn) {
+      confirmBtn.hidden = n !== 3;
+      const amt = (document.getElementById("modal-amount") || {}).value || "5";
+      const side = (DreamLens.tradeState || {}).outcome || "";
+      if (window.DreamLensConfig && window.DreamLensConfig.agentCanTrade) {
+        confirmBtn.textContent = "Place $" + amt + " " + side;
+      } else {
+        confirmBtn.textContent = "Place trade";
+      }
+    }
     if (n === 3) {
-      const funded = Boolean(getConnectedAddress());
+      const agentReady = Boolean(window.DreamLensConfig && window.DreamLensConfig.agentCanTrade);
+      const funded = agentReady || Boolean(getConnectedAddress());
       const list = document.getElementById("trade-check-list");
       if (list) {
         list.innerHTML =
@@ -941,8 +958,7 @@
           "<li>✓ Event still active</li>" +
           "<li>✓ Amount within limit</li>" +
           "<li>✓ Maximum loss shown</li>" +
-          "<li>" + (funded ? "✓" : "○") + " Smart Account funded</li>" +
-          "<li>✓ Execution through DreamDEX</li>";
+          "<li>" + (funded ? "✓" : "○") + " Trading account ready</li>";
       }
     }
   }
@@ -977,8 +993,8 @@
     });
     const understand = document.getElementById("trade-understand");
     if (understand) understand.checked = false;
-    const details = document.getElementById("modal-tx-details");
-    if (details) details.textContent = "Transaction details appear after you confirm.";
+    const details = document.getElementById("modal-tx-status");
+    if (details) details.textContent = "Ready when you are.";
 
     renderTradeMath();
     showTradeStep(1);
@@ -1051,7 +1067,7 @@
       address = accounts && accounts[0];
     }
     if (!address) {
-      throw new Error("Connect your wallet to trade on DreamDEX.");
+      throw new Error("Connect MetaMask to trade.");
     }
     setConnectedUI(address);
 
@@ -1168,7 +1184,7 @@
   async function prepareTrade() {
     const amount = parseFloat(document.getElementById("modal-amount").value) || 10;
     const state = DreamLens.tradeState;
-    const details = document.getElementById("modal-tx-details");
+    const details = document.getElementById("modal-tx-status");
     const address = getConnectedAddress();
 
     document.getElementById("modal-payout").textContent =
@@ -1211,14 +1227,9 @@
       DreamLens.tradeState.approvalTx = data.approval_tx || null;
 
       if (details) {
-        details.textContent = JSON.stringify(
-          {
-            order: data.unsigned_tx,
-            approval: data.approval_tx || "not needed",
-          },
-          null,
-          2
-        );
+        details.textContent = data.approval_tx
+          ? "Approve dollars, then place the trade."
+          : "Order is ready. Confirm to place it.";
       }
       return data;
     } catch (err) {
@@ -1231,20 +1242,46 @@
     const btn = document.getElementById("modal-confirm-trade");
     if (btn) {
       btn.disabled = true;
-      btn.textContent = "Check wallet…";
+      btn.textContent = "Preparing…";
     }
 
     try {
+      const agentTrade = Boolean(window.DreamLensConfig && window.DreamLensConfig.agentCanTrade);
+      if (agentTrade) {
+        if (btn) btn.textContent = "DreamLens is placing this trade…";
+        const amount = parseFloat((document.getElementById("modal-amount") || {}).value) || 1;
+        const res = await csrfFetch("/api/agent/trade/", {
+          method: "POST",
+          body: JSON.stringify({
+            event_id: Number(DreamLens.tradeState.eventId),
+            outcome: DreamLens.tradeState.outcome,
+            amount: amount,
+          }),
+        });
+        const data = await readJsonResponse(res);
+        if (!res.ok) {
+          throw new Error(data.detail || data.error || "DreamLens could not place this trade.");
+        }
+        toast("Trade placed in your trading account.", "ok");
+        closeTradeModal();
+        if (document.body.getAttribute("data-onboarding") === "1") {
+          window.location.href = "/start/";
+        } else {
+          window.location.reload();
+        }
+        return;
+      }
+
       const wallet = await ensureWalletForTrade();
       if (btn) btn.textContent = "Preparing…";
       const prepared = await prepareTrade();
       const unsigned = prepared && prepared.unsigned_tx;
       if (!unsigned) {
-        throw new Error("Could not build the DreamDEX order.");
+        throw new Error("Could not build this order. Finish setup at Start trading, or try again.");
       }
 
       if (prepared.approval_tx) {
-        if (btn) btn.textContent = "Approve collateral…";
+        if (btn) btn.textContent = "Approve dollars…";
         const approveHash = await sendWalletTx(wallet.eth, prepared.approval_tx, wallet.address);
         if (btn) btn.textContent = "Waiting for approval…";
         const approveReceipt = await waitForWalletReceipt(wallet.eth, approveHash, 120000);
@@ -1253,7 +1290,7 @@
           approveReceipt.status === 1 ||
           approveReceipt.status === "1";
         if (!approveOk) {
-          throw new Error("Collateral approval reverted on Shannon.");
+          throw new Error("Approval did not go through. Check your wallet and try again.");
         }
       }
 
@@ -1276,17 +1313,22 @@
         throw new Error(data.detail || data.error || "Confirm failed");
       }
 
-      const explorer = (window.DreamLensConfig && window.DreamLensConfig.explorerUrl) || "";
-      const link = explorer ? explorer + "/tx/" + txHash : txHash;
-      alert("Trade submitted on-chain.\n" + link);
+      toast("Trade submitted.", "ok");
       closeTradeModal();
+      window.location.reload();
     } catch (err) {
       console.warn("On-chain trade failed", err);
-      alert(err.message || "Trade failed. Check your wallet and try again.");
+      toast(err.message || "Trade failed. Check your wallet and try again.", "error");
     } finally {
       if (btn) {
         btn.disabled = false;
-        btn.textContent = "Confirm Trade";
+        const amt = (document.getElementById("modal-amount") || {}).value || "5";
+        const side = (DreamLens.tradeState || {}).outcome || "";
+        if (window.DreamLensConfig && window.DreamLensConfig.agentCanTrade) {
+          btn.textContent = "Place $" + amt + " " + side;
+        } else {
+          btn.textContent = "Place trade";
+        }
       }
     }
   }
@@ -3113,7 +3155,17 @@
     initTelegramLink();
     initDreamAgent();
     initClaimPositions();
+    initStartConnect();
   });
+
+  function initStartConnect() {
+    const btn = document.querySelector("[data-start-connect]");
+    if (!btn) return;
+    btn.addEventListener("click", function () {
+      const walletBtn = document.getElementById("wallet-connect");
+      if (walletBtn) walletBtn.click();
+    });
+  }
 
   DreamLens.toHexChainId = toHexChainId;
   DreamLens.walletTxParams = walletTxParams;
@@ -3169,7 +3221,7 @@
       }
       if (!res.ok) throw new Error(data.detail || "Could not load agent config");
       if (data.configured === false) {
-        throw new Error(data.config_error || "Delegation Framework is not configured on Shannon");
+        throw new Error(data.config_error || "Trading accounts are not available on this network yet.");
       }
       return data;
     }
@@ -3184,7 +3236,7 @@
         if (receipt) return receipt;
         await new Promise(function (r) { setTimeout(r, 1500); });
       }
-      throw new Error("Timed out waiting for the Smart Account transaction.");
+      throw new Error("Timed out waiting for the trading account.");
     }
 
     async function hasOnchainCode(eth, address) {
@@ -3218,29 +3270,29 @@
             const already =
               grant.deploy_tx.already_deployed || (await hasOnchainCode(eth, saAddress));
             if (!already) {
-              toast("Confirm Smart Account deploy in MetaMask…", "success");
+              toast("Confirm in MetaMask…", "success");
               try {
                 const txHash = await sendWalletTx(eth, grant.deploy_tx, owner);
-                toast("Deploying Smart Account… " + txHash.slice(0, 10), "success");
+                toast("Creating your trading account…", "success");
                 const receipt = await waitForTxReceipt(eth, txHash, 120000);
                 const ok = receipt.status === "0x1" || receipt.status === 1 || receipt.status === "1";
                 if (!ok) {
-                  throw new Error("Smart Account deploy reverted on Shannon. Check STT for gas and try again.");
+                  throw new Error("Trading account could not be created. Add network fees and try again.");
                 }
               } catch (err) {
                 if (!(isAlreadyDeployedError(err) && (await hasOnchainCode(eth, saAddress)))) {
                   throw err;
                 }
-                toast("Smart Account already on Shannon — registering…", "success");
+                toast("Trading account already exists — saving it…", "success");
               }
             } else {
-              toast("Smart Account already on Shannon — registering…", "success");
+              toast("Trading account already exists — saving it…", "success");
             }
           }
           if (!saAddress) {
             throw new Error(
               grant.deploy_error ||
-                "Could not build a Smart Account deploy transaction. Connect MetaMask and retry."
+                "Could not create a trading account. Connect MetaMask and retry."
             );
           }
           const res = await csrfFetch("/api/smart-account/", {
@@ -3254,7 +3306,7 @@
           });
           const data = await res.json();
           if (!res.ok) throw new Error(data.detail || "Create failed");
-          toast("DreamLens Smart Account registered", "success");
+          toast("Trading account created", "success");
           window.location.reload();
         } catch (err) {
           toast(err.message || "Create failed", "error");
@@ -3272,7 +3324,7 @@
           const { eth } = await ensureWalletForTrade();
           const grant = await loadGrant(owner);
           const sa = grant.smart_account;
-          if (!sa || !sa.address) throw new Error("Create a Smart Account first");
+          if (!sa || !sa.address) throw new Error("Create your trading account first");
           const amount = document.getElementById("sa-deposit-amount")?.value || "50";
           const decimals = 6;
           const raw = BigInt(Math.round(Number(amount) * 10 ** decimals));
@@ -3289,7 +3341,10 @@
           });
           const data = await res.json();
           if (!res.ok) throw new Error(data.detail || "Deposit failed");
-          toast("Deposit submitted " + txHash.slice(0, 10) + "…", "success");
+          toast("Trading dollars sent.", "success");
+          if (document.body.getAttribute("data-onboarding") === "1") {
+            window.location.reload();
+          }
         } catch (err) {
           toast(err.message || "Deposit failed", "error");
         } finally {
@@ -3306,22 +3361,25 @@
           const { eth } = await ensureWalletForTrade();
           const grant = await loadGrant(owner);
           const sa = grant.smart_account;
-          if (!sa || !sa.address) throw new Error("Create a Smart Account first");
+          if (!sa || !sa.address) throw new Error("Create your trading account first");
           const amount = document.getElementById("sa-gas-amount")?.value || "0.5";
           const wei = parseUnits(amount, 18);
-          toast("Confirm STT gas deposit in MetaMask…", "success");
+          toast("Confirm network fee in MetaMask…", "success");
           const txHash = await sendWalletTx(
             eth,
             { to: sa.address, data: "0x", value: "0x" + wei.toString(16) },
             owner
           );
-          toast("Depositing agent gas… " + txHash.slice(0, 10), "success");
+          toast("Adding network fee…", "success");
           const receipt = await waitForTxReceipt(eth, txHash, 120000);
           const ok = receipt.status === "0x1" || receipt.status === 1 || receipt.status === "1";
           if (!ok) {
-            throw new Error("STT gas deposit reverted on Shannon.");
+            throw new Error("Network fee transfer did not go through.");
           }
-          toast("Smart Account funded with " + amount + " STT for agent gas", "success");
+          toast("Trading account funded for network fees", "success");
+          if (document.body.getAttribute("data-onboarding") === "1") {
+            window.location.reload();
+          }
         } catch (err) {
           toast(err.message || "Gas deposit failed", "error");
         } finally {
@@ -3338,8 +3396,8 @@
           const owner = await ensureWallet();
           await ensureWalletForTrade();
           const grant = await loadGrant(owner);
-          if (!grant.smart_account) throw new Error("Create and fund a Smart Account first");
-          if (!grant.typed_data) throw new Error("Grant typed data unavailable — check session key + framework");
+          if (!grant.smart_account) throw new Error("Create and fund your trading account first");
+          if (!grant.typed_data) throw new Error("Could not prepare the permission. Reconnect MetaMask and try again.");
 
           const typed = grant.typed_data;
           const signTyped = {
@@ -3384,9 +3442,10 @@
             body: JSON.stringify(body),
           });
           const data = await res.json();
-          if (!res.ok) throw new Error(data.detail || "Grant failed");
-          toast("DreamAgent authorized — autonomous trading ON", "success");
-          window.location.href = "/agent/";
+          if (!res.ok) throw new Error(data.detail || "Could not save permission");
+          toast("DreamLens can trade for you now", "success");
+          window.location.href =
+            document.body.getAttribute("data-onboarding") === "1" ? "/start/" : "/agent/";
         } catch (err) {
           toast(err.message || "Grant failed", "error");
         } finally {

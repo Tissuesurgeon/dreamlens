@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 from django.urls import reverse
@@ -78,6 +79,7 @@ def test_nav_and_testnet_chrome(client):
     assert "no real monetary value" in body
     assert 'href="/lens/"' in body
     assert ">Lens<" not in body.split("dl-nav", 1)[-1].split("</nav>", 1)[0]
+    assert "Continue setup" not in body
 
 
 @pytest.mark.django_db
@@ -338,9 +340,54 @@ def test_landing_tells_the_product_story(client):
     assert "Will Bitcoin be above $118,500 at expiry?" in body
     assert "DreamAgent cannot" in body
     assert "Intelligence on top. On-chain execution underneath." in body
+    assert "Start trading" in body
+    assert "yes-or-no question" in body.lower() or "yes-or-no" in body.lower()
     health = client.get("/healthz")
     assert health.status_code == 200
     assert health.content == b"ok"
+
+
+@pytest.mark.django_db
+def test_start_wizard_connect_step(client, sample_event):
+    res = client.get("/start/")
+    assert res.status_code == 200
+    body = res.content.decode()
+    assert "Connect MetaMask" in body
+    assert "Step 1 of 5" in body
+    assert "data-onboarding=\"1\"" in body
+    assert "dl-body--start" in body
+    assert "YES = you think this happens" not in body or "Price is what you pay now" in body
+    assert "Hybrid" not in body
+    assert "EIP-712" not in body
+    assert "session key" not in body.lower()
+    assert 'href="/start/"' in client.get("/").content.decode()
+
+
+@pytest.mark.django_db
+def test_event_detail_beginner_yes_line(client, sample_event):
+    res = client.get(reverse("event_detail", args=[sample_event.pk]))
+    assert res.status_code == 200
+    body = res.content.decode()
+    assert "YES = you think this happens. Price is what you pay now." in body
+    modal = Path("templates/components/trade_modal.html").read_text()
+    assert "YES = you think this happens. Price is what you pay now." in modal
+    assert "Trading account ready" in modal
+    assert "modal-tx-status" in modal
+    assert "unsigned_tx" not in modal
+
+
+@pytest.mark.django_db
+def test_home_next_step_when_setup_incomplete(client, user, settings):
+    settings.MOCK_SMART_ACCOUNT = True
+    client.force_login(user)
+    res = client.get("/home/")
+    assert res.status_code == 200
+    body = res.content.decode()
+    assert "Continue setup" in body
+    assert "Create your trading account" in body
+    assert "Also watching" not in body
+    assert 'href="/start/"' in body
+    assert "dl-nav-next" in body
 
 
 def test_claim_js_uses_sdk_gas_ceiling():
@@ -354,3 +401,7 @@ def test_claim_js_uses_sdk_gas_ceiling():
     assert "/api/portfolio/claim/" in js
     assert "data-claim-agent" in js
     assert "toast(err.message" in js
+    assert "/api/agent/trade/" in js
+    assert "DreamLens is placing this trade" in js
+    assert "Creating your trading account" in js
+    assert "order: data.unsigned_tx" not in js

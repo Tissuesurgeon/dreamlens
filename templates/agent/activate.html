@@ -13,7 +13,7 @@
 
   <header class="dl-page-header">
     <h1 class="dl-page-header__title">Activate Dream Agent</h1>
-    <p class="dl-page-header__subtitle">Let DreamAgent trade for you. Your funds stay in your Smart Account.</p>
+    <p class="dl-page-header__subtitle">Let DreamLens trade for you. Your funds stay in your trading account.</p>
   </header>
 
   <article class="dl-can-card">
@@ -42,12 +42,12 @@
   {% if not is_authenticated %}
   <div class="dl-empty dl-empty--large">
     <p class="dl-empty__title">Connect MetaMask first</p>
-    <p>Your wallet remains the owner of the DreamLens Smart Account.</p>
+    <p>Your wallet remains the owner of the DreamLens trading account.</p>
   </div>
   {% elif grant.configured == False %}
   <div class="dl-empty dl-empty--large">
-    <p class="dl-empty__title">Delegation Framework not configured</p>
-    <p>{{ grant.config_error|default:"Deploy the MetaMask Delegation Framework on Shannon before granting DreamAgent." }}</p>
+    <p class="dl-empty__title">Trading accounts are not available yet</p>
+    <p>{{ grant.config_error|default:"DreamLens cannot create a trading account on this network right now." }}</p>
   </div>
   {% else %}
 
@@ -72,18 +72,18 @@
       <div class="dl-agent-step__head">
         <span class="dl-agent-step__n">1</span>
         <div>
-          <strong>Create Smart Account</strong>
-          <p>Hybrid account owned by your MetaMask address, deployed on Shannon.</p>
+          <strong>Create your trading account</strong>
+          <p>Owned by your MetaMask. Telegram and Smart Copy use this account.</p>
         </div>
       </div>
       {% if sa %}
       <p class="dl-agent-step__body dl-agent-step__addr">
         <span class="dl-mono">{{ sa.address }}</span>
-        <button type="button" class="dl-icon-btn" data-copy-text="{{ sa.address }}" aria-label="Copy Smart Account address">Copy</button>
+        <button type="button" class="dl-icon-btn" data-copy-text="{{ sa.address }}" aria-label="Copy trading account address">Copy</button>
       </p>
       {% else %}
       <div class="dl-agent-step__body">
-        <button type="button" class="dl-btn dl-btn--primary dl-btn--sm" id="sa-create">Create Smart Account</button>
+          <button type="button" class="dl-btn dl-btn--primary dl-btn--sm" id="sa-create">Create your trading account</button>
       </div>
       {% endif %}
     </li>
@@ -91,20 +91,20 @@
       <div class="dl-agent-step__head">
         <span class="dl-agent-step__n">2</span>
         <div>
-          <strong>Deposit</strong>
-          <p>Send Test USDC to this Smart Account. Telegram gas is paid by the session key below — not this deposit.</p>
+          <strong>Add money</strong>
+          <p>Send trading dollars to this account, then a small network fee so DreamLens can place trades.</p>
         </div>
       </div>
       <div class="dl-agent-step__body dl-agent-deposit">
         <div class="dl-form-row">
-          <label for="sa-deposit-amount">Collateral ($)</label>
+          <label for="sa-deposit-amount">Trading dollars ($)</label>
           <input id="sa-deposit-amount" type="number" min="1" step="1" value="50" class="dl-input" {% if not sa %}disabled{% endif %}>
-          <button type="button" class="dl-btn dl-btn--ghost dl-btn--sm" id="sa-deposit" {% if not sa %}disabled{% endif %}>Deposit collateral</button>
+          <button type="button" class="dl-btn dl-btn--ghost dl-btn--sm" id="sa-deposit" {% if not sa %}disabled{% endif %}>Add trading dollars</button>
         </div>
         <div class="dl-form-row">
-          <label for="sa-gas-amount">Gas (STT)</label>
+          <label for="sa-gas-amount">Network fee</label>
           <input id="sa-gas-amount" type="number" min="0" step="0.01" value="0.5" class="dl-input" {% if not sa %}disabled{% endif %}>
-          <button type="button" class="dl-btn dl-btn--ghost dl-btn--sm" id="sa-deposit-gas" {% if not sa %}disabled{% endif %}>Deposit STT for gas</button>
+          <button type="button" class="dl-btn dl-btn--ghost dl-btn--sm" id="sa-deposit-gas" {% if not sa %}disabled{% endif %}>Add network fee</button>
         </div>
       </div>
     </li>
@@ -112,8 +112,8 @@
       <div class="dl-agent-step__head">
         <span class="dl-agent-step__n">3</span>
         <div>
-          <strong>Grant permission</strong>
-          <p>One EIP-712 signature. DreamAgent cannot withdraw or change these limits.</p>
+          <strong>Allow DreamLens to trade</strong>
+          <p>One signature. DreamLens cannot withdraw or change these limits.</p>
         </div>
       </div>
     </li>
@@ -122,7 +122,7 @@
 
   <section class="dl-agent-grant-card" id="agent-grant-card">
     <h2 class="dl-agent-grant-card__title">Permission</h2>
-    <p class="dl-muted">DreamAgent can trade Event Contracts for you. It cannot move funds off the Smart Account.</p>
+    <p class="dl-muted">DreamLens can trade Event Contracts for you. It cannot move funds off your trading account.</p>
 
     <div class="dl-agent-grant-cols">
       <div>
@@ -131,9 +131,9 @@
           {% for item in grant.agent_can %}
           <li>{{ item }}</li>
           {% empty %}
-          <li>Buy Event Contract outcomes</li>
+          <li>Buy YES or NO on Event Contracts</li>
           <li>Sell/close supported positions</li>
-          <li>Trade only through DreamDEX</li>
+          <li>Trade Event Contracts only</li>
           {% endfor %}
         </ul>
       </div>
@@ -170,15 +170,15 @@
     {% if grant_health.needs_resign %}
     <article class="dl-agent-callout" role="status">
       <h3 class="dl-agent-callout__title">Re-sign this grant</h3>
-      <p class="dl-agent-callout__copy">The stored signature does not match DelegationManager. Telegram trades will revert until you grant again.</p>
+      <p class="dl-agent-callout__copy">Your last permission cannot place or claim trades yet. Sign again here.</p>
       {% if grant_health.reasons %}
       <p class="dl-muted">{{ grant_health.reasons.0 }}</p>
       {% endif %}
     </article>
     {% endif %}
-    <p class="dl-help">You sign this grant once. DreamAgent’s session key then places trades — no MetaMask popup per trade.</p>
+    <p class="dl-help">You sign this once. After that, DreamLens places trades — no MetaMask popup per trade.</p>
     <button type="button" class="dl-btn dl-btn--primary dl-btn--block" id="grant-permission">
-      Grant Permission
+      Allow DreamLens to trade
     </button>
   </section>
   {% endif %}

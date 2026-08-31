@@ -16,6 +16,16 @@ from apps.events.models import EventContract, EventOutcome
 SCORE_DISCLAIMER = (
     "This score is an analysis signal, not a prediction or guarantee."
 )
+YES_MEANS = "YES = you think this happens. Price is what you pay now."
+NO_MEANS = "NO = you think this does not happen. Price is what you pay now."
+SIDE_BEGINNER = (
+    "YES means you think this happens. NO means you think it does not. "
+    "Price is what you pay now."
+)
+CLAIM_VS_CLOSE = (
+    "This trade is open. When the event ends you claim winnings; Close is selling early."
+)
+SETTLED_CLAIM_HINT = "Claim is how you get dollars back after the event settles."
 PAY_LABEL = "You pay"
 PAYOUT_LABEL = "Maximum possible payout"
 PROFIT_LABEL = "Potential profit"

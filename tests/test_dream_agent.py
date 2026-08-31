@@ -214,6 +214,48 @@ def test_authorized_grant_is_tradable_without_autonomous_copy(
     assert trade.transaction_hash == "0x" + "ab" * 32
 
 
+@pytest.mark.django_db
+def test_start_wizard_trade_step_when_granted(client, user, running_agent, sample_event):
+    client.force_login(user)
+    res = client.get("/start/")
+    assert res.status_code == 200
+    body = res.content.decode()
+    assert "Place a $1 YES or NO" in body
+    assert "YES means you think this happens" in body
+    assert 'data-amount="1"' in body
+
+
+@pytest.mark.django_db
+def test_web_agent_trade_api(client, user, running_agent, sample_event, settings):
+    settings.MOCK_SMART_ACCOUNT = True
+    client.force_login(user)
+    with patch(
+        "services.dream_agent_service.broadcast_delegated_execution",
+        return_value="0x" + "cd" * 32,
+    ):
+        res = client.post(
+            "/api/agent/trade/",
+            data={"event_id": sample_event.pk, "outcome": "YES", "amount": "1"},
+            content_type="application/json",
+        )
+    assert res.status_code == 201
+    payload = res.json()
+    assert payload["via_smart_account"] is True
+    assert payload["tx_hash"] == "0x" + "cd" * 32
+    assert payload["trade_id"]
+    from apps.trading.models import Trade
+    from services.onboarding_service import first_session_state
+
+    trade = Trade.objects.get(pk=payload["trade_id"])
+    meta = trade.metadata_json or {}
+    assert meta.get("source") == "web"
+    assert str(meta.get("smart_account") or "").lower() == running_agent.smart_account.address.lower()
+    state = first_session_state(user)
+    assert state["step"] == "done"
+    assert state["incomplete"] is False
+    assert state["has_first_trade"] is True
+
+
 def test_grant_typed_data_is_delegation_manager_payload():
     from integrations.metamask.delegation import build_grant_typed_data
 
@@ -399,12 +441,15 @@ def test_activate_page_offers_stt_gas_deposit(client, user, settings):
     client.force_login(user)
     res = client.get("/agent/activate/")
     assert res.status_code == 200
-    assert b"Deposit STT for gas" in res.content
-    assert b"session key" in res.content.lower()
+    assert b"Add network fee" in res.content
     assert b"sa-deposit-gas" in res.content
     assert b"dl-agent-rail" in res.content
     assert b"id=\"sa-create\"" in res.content
     assert b"id=\"grant-permission\"" in res.content
+    assert b"Create your trading account" in res.content
+    assert b"Hybrid" not in res.content
+    assert b"EIP-712" not in res.content
+    assert b"Delegation Framework not configured" not in res.content
 
 
 @pytest.mark.django_db

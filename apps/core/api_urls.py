@@ -3,6 +3,7 @@ from django.urls import path
 from apps.core.api.ai import AnalyzeEventView, ChatView, LensChatView, NewsFeedView, SearchView
 from apps.core.api.wallet_auth import WalletLoginView, WalletLogoutView
 from apps.core.api.agents import (
+    AgentTradeView,
     DreamAgentEvaluationsView,
     DreamAgentGrantView,
     DreamAgentRevokeView,
@@ -116,6 +117,7 @@ urlpatterns = [
     ),
     path("agent/", DreamAgentStatusView.as_view(), name="api-agent-status"),
     path("agent/grant/", DreamAgentGrantView.as_view(), name="api-agent-grant"),
+    path("agent/trade/", AgentTradeView.as_view(), name="api-agent-trade"),
     path("agent/revoke/", DreamAgentRevokeView.as_view(), name="api-agent-revoke"),
     path(
         "agent/evaluations/",

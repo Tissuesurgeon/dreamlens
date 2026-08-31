@@ -5,6 +5,13 @@
 
 {% block content %}
 <div class="dl-container dl-container--home dl-home dl-animate-in">
+  {% if first_session.incomplete %}
+  <a class="dl-next-step" href="{% url 'start' %}">
+    <span class="dl-next-step__kicker">Continue setup</span>
+    <strong>{{ first_session.title }}</strong>
+    <span class="dl-next-step__why">{{ first_session.why }}</span>
+  </a>
+  {% endif %}
   <header class="dl-page-header dl-page-header--split">
     <div>
       <h1 class="dl-page-header__title">Discover</h1>
@@ -16,7 +23,7 @@
     </p>
   </header>
 
-  <section class="dl-intent" aria-labelledby="intent-heading">
+  <section class="dl-intent" aria-labelledby="intent-heading"{% if first_session.incomplete %} hidden{% endif %}>
     <div class="dl-section-head">
       <div>
         <h2 id="intent-heading" class="dl-section__title">What are you looking for?</h2>
@@ -37,7 +44,7 @@
 
   {% include "components/market_feed.html" with feed_heading_id="discover-feed-heading" %}
 
-  <section class="dl-radar dl-advanced" aria-labelledby="radar-heading">
+  <section class="dl-radar dl-advanced" aria-labelledby="radar-heading"{% if first_session.incomplete %} hidden{% endif %}>
     <div class="dl-section-head">
       <div>
         <h2 id="radar-heading" class="dl-section__title">Volume, liquidity, spread</h2>

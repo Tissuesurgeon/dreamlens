@@ -11,6 +11,7 @@ from integrations.dreamdex.client import (
     _ORDER_TYPE,
     _PLACE_BINARY_TYPES,
     _REDEEM_TYPES,
+    _winning_side,
     align_quantity_raw,
     encode_module_redeem,
     encode_place_binary_order,
@@ -155,3 +156,13 @@ def test_module_redeem_matches_sdk_abi():
     assert market_b == bytes.fromhex(market_id[2:])
     assert outcome_idx == 0
     assert amount == 20_000_000
+
+
+def test_winning_side_parses_indexer_shapes():
+    assert _winning_side(0) == "YES"
+    assert _winning_side(1) == "NO"
+    assert _winning_side("0") == "YES"
+    assert _winning_side("YES") == "YES"
+    assert _winning_side("NO") == "NO"
+    assert _winning_side(None) is None
+    assert _winning_side("") is None

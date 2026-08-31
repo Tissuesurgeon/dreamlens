@@ -242,3 +242,24 @@ def test_humanize_somnia_type2_reject():
         Exception("{'code': -32000, 'message': 'account does not exist', 'data': '0x02'}")
     )
     assert "legacy" in msg.lower() or "session" in msg.lower()
+
+
+def test_wrap_owner_execute_targets_smart_account():
+    from integrations.dreamdex.types import UnsignedTxDTO
+    from integrations.metamask.execution import wrap_owner_execute
+
+    inner = UnsignedTxDTO(
+        to=POOL,
+        data="0xabcdef",
+        value=0,
+        chain_id=50312,
+        description="redeem",
+    )
+    wrapped = wrap_owner_execute(SA, inner)
+    assert wrapped.to.lower() == SA.lower()
+    assert wrapped.data.startswith("0x")
+    from eth_utils import function_signature_to_4byte_selector
+
+    selector = "0x" + function_signature_to_4byte_selector("execute(bytes32,bytes)").hex()
+    assert wrapped.data.lower().startswith(selector.lower())
+    assert wrapped.metadata["inner_to"].lower() == POOL.lower()

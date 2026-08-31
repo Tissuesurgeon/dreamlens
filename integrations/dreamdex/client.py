@@ -232,6 +232,22 @@ def _bytes32(value: str) -> bytes:
     return data.rjust(32, b"\x00")
 
 
+def _winning_side(raw: Any) -> OutcomeSide | None:
+    """Indexer winningOutcome is 0/1; tolerate YES/NO labels if the field type shifts."""
+    if raw is None or raw == "":
+        return None
+    if isinstance(raw, str):
+        label = raw.strip().upper()
+        if label in {"YES", "UP"}:
+            return "YES"
+        if label in {"NO", "DOWN"}:
+            return "NO"
+    try:
+        return "YES" if int(raw) == 0 else "NO"
+    except (TypeError, ValueError):
+        return None
+
+
 def encode_module_redeem(
     *,
     market_id: str,
@@ -440,8 +456,7 @@ class LiveDreamDEXClient:
             status_label=_STATUS_ONCHAIN.get(status_code, status_label),
             pool=event.pool_address or "",
             market_address=event.market_address or "",
-            outcome_token=settings.DREAMDEX_COLLATERAL
-            or "0xB52c5934113Af5c0Bb20eb3C72290C8215f755b9",
+            outcome_token=_OUTCOME_TOKEN_6909,
             yes_id=event.yes_token_id,
             no_id=event.no_token_id,
             expiry=event.expiry,
@@ -946,7 +961,7 @@ class LiveDreamDEXClient:
             amount=int(amount),
             outcome_idx=int(outcome_idx),
             venue_id=event.venue_id or self.venue_id,
-            operator_id=0,
+            operator_id=int(getattr(event, "operator_id", 0) or 0),
         )
         return UnsignedTxDTO(
             to=to_checksum_address(self.binary_module),
@@ -1044,10 +1059,7 @@ class LiveDreamDEXClient:
         status = str(row.get("clobStatus") or "Trading")
         if row.get("voided"):
             status = "Voided"
-        winning = row.get("winningOutcome")
-        winning_side: OutcomeSide | None = None
-        if winning is not None:
-            winning_side = "YES" if int(winning) == 0 else "NO"
+        winning_side = _winning_side(row.get("winningOutcome"))
 
         yes_symbol = _outcome_symbol(asset, market_id, "YES")
         no_symbol = _outcome_symbol(asset, market_id, "NO")
@@ -1084,6 +1096,7 @@ class LiveDreamDEXClient:
             winning_outcome=winning_side,
             question=str(row.get("question") or ""),
             opening_price=resolved_opening,
+            operator_id=int(_dec(row.get("operatorId"))),
         )
 
     def _row_to_fill(self, row: dict[str, Any]) -> FillDTO:

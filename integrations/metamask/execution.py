@@ -127,3 +127,36 @@ def build_delegated_trade_execution(
         signed_delegation=signed_delegation,
         pre_executions=pre,
     )
+
+
+def wrap_owner_execute(smart_account: str, inner: UnsignedTxDTO) -> UnsignedTxDTO:
+    """Owner-signed HybridDeleGator.execute wrapping an inner DreamDEX call.
+
+    Outcome tokens from Telegram / DreamAgent fills sit on the Smart Account.
+    MetaMask only signs as the owner EOA, so claim/close must go
+    owner → SA.execute(inner) rather than asking the user to switch to the SA.
+    """
+    from eth_abi import encode
+    from eth_utils import function_signature_to_4byte_selector, to_checksum_address
+
+    from integrations.metamask import EXECUTION_MODE_SINGLE_DEFAULT
+    from integrations.metamask.delegation import encode_single_execution_packed
+
+    sa = to_checksum_address(smart_account)
+    mode = bytes.fromhex(EXECUTION_MODE_SINGLE_DEFAULT[2:])
+    packed = encode_single_execution_packed(
+        inner.to, inner.data or "0x", value=int(inner.value or 0)
+    )
+    selector = function_signature_to_4byte_selector("execute(bytes32,bytes)")
+    data = "0x" + (selector + encode(["bytes32", "bytes"], [mode, packed])).hex()
+    meta = dict(inner.metadata or {})
+    meta["via_smart_account"] = sa
+    meta["inner_to"] = inner.to
+    return UnsignedTxDTO(
+        to=sa,
+        data=data,
+        value=0,
+        chain_id=inner.chain_id,
+        description=inner.description,
+        metadata=meta,
+    )

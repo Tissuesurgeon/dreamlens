@@ -414,3 +414,63 @@ def test_redeem_api_returns_json_when_gas_estimate_reverts(
     assert prepared.status_code == 200
     assert prepared.headers["Content-Type"].startswith("application/json")
     assert prepared.json()["unsigned_tx"]["data"].startswith("0x")
+
+
+@pytest.mark.django_db
+def test_redeem_api_claims_tokens_held_on_smart_account(
+    client, user, wallet, sample_event, mock_adapter, settings
+):
+    """Telegram / DreamAgent fills sit on the SA; MetaMask signs as the owner."""
+    sa_addr = "0x481B210d927765133d55461c3EaCC96F41FdD6C3"
+    SmartAccount.objects.create(
+        user=user,
+        owner_address=wallet.address,
+        address=sa_addr,
+        chain_id=settings.DREAMDEX_CHAIN_ID,
+        status=SmartAccount.Status.DEPLOYED,
+    )
+    _seed_user_fill(mock_adapter, sample_event, taker=sa_addr)
+    mock_adapter.simulate_settlement(sample_event.external_id, "YES")
+    from eth_utils import function_signature_to_4byte_selector
+    from services.portfolio_service import annotate_positions, refresh_portfolio
+
+    refresh_portfolio(user)
+    position = Position.objects.get(user=user)
+    annotated = annotate_positions(user, [position])[0]
+    assert annotated.claimable is True
+    assert annotated.claim_wallet.lower() == wallet.address.lower()
+
+    client.force_login(user)
+    prepared = client.post(
+        f"/api/portfolio/positions/{position.pk}/redeem/",
+        data={"wallet_address": wallet.address},
+        content_type="application/json",
+    )
+    assert prepared.status_code == 200
+    payload = prepared.json()
+    assert payload["via_smart_account"] is True
+    assert payload["holder"].lower() == sa_addr.lower()
+    assert payload["unsigned_tx"]["to"].lower() == sa_addr.lower()
+    execute_sel = "0x" + function_signature_to_4byte_selector("execute(bytes32,bytes)").hex()
+    assert payload["unsigned_tx"]["data"].lower().startswith(execute_sel.lower())
+
+    page = client.get("/portfolio/")
+    assert b"data-claim-position" in page.content
+    assert wallet.address.lower() in page.content.decode().lower()
+
+
+@pytest.mark.django_db
+def test_event_detail_shows_claim_on_won_position(
+    client, user, wallet, sample_event, mock_adapter
+):
+    _seed_user_fill(mock_adapter, sample_event, taker=wallet.address)
+    mock_adapter.simulate_settlement(sample_event.external_id, "YES")
+    from services.portfolio_service import refresh_portfolio
+
+    refresh_portfolio(user)
+    client.force_login(user)
+    res = client.get(f"/events/{sample_event.pk}/")
+    assert res.status_code == 200
+    assert b"data-claim-position" in res.content
+    assert b"Claim" in res.content
+    assert b"Buy YES" not in res.content

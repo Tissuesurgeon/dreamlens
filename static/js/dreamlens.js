@@ -2606,7 +2606,9 @@
       if (!confirmRes.ok) {
         throw new Error(confirmData.detail || "Claim sent, but DreamLens could not record it.");
       }
-      toast("Winnings claimed. Collateral is in this wallet.", "ok");
+      toast(prepared.via_smart_account
+        ? "Winnings claimed into your Smart Account."
+        : "Winnings claimed. Collateral is in this wallet.", "ok");
       window.location.reload();
     } catch (err) {
       console.warn("Claim failed", err);

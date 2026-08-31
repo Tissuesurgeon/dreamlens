@@ -423,7 +423,6 @@ def event_detail(request, pk: int):
                 Position.objects.filter(
                     user=request.user,
                     event=event,
-                    status=Position.Status.OPEN,
                 ).select_related("event", "outcome")
             ),
         )

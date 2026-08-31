@@ -488,6 +488,90 @@ def _position_wallet(user, position) -> str:
     return (row.address if row else "") or ""
 
 
+def _smart_account_for_user(user):
+    try:
+        from apps.agents.models import SmartAccount
+    except Exception:
+        return None
+    return (
+        SmartAccount.objects.filter(user=user)
+        .exclude(address="")
+        .order_by("-updated_at")
+        .first()
+    )
+
+
+def _is_smart_account(user, address: str) -> bool:
+    sa = _smart_account_for_user(user)
+    return bool(sa and address and sa.address.lower() == address.lower())
+
+
+def _signer_for_holder(user, holder: str) -> str:
+    """MetaMask account that must sign. Owner EOA when tokens sit on the Smart Account."""
+    sa = _smart_account_for_user(user)
+    if sa and holder and sa.address.lower() == holder.lower():
+        return sa.owner_address or holder
+    return holder
+
+
+def _held_on(adapter, account: str, position) -> Decimal | None:
+    """On-chain outcome balance, or None if the read failed."""
+    if not account or not position.event.external_id:
+        return Decimal("0")
+    try:
+        return _outcome_held(
+            adapter.get_outcome_balances(account, position.event.external_id),
+            position.outcome.outcome_type,
+        )
+    except Exception:
+        logger.warning(
+            "outcome balance read failed account=%s position=%s",
+            account,
+            position.pk,
+            exc_info=True,
+        )
+        return None
+
+
+def _resolve_claim(user, position, adapter) -> tuple[str, Decimal, bool, str]:
+    """Return (token_holder, held, via_smart_account, metamask_signer)."""
+    accounts = list(_user_fill_accounts(user))
+    trade_wallet = _position_wallet(user, position)
+    if trade_wallet and trade_wallet.lower() not in {a.lower() for a in accounts}:
+        accounts.insert(0, trade_wallet)
+
+    held_by: list[tuple[str, Decimal]] = []
+    any_read = False
+    for account in accounts:
+        qty = _held_on(adapter, account, position)
+        if qty is None:
+            continue
+        any_read = True
+        if qty > 0:
+            held_by.append((account, qty))
+
+    if held_by:
+        for account, qty in held_by:
+            if trade_wallet and account.lower() == trade_wallet.lower():
+                return account, qty, _is_smart_account(user, account), _signer_for_holder(
+                    user, account
+                )
+        account, qty = held_by[0]
+        return account, qty, _is_smart_account(user, account), _signer_for_holder(
+            user, account
+        )
+
+    if not any_read and position.amount > 0:
+        fallback = trade_wallet or (accounts[0] if accounts else "")
+        return (
+            fallback,
+            position.amount,
+            _is_smart_account(user, fallback),
+            _signer_for_holder(user, fallback),
+        )
+    return "", Decimal("0"), False, ""
+
+
 def _outcome_held(balances, outcome_type: str) -> Decimal:
     key = "yes_balance" if outcome_type.upper() == "YES" else "no_balance"
     if isinstance(balances, dict):
@@ -533,23 +617,10 @@ def annotate_positions(user, positions: list[Position]) -> list[Position]:
             continue
         if position.result not in ("won", "void"):
             continue
-        wallet = _position_wallet(user, position)
-        position.claim_wallet = wallet
-        held = position.amount
-        if wallet and position.event.external_id:
-            try:
-                if adapter is None:
-                    adapter = get_adapter()
-                held = _outcome_held(
-                    adapter.get_outcome_balances(wallet, position.event.external_id),
-                    position.outcome.outcome_type,
-                )
-            except Exception:
-                logger.warning(
-                    "outcome balance read failed position=%s",
-                    position.pk,
-                    exc_info=True,
-                )
+        if adapter is None:
+            adapter = get_adapter()
+        holder, held, _via_sa, signer = _resolve_claim(user, position, adapter)
+        position.claim_wallet = signer or holder
         if held > 0:
             position.claimable = True
             payout = settlement_payout_price(position.event, position.outcome) or Decimal("0")
@@ -565,10 +636,15 @@ def _to_raw_amount(human: Decimal) -> int:
 
 
 def prepare_position_redeem(user, position_id: int, wallet_address: str):
-    """Build the user-signed BinaryMarketsModule.redeem tx for a winning or voided position."""
+    """Build the user-signed BinaryMarketsModule.redeem tx for a winning or voided position.
+
+    Telegram / DreamAgent fills land on the Hybrid Smart Account. MetaMask signs as
+    the owner EOA, so those claims are wrapped in owner → SA.execute(redeem).
+    """
     from django.conf import settings
 
     from integrations.dreamdex.adapter import get_adapter
+    from integrations.metamask.execution import wrap_owner_execute
     from services.trading_service import _quote_wallet_fees, _tx_payload
 
     if not wallet_address:
@@ -581,27 +657,35 @@ def prepare_position_redeem(user, position_id: int, wallet_address: str):
     except Position.DoesNotExist as exc:
         raise PortfolioError("Position not found") from exc
 
+    try:
+        from services.event_service import refresh_event_from_dreamdex
+
+        refresh_event_from_dreamdex(position.event, force=True)
+        position.event.refresh_from_db()
+    except Exception:
+        logger.warning(
+            "event refresh failed before redeem position=%s",
+            position.pk,
+            exc_info=True,
+        )
+
     result = position_result(position)
     if result not in ("won", "void"):
         raise PortfolioError("This position has nothing to claim yet.")
 
-    expected = _position_wallet(user, position).lower()
-    if expected and expected != wallet_address.lower():
+    adapter = get_adapter()
+    holder, held, via_sa, signer = _resolve_claim(user, position, adapter)
+    if held <= 0 or not holder:
+        raise PortfolioError("Nothing left to claim on-chain for this position.")
+
+    if signer and signer.lower() != wallet_address.lower():
+        if via_sa:
+            raise PortfolioError(
+                "Connect the MetaMask account that owns your DreamLens Smart Account."
+            )
         raise PortfolioError(
             "Switch MetaMask to the wallet that holds these outcome tokens."
         )
-
-    adapter = get_adapter()
-    held = position.amount
-    try:
-        held = _outcome_held(
-            adapter.get_outcome_balances(wallet_address, position.event.external_id),
-            position.outcome.outcome_type,
-        )
-    except Exception:
-        logger.warning("outcome balance read failed for redeem position=%s", position.pk)
-    if held <= 0:
-        raise PortfolioError("Nothing left to claim on-chain for this position.")
 
     amount_raw = _to_raw_amount(held)
     if amount_raw <= 0:
@@ -612,19 +696,24 @@ def prepare_position_redeem(user, position_id: int, wallet_address: str):
     prep_op = getattr(adapter, "prepare_outcome_operator_approval", None)
     if callable(prep_op):
         try:
-            approval = prep_op(account=wallet_address)
+            approval = prep_op(account=holder)
         except Exception as exc:
             logger.warning("outcome operator approval check failed: %s", exc)
 
     try:
         unsigned = adapter.prepare_redeem(
             market_id=position.event.external_id,
-            account=wallet_address,
+            account=holder,
             outcome_idx=outcome_idx,
             amount=amount_raw,
         )
     except Exception as exc:
         raise PortfolioError(str(exc)) from exc
+
+    if via_sa:
+        unsigned = wrap_owner_execute(holder, unsigned)
+        if approval is not None:
+            approval = wrap_owner_execute(holder, approval)
 
     # Redeem often reverts in eth_estimateGas until setOperator is mined.
     # Don't fail prepare — MetaMask estimates again after the approval tx.
@@ -659,6 +748,8 @@ def prepare_position_redeem(user, position_id: int, wallet_address: str):
         "payout": str((held * payout).quantize(FOUR_PLACES)),
         "collateral_symbol": "Test USDC" if int(settings.DREAMDEX_CHAIN_ID) == 50312 else "USDso",
         "wallet_address": wallet_address,
+        "holder": holder,
+        "via_smart_account": via_sa,
     }
 
 
@@ -679,17 +770,20 @@ def confirm_position_redeem(user, position_id: int, tx_hash: str) -> Position:
     adapter = get_adapter()
     record = getattr(adapter, "record_redeem", None)
     if callable(record):
-        wallet = _position_wallet(user, position)
+        holder, held, _via_sa, _signer = _resolve_claim(user, position, adapter)
+        if not holder:
+            holder = _position_wallet(user, position)
         try:
-            held = _outcome_held(
-                adapter.get_outcome_balances(wallet, position.event.external_id),
-                position.outcome.outcome_type,
-            )
+            if held <= 0:
+                held = _outcome_held(
+                    adapter.get_outcome_balances(holder, position.event.external_id),
+                    position.outcome.outcome_type,
+                )
             record(
-                account=wallet,
+                account=holder,
                 market_id=position.event.external_id,
                 outcome_idx=0 if position.outcome.outcome_type == "YES" else 1,
-                amount_raw=_to_raw_amount(held),
+                amount_raw=_to_raw_amount(held if held > 0 else position.amount),
             )
         except Exception:
             logger.warning("mock redeem record failed position=%s", position.pk)

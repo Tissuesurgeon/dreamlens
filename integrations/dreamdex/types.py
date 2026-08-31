@@ -48,6 +48,7 @@ class EventDTO:
     winning_outcome: OutcomeSide | None = None
     question: str = ""
     opening_price: Decimal | None = None
+    operator_id: int = 0
 
 
 @dataclass(frozen=True, slots=True)

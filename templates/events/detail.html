@@ -42,6 +42,33 @@
           >Close trade{% if pos.close_proceeds %} · {{ pos.close_proceeds|usd_plain }}{% endif %}</button>
           {% endif %}
         </div>
+        {% elif pos.claimable %}
+        <div class="dl-your-position__card">
+          <div>
+            <p class="dl-your-position__kicker">
+              {% if pos.result == "void" %}Void — claim collateral{% else %}{{ pos.outcome.outcome_type }} won{% endif %}
+            </p>
+            <p class="dl-your-position__line">
+              {{ pos.amount|floatformat:2 }} tokens
+              {% if pos.claim_payout %}· claim {{ pos.claim_payout|usd_plain }}{% endif %}
+            </p>
+          </div>
+          <button
+            type="button"
+            class="dl-btn dl-btn--primary"
+            data-claim-position="{{ pos.pk }}"
+            data-claim-wallet="{{ pos.claim_wallet }}"
+          >Claim{% if pos.claim_payout %} {{ pos.claim_payout|usd_plain }}{% endif %}</button>
+        </div>
+        {% elif pos.result == "won" or pos.result == "void" %}
+        <div class="dl-your-position__card">
+          <div>
+            <p class="dl-your-position__kicker">
+              {% if pos.result == "void" %}Voided{% else %}{{ pos.outcome.outcome_type }} won{% endif %}
+            </p>
+            <p class="dl-your-position__line">Nothing left to claim on-chain for this position.</p>
+          </div>
+        </div>
         {% endif %}
         {% endfor %}
       </section>

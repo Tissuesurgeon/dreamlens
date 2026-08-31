@@ -173,7 +173,7 @@ def test_window_copy_never_says_ends_in_expired(sample_event, expired_event):
     expired_event.winning_outcome = "YES"
     settled = event_window_copy(expired_event)
     assert settled["line"] == "Settled · YES won"
-    assert "claim on Portfolio" in settled["blurb"]
+    assert "claim below or on Portfolio" in settled["blurb"]
 
 
 @pytest.mark.django_db

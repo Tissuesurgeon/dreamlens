@@ -488,6 +488,31 @@ def _position_wallet(user, position) -> str:
     return (row.address if row else "") or ""
 
 
+def _position_is_agent_fill(user, position, sa) -> bool:
+    """True when this fill was placed onto the Hybrid Smart Account."""
+    if sa is None or not getattr(sa, "address", ""):
+        return False
+    sa_addr = sa.address.lower()
+    trade = (
+        Trade.objects.filter(
+            user=user,
+            event=position.event,
+            outcome=position.outcome,
+            status=Trade.Status.CONFIRMED,
+        )
+        .order_by("-opened_at")
+        .first()
+    )
+    if trade is None:
+        return False
+    meta = trade.metadata_json or {}
+    src = str(meta.get("source") or "").lower()
+    if src in {"telegram", "copy", "dream_agent"}:
+        return True
+    wallet = str(meta.get("wallet") or meta.get("wallet_address") or "").strip().lower()
+    return bool(wallet and wallet == sa_addr)
+
+
 def _smart_account_for_user(user):
     try:
         from apps.agents.models import SmartAccount
@@ -551,18 +576,23 @@ def _resolve_claim(user, position, adapter) -> tuple[str, Decimal, bool, str]:
             held_by.append((account, qty))
 
     if held_by:
+        sa_hits = [(a, q) for a, q in held_by if _is_smart_account(user, a)]
+        if sa_hits:
+            account, qty = sa_hits[0]
+            return account, qty, True, _signer_for_holder(user, account)
         for account, qty in held_by:
             if trade_wallet and account.lower() == trade_wallet.lower():
-                return account, qty, _is_smart_account(user, account), _signer_for_holder(
-                    user, account
-                )
+                return account, qty, False, _signer_for_holder(user, account)
         account, qty = held_by[0]
         return account, qty, _is_smart_account(user, account), _signer_for_holder(
             user, account
         )
 
     if not any_read and position.amount > 0:
+        sa = _smart_account_for_user(user)
         fallback = trade_wallet or (accounts[0] if accounts else "")
+        if sa and _position_is_agent_fill(user, position, sa):
+            fallback = sa.address
         return (
             fallback,
             position.amount,
@@ -587,6 +617,7 @@ def annotate_positions(user, positions: list[Position]) -> list[Position]:
     for position in positions:
         position.result = position_result(position)
         position.claimable = False
+        position.claim_via_agent = False
         position.claim_wallet = ""
         position.claim_payout = None
         position.closeable = False
@@ -619,13 +650,30 @@ def annotate_positions(user, positions: list[Position]) -> list[Position]:
             continue
         if adapter is None:
             adapter = get_adapter()
-        holder, held, _via_sa, signer = _resolve_claim(user, position, adapter)
+        holder, held, via_sa, signer = _resolve_claim(user, position, adapter)
         position.claim_wallet = signer or holder
         if held > 0:
             position.claimable = True
+            position.claim_via_agent = bool(via_sa)
             payout = settlement_payout_price(position.event, position.outcome) or Decimal("0")
             position.claim_payout = (held * payout).quantize(FOUR_PLACES)
     return positions
+
+
+def list_agent_claimable(user) -> list[Position]:
+    """Won/void positions whose outcome tokens sit on the user's Smart Account."""
+    rows = annotate_positions(
+        user,
+        list(
+            Position.objects.filter(
+                user=user,
+                status__in=(Position.Status.OPEN, Position.Status.SETTLED),
+            )
+            .select_related("event", "outcome")
+            .order_by("-opened_at")[:40]
+        ),
+    )
+    return [p for p in rows if p.claimable and getattr(p, "claim_via_agent", False)]
 
 
 def _to_raw_amount(human: Decimal) -> int:
@@ -635,20 +683,20 @@ def _to_raw_amount(human: Decimal) -> int:
     return int((human * scale).to_integral_value())
 
 
-def prepare_position_redeem(user, position_id: int, wallet_address: str):
+def prepare_position_redeem(user, position_id: int, wallet_address: str = ""):
     """Build the user-signed BinaryMarketsModule.redeem tx for a winning or voided position.
 
     Telegram / DreamAgent fills land on the Hybrid Smart Account. The owner EOA
     cannot call HybridDeleGator.execute (onlyEntryPoint), so those claims go
     through the session key's redeemDelegations — same path as /trade.
+    Wallet address is required only for MetaMask-held tokens.
     """
     from django.conf import settings
 
     from integrations.dreamdex.adapter import get_adapter
     from services.trading_service import _quote_wallet_fees, _tx_payload
 
-    if not wallet_address:
-        raise PortfolioError("Wallet address required")
+    wallet_address = (wallet_address or "").strip()
     try:
         position = Position.objects.select_related("event", "outcome").get(
             pk=position_id,
@@ -768,6 +816,11 @@ def prepare_position_redeem(user, position_id: int, wallet_address: str):
             "cannot call the Smart Account directly)."
         )
 
+    if not wallet_address:
+        raise PortfolioError(
+            "These winnings are in MetaMask. Claim them on Portfolio with that wallet."
+        )
+
     if signer and signer.lower() != wallet_address.lower():
         raise PortfolioError(
             "Switch MetaMask to the wallet that holds these outcome tokens."
@@ -813,9 +866,9 @@ def _claim_via_session_key(
     """Session-key redeemDelegations for Smart Account-held outcome tokens."""
     from integrations.metamask.execution import build_delegated_trade_execution
     from integrations.metamask.transactions import SessionKeyError, broadcast_delegated_execution
-    from services.dream_agent_service import active_permission, get_tradable_agent
+    from services.dream_agent_service import active_permission, get_session_key_agent
 
-    agent = get_tradable_agent(user)
+    agent = get_session_key_agent(user)
     if agent is None:
         return None
     permission = active_permission(agent)
@@ -895,6 +948,81 @@ def _claim_via_session_key(
         ) from exc
 
 
+def claim_agent_positions(user, *, position_id: int | None = None) -> dict:
+    """Redeem Smart Account wins through DreamAgent. Skips MetaMask-held tokens."""
+    from integrations.dreamdex.adapter import get_adapter
+    from services.dream_agent_service import get_session_key_agent
+    from services.event_copy import event_question
+
+    agent = get_session_key_agent(user)
+    if agent is None:
+        raise PortfolioError(
+            "Activate DreamAgent to claim Smart Account winnings. "
+            "MetaMask fills still use Claim on Portfolio."
+        )
+    owner = (agent.smart_account.owner_address if agent.smart_account else "") or ""
+    if not owner:
+        raise PortfolioError("Smart Account is missing an owner address.")
+
+    try:
+        refresh_portfolio(user)
+    except Exception:
+        logger.warning("portfolio refresh failed before agent claim", exc_info=True)
+
+    qs = (
+        Position.objects.filter(
+            user=user,
+            status__in=(Position.Status.OPEN, Position.Status.SETTLED),
+        )
+        .select_related("event", "outcome")
+        .order_by("-opened_at")
+    )
+    if position_id is not None:
+        qs = qs.filter(pk=position_id)
+        if not qs.exists():
+            raise PortfolioError("Position not found.")
+
+    adapter = get_adapter()
+    claimed_rows: list[dict] = []
+    skipped = 0
+    for position in qs:
+        if position_result(position) not in ("won", "void"):
+            if position_id is not None:
+                raise PortfolioError("This position has nothing to claim yet.")
+            continue
+        _holder, held, via_sa, _signer = _resolve_claim(user, position, adapter)
+        if held <= 0 or not via_sa:
+            if position_id is not None:
+                raise PortfolioError(
+                    "These winnings are in MetaMask. Claim them on Portfolio."
+                )
+            skipped += 1
+            continue
+        payload = prepare_position_redeem(user, position.pk, owner)
+        if not payload.get("claimed"):
+            skipped += 1
+            if position_id is not None:
+                raise PortfolioError(
+                    "DreamAgent could not claim this win. Re-sign the grant at /agent/activate/."
+                )
+            continue
+        claimed_rows.append(
+            {
+                "position_id": position.pk,
+                "tx_hash": payload.get("tx_hash") or "",
+                "payout": payload.get("payout") or "",
+                "question": event_question(position.event),
+                "voided": position.event.status == EventContract.Status.VOIDED,
+            }
+        )
+    return {
+        "claimed": len(claimed_rows),
+        "skipped": skipped,
+        "results": claimed_rows,
+        "via_smart_account": True,
+    }
+
+
 def confirm_position_redeem(user, position_id: int, tx_hash: str) -> Position:
     """Record a confirmed redeem. Mock adapters subtract claimed outcome tokens."""
     if not tx_hash or not str(tx_hash).startswith("0x"):
@@ -938,124 +1066,6 @@ def confirm_position_redeem(user, position_id: int, tx_hash: str) -> Position:
         tx_hash,
     )
     return position
-
-
-_AUTO_CLAIM_LOCK_TTL = 180
-
-
-def _notify_auto_claim(user, position, payload: dict) -> None:
-    try:
-        from services.event_copy import event_question, format_collateral
-        from services.telegram_notify import notify_auto_claim
-
-        payout = payload.get("payout") or "0"
-        try:
-            payout_label = format_collateral(Decimal(str(payout)), compact=True)
-        except Exception:
-            payout_label = f"${payout}"
-        notify_auto_claim(
-            user,
-            question=event_question(position.event),
-            payout=payout_label,
-            tx_hash=str(payload.get("tx_hash") or ""),
-            voided=position.event.status == EventContract.Status.VOIDED,
-        )
-    except Exception:
-        logger.warning(
-            "auto-claim notify failed user=%s position=%s",
-            user.pk,
-            position.pk,
-            exc_info=True,
-        )
-
-
-def auto_claim_settled_positions() -> dict[str, int]:
-    """Redeem Smart Account wins after a window settles. Skips MetaMask-held tokens.
-
-    DreamAgent / Telegram fills land on the Hybrid Smart Account. Once the oracle
-    has posted, the same session-key grant that placed the trade can redeem it
-    without a MetaMask click. EOA fills still need the user to claim in the UI.
-    """
-    from apps.agents.models import DreamAgent
-    from services.dream_agent_service import get_tradable_agent
-
-    claimed = 0
-    skipped = 0
-    failed = 0
-    users = 0
-    seen: set[int] = set()
-    agents = (
-        DreamAgent.objects.filter(
-            status__in=(DreamAgent.Status.RUNNING, DreamAgent.Status.AUTHORIZED),
-        )
-        .select_related("user", "smart_account")
-        .order_by("-updated_at")
-    )
-    for agent in agents:
-        user = agent.user
-        if user.pk in seen:
-            continue
-        if get_tradable_agent(user) is None:
-            continue
-        sa = agent.smart_account
-        owner = (sa.owner_address if sa else "") or ""
-        if not owner:
-            skipped += 1
-            continue
-        seen.add(user.pk)
-        pending = Position.objects.filter(
-            user=user,
-            status__in=(Position.Status.OPEN, Position.Status.SETTLED),
-        )
-        if not pending.exists():
-            continue
-        users += 1
-        try:
-            refresh_portfolio(user)
-        except Exception:
-            logger.exception("auto-claim portfolio refresh failed user=%s", user.pk)
-            failed += 1
-            continue
-        positions = Position.objects.filter(
-            user=user,
-            status__in=(Position.Status.OPEN, Position.Status.SETTLED),
-        ).select_related("event", "outcome")
-        for position in positions:
-            if position_result(position) not in ("won", "void"):
-                continue
-            lock_key = f"auto-claim:{position.pk}"
-            if not cache.add(lock_key, "1", timeout=_AUTO_CLAIM_LOCK_TTL):
-                skipped += 1
-                continue
-            try:
-                payload = prepare_position_redeem(user, position.pk, owner)
-            except PortfolioError as exc:
-                logger.info("auto-claim skipped position=%s: %s", position.pk, exc)
-                skipped += 1
-                continue
-            except Exception:
-                logger.exception("auto-claim failed position=%s", position.pk)
-                failed += 1
-                continue
-            if payload.get("claimed"):
-                claimed += 1
-                _notify_auto_claim(user, position, payload)
-            else:
-                cache.set(lock_key, "eoa", timeout=6 * 3600)
-                skipped += 1
-    logger.info(
-        "auto_claim_settled_positions claimed=%s skipped=%s failed=%s users=%s",
-        claimed,
-        skipped,
-        failed,
-        users,
-    )
-    return {
-        "claimed": claimed,
-        "skipped": skipped,
-        "failed": failed,
-        "users": users,
-    }
 
 
 def prepare_position_close(user, position_id: int, wallet_address: str):

@@ -73,7 +73,6 @@ def run_copy_loop(*, interval: int | None = None) -> None:
     from django.db import connections
 
     from services.event_service import refresh_events_from_dreamdex
-    from services.portfolio_service import auto_claim_settled_positions
     from services.trader_service import sync_traders_from_fills
 
     wait = interval or max(int(getattr(settings, "DREAMDEX_EVENT_SYNC_INTERVAL", 60) or 60), 15)
@@ -91,9 +90,6 @@ def run_copy_loop(*, interval: int | None = None) -> None:
                     created,
                     copies,
                 )
-            claims = auto_claim_settled_positions()
-            if claims.get("claimed"):
-                logger.info("auto-claim claimed=%s", claims.get("claimed"))
         except Exception:
             logger.exception("autonomous copy poll failed")
         finally:

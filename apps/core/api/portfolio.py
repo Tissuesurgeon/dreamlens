@@ -13,6 +13,7 @@ from rest_framework.views import APIView
 from services.portfolio_service import (
     PortfolioError,
     annotate_positions,
+    claim_agent_positions,
     confirm_position_close,
     confirm_position_redeem,
     get_portfolio_summary,
@@ -64,7 +65,7 @@ class PositionRedeemView(APIView):
             payload = prepare_position_redeem(
                 request.user,
                 pk,
-                serializer.validated_data["wallet_address"],
+                serializer.validated_data.get("wallet_address") or "",
             )
         except PortfolioError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -72,6 +73,36 @@ class PositionRedeemView(APIView):
             logger.exception("prepare redeem failed position=%s", pk)
             return Response(
                 {"detail": str(exc) or "Could not build the claim transaction."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(payload)
+
+
+class AgentClaimView(APIView):
+    """DreamAgent session-key claim for Smart Account wins. No MetaMask."""
+
+    permission_classes = [IsAuthenticated]
+    renderer_classes = [JSONRenderer]
+
+    def post(self, request):
+        raw_id = request.data.get("position_id") if isinstance(request.data, dict) else None
+        position_id = None
+        if raw_id not in (None, ""):
+            try:
+                position_id = int(raw_id)
+            except (TypeError, ValueError):
+                return Response(
+                    {"detail": "position_id must be a number."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        try:
+            payload = claim_agent_positions(request.user, position_id=position_id)
+        except PortfolioError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as exc:
+            logger.exception("agent claim failed position=%s", position_id)
+            return Response(
+                {"detail": str(exc) or "DreamAgent could not claim."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         return Response(payload)

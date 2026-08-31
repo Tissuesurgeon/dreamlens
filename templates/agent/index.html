@@ -24,7 +24,7 @@
         <ul class="dl-check-list">
           <li>✓ Trade Event Contracts</li>
           <li>✓ Copy selected traders</li>
-          <li>✓ Claim winnings when a window settles</li>
+          <li>✓ Claim Smart Account winnings from Portfolio or Telegram</li>
         </ul>
       </section>
       <section>
@@ -64,7 +64,7 @@
         <ul class="dl-check-list">
           <li>✓ Trade Event Contracts</li>
           <li>✓ Copy selected traders</li>
-          <li>✓ Claim winnings when a window settles</li>
+          <li>✓ Claim Smart Account winnings from Portfolio or Telegram</li>
         </ul>
       </section>
       <section>
@@ -100,7 +100,7 @@
         <ul class="dl-check-list">
           <li>✓ Trade Event Contracts</li>
           <li>✓ Copy selected traders</li>
-          <li>✓ Claim winnings when a window settles</li>
+          <li>✓ Claim Smart Account winnings from Portfolio or Telegram</li>
         </ul>
       </section>
       <section>
@@ -127,7 +127,7 @@
         <div>
           <h2 class="dl-ta-identity__title">{{ agent.name }}</h2>
           <p class="dl-ta-identity__meta">
-            {% if agent.status == "RUNNING" %}I’m watching your selected traders and Event Contracts, and I claim Smart Account wins when a window settles.
+            {% if agent.status == "RUNNING" %}I’m watching your selected traders and Event Contracts. Claim Smart Account wins from Portfolio or /claim.
             {% elif agent.status == "PAUSED" %}Paused — no new autonomous trades. Your funds and positions stay as they are.
             {% elif agent.status == "AUTHORIZED" %}Grant is signed. Resume to copy followed traders without MetaMask.
             {% elif agent.status == "REVOKED" %}Permission revoked
@@ -214,6 +214,36 @@
     <p class="dl-advanced dl-muted">{% if sa_addr %}<span class="dl-mono">{{ sa_addr|short_address }}</span>{% endif %}</p>
   </section>
   {% endwith %}
+
+  {% if agent_claimable %}
+  <section class="dl-section" aria-labelledby="agent-claim-heading">
+    <div class="dl-section-head dl-section-head--table">
+      <h2 id="agent-claim-heading" class="dl-section__title">Ready to claim</h2>
+      <p class="dl-section__count">{{ agent_claimable|length }}</p>
+      {% if agent_claimable|length > 1 %}
+      <button type="button" class="dl-btn dl-btn--primary dl-btn--sm" data-claim-agent-all>Claim all with DreamAgent</button>
+      {% endif %}
+    </div>
+    <p class="dl-section__subtitle">DreamAgent redeems Smart Account wins here or on Portfolio. No MetaMask.</p>
+    <div class="dl-event-rows">
+      {% for pos in agent_claimable %}
+      <div class="dl-event-row dl-event-row--settled">
+        <span class="dl-event-row__side dl-event-row__side--{{ pos.outcome.outcome_type|lower }}">{{ pos.outcome.outcome_type }}</span>
+        <span class="dl-event-row__body">
+          <a href="{% url 'event_detail' pos.event.pk %}" class="dl-event-row__title">{{ pos.event|question_copy }}</a>
+          <span class="dl-event-row__line">
+            {% if pos.result == "void" %}Void — collateral back{% else %}Won{% endif %}
+            {% if pos.claim_payout %} · {{ pos.claim_payout|usd_plain }}{% endif %}
+          </span>
+        </span>
+        <span class="dl-event-row__settle">
+          {% include "components/claim_button.html" with pos=pos extra_class="dl-btn--sm" %}
+        </span>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
 
   {% if executions %}
   <section class="dl-section" aria-labelledby="receipts-heading">

@@ -683,12 +683,9 @@ body.dl-body {
 /* ── Sections ── */
 .dl-section { margin: var(--dl-s5) 0; }
 
-.dl-section-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--dl-s3);
-  margin-bottom: var(--dl-s3);
+.dl-section-head:has([data-claim-agent-all]) {
+  align-items: center;
+  flex-wrap: wrap;
 }
 
 .dl-section__title {
@@ -1628,6 +1625,16 @@ body.dl-body {
 }
 
 .dl-portfolio-page .dl-agent-dash { margin-bottom: var(--dl-s5); }
+.dl-portfolio-page .dl-agent-claim-box {
+  margin: 0 0 var(--dl-s5);
+}
+.dl-portfolio-page .dl-agent-claim-box .dl-section-head {
+  align-items: flex-start;
+}
+.dl-portfolio-page .dl-agent-claim-box .dl-section__subtitle {
+  margin-top: 0.25rem;
+  max-width: 42rem;
+}
 .dl-portfolio-page .dl-agent-actions { margin-top: var(--dl-s4); }
 .dl-portfolio-page .dl-ta-panel > .dl-muted { margin: var(--dl-s2) 0 var(--dl-s4); }
 .dl-telegram-card #telegram-unlink { margin-top: var(--dl-s3); }

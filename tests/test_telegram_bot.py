@@ -406,6 +406,113 @@ def test_positions_shows_imported_fill(
     text = bot_send.call_args[0][1]
     assert "YES" in text
     assert "20" in text
+    assert "<b>Open</b>" in text
+
+
+@pytest.mark.django_db
+@patch("services.telegram_link_service.send_html")
+def test_positions_groups_open_won_and_lost(
+    send_msg, user, sample_event, telegram_settings
+):
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from apps.events.models import EventContract, EventOutcome
+    from apps.portfolio.models import Position
+
+    yes = sample_event.outcomes.get(outcome_type=EventOutcome.OutcomeType.YES)
+    Position.objects.create(
+        user=user,
+        event=sample_event,
+        outcome=yes,
+        amount=Decimal("20"),
+        entry_price=Decimal("0.50"),
+        status=Position.Status.OPEN,
+    )
+
+    def resolved_event(suffix: str, winner: str) -> EventContract:
+        event = EventContract.objects.create(
+            external_id=f"0x{suffix}{'0' * 24}",
+            title=f"{winner} settled {suffix}",
+            underlying_asset="ETH",
+            status=EventContract.Status.RESOLVED,
+            expiry_time=timezone.now() - timedelta(hours=1),
+            yes_identifier=f"yes-{suffix}",
+            no_identifier=f"no-{suffix}",
+            winning_outcome=winner,
+        )
+        EventOutcome.objects.create(
+            event=event,
+            outcome_type=EventOutcome.OutcomeType.YES,
+            external_identifier=f"yes-{suffix}",
+            current_price=Decimal("1") if winner == "YES" else Decimal("0"),
+        )
+        EventOutcome.objects.create(
+            event=event,
+            outcome_type=EventOutcome.OutcomeType.NO,
+            external_identifier=f"no-{suffix}",
+            current_price=Decimal("1") if winner == "NO" else Decimal("0"),
+        )
+        return event
+
+    won_event = resolved_event("won1", "YES")
+    lost_event = resolved_event("lost1", "YES")
+    Position.objects.create(
+        user=user,
+        event=won_event,
+        outcome=won_event.outcomes.get(outcome_type=EventOutcome.OutcomeType.YES),
+        amount=Decimal("7"),
+        entry_price=Decimal("0.40"),
+        status=Position.Status.OPEN,
+    )
+    Position.objects.create(
+        user=user,
+        event=lost_event,
+        outcome=lost_event.outcomes.get(outcome_type=EventOutcome.OutcomeType.NO),
+        amount=Decimal("3"),
+        entry_price=Decimal("0.60"),
+        status=Position.Status.OPEN,
+    )
+
+    _activate_link(user)
+    with (
+        patch("services.portfolio_service.refresh_portfolio"),
+        patch("services.telegram_bot_service.send_html") as bot_send,
+    ):
+        handle_update(_message("/positions"))
+    text = bot_send.call_args[0][1]
+    open_at = text.index("<b>Open</b>")
+    closed_at = text.index("<b>Closed</b>")
+    won_at = text.index("<b>Won</b>")
+    lost_at = text.index("<b>Lost</b>")
+    assert open_at < closed_at < won_at < lost_at
+    assert "20" in text[open_at:closed_at]
+    assert "YES" in text[open_at:closed_at]
+    assert "7" in text[won_at:lost_at]
+    assert "3" in text[lost_at:]
+    assert "20" not in text[closed_at:]
+
+
+@pytest.mark.django_db
+@patch("services.telegram_link_service.send_html")
+def test_claim_command_redeems_smart_account_win(
+    send_msg, user, wallet, sample_event, running_agent, mock_adapter, telegram_settings
+):
+    from tests.test_portfolio import _seed_user_fill
+
+    sa = running_agent.smart_account
+    _seed_user_fill(mock_adapter, sample_event, taker=sa.address)
+    mock_adapter.simulate_settlement(sample_event.external_id, "YES")
+    _activate_link(user)
+    with patch("services.telegram_bot_service.send_html") as bot_send:
+        handle_update(_message("/claim"))
+    text = " ".join(c[0][1] for c in bot_send.call_args_list if c[0])
+    assert "claimed" in text.lower()
+    from apps.portfolio.models import Position
+
+    position = Position.objects.get(user=user)
+    assert position.status == Position.Status.CLOSED
 
 
 @pytest.mark.django_db

@@ -27,7 +27,7 @@ class DreamAgentPermissionSpec:
         return [
             "Buy Event Contract outcomes",
             "Sell/close supported positions",
-            "Claim settled Event Contract winnings automatically when a window ends",
+            "Claim Smart Account winnings from Portfolio or Telegram — no MetaMask",
             "Trade only through DreamDEX",
             "Place trades after one signature — no MetaMask per trade",
         ]

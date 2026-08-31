@@ -26,6 +26,7 @@ from apps.core.api.events import (
     EventRadarView,
 )
 from apps.core.api.portfolio import (
+    AgentClaimView,
     PortfolioBalancesView,
     PortfolioPositionsView,
     PortfolioSummaryView,
@@ -66,6 +67,11 @@ urlpatterns = [
     path("portfolio/", PortfolioSummaryView.as_view(), name="api-portfolio-summary"),
     path("portfolio/balances/", PortfolioBalancesView.as_view(), name="api-portfolio-balances"),
     path("portfolio/positions/", PortfolioPositionsView.as_view(), name="api-portfolio-positions"),
+    path(
+        "portfolio/claim/",
+        AgentClaimView.as_view(),
+        name="api-portfolio-agent-claim",
+    ),
     path(
         "portfolio/positions/<int:pk>/redeem/",
         PositionRedeemView.as_view(),

@@ -467,7 +467,9 @@ def portfolio(request):
                 "potential_payout": Decimal("0"),
                 "open_positions": [],
                 "settled_positions": [],
+                "closed_positions": [],
                 "settling_positions": [],
+                "agent_claimable": [],
                 "has_positions": False,
                 "event_count": 0,
                 "won_count": 0,
@@ -527,6 +529,12 @@ def portfolio(request):
     settling_positions = [p for p in positions if p.result == "settling"]
     settled_positions = [
         p for p in positions if p.result in ("won", "lost", "void", "claimed", "closed")
+    ]
+    agent_claimable = [
+        p for p in settled_positions if p.claimable and getattr(p, "claim_via_agent", False)
+    ]
+    closed_positions = [
+        p for p in settled_positions if not (p.claimable and getattr(p, "claim_via_agent", False))
     ]
     recent_trades = list_recent_trades(request.user)
 
@@ -590,6 +598,8 @@ def portfolio(request):
             "open_positions": open_positions,
             "settling_positions": settling_positions,
             "settled_positions": settled_positions,
+            "closed_positions": closed_positions,
+            "agent_claimable": agent_claimable,
             "recent_trades": recent_trades,
             "has_positions": bool(
                 open_positions or settling_positions or settled_positions or recent_trades
@@ -763,10 +773,12 @@ def dream_agent(request):
     """DreamAgent performance + autonomous status."""
     from apps.agents.models import DreamAgent
     from services import dream_agent_service, smart_account_service
+    from services.portfolio_service import list_agent_claimable
 
     agent = None
     performance = {"agent": None}
     sa = None
+    agent_claimable = []
     if request.user.is_authenticated:
         sa = smart_account_service.get_account(request.user)
         agent = (
@@ -777,6 +789,13 @@ def dream_agent(request):
         )
         if agent:
             performance = dream_agent_service.agent_performance(agent)
+        try:
+            agent_claimable = list_agent_claimable(request.user)
+            for pos in agent_claimable:
+                annotate_event_display(pos.event)
+        except Exception:
+            logger.warning("agent claimable list failed", exc_info=True)
+            agent_claimable = []
     agent_balance = None
     if sa:
         try:
@@ -821,6 +840,7 @@ def dream_agent(request):
             "following_count": following_count,
             "today_result": today_result,
             "grant_health": health,
+            "agent_claimable": agent_claimable,
         },
     )
 

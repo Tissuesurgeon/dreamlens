@@ -268,6 +268,7 @@ class PositionSerializer(serializers.ModelSerializer):
     outcome_type = serializers.CharField(source="outcome.outcome_type", read_only=True)
     result = serializers.SerializerMethodField()
     claimable = serializers.SerializerMethodField()
+    claim_via_agent = serializers.SerializerMethodField()
     closeable = serializers.SerializerMethodField()
 
     class Meta:
@@ -286,6 +287,7 @@ class PositionSerializer(serializers.ModelSerializer):
             "settled_at",
             "result",
             "claimable",
+            "claim_via_agent",
             "closeable",
         )
 
@@ -295,12 +297,17 @@ class PositionSerializer(serializers.ModelSerializer):
     def get_claimable(self, obj):
         return bool(getattr(obj, "claimable", False))
 
+    def get_claim_via_agent(self, obj):
+        return bool(getattr(obj, "claim_via_agent", False))
+
     def get_closeable(self, obj):
         return bool(getattr(obj, "closeable", False))
 
 
 class PositionRedeemSerializer(serializers.Serializer):
-    wallet_address = serializers.CharField(max_length=42)
+    wallet_address = serializers.CharField(
+        max_length=42, required=False, allow_blank=True, default=""
+    )
 
 
 class PositionRedeemConfirmSerializer(serializers.Serializer):

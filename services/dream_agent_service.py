@@ -39,17 +39,9 @@ def get_running_agent(user) -> DreamAgent | None:
     )
 
 
-def get_tradable_agent(user) -> DreamAgent | None:
-    """Agent that can redeem a live TRADE_EVENT_CONTRACT grant (no MetaMask).
-
-    AUTHORIZED means the owner already signed the delegation; RUNNING additionally
-    turns on autonomous copy. Telegram is an interface, so both can trade.
-    """
+def _agent_with_permission(user, statuses: tuple[str, ...]) -> DreamAgent | None:
     agents = (
-        DreamAgent.objects.filter(
-            user=user,
-            status__in=(DreamAgent.Status.RUNNING, DreamAgent.Status.AUTHORIZED),
-        )
+        DreamAgent.objects.filter(user=user, status__in=statuses)
         .select_related("smart_account")
         .order_by("-updated_at")
     )
@@ -57,6 +49,30 @@ def get_tradable_agent(user) -> DreamAgent | None:
         if active_permission(agent):
             return agent
     return None
+
+
+def get_tradable_agent(user) -> DreamAgent | None:
+    """Agent that can redeem a live TRADE_EVENT_CONTRACT grant (no MetaMask).
+
+    AUTHORIZED means the owner already signed the delegation; RUNNING additionally
+    turns on autonomous copy. Telegram is an interface, so both can trade.
+    """
+    return _agent_with_permission(
+        user,
+        (DreamAgent.Status.RUNNING, DreamAgent.Status.AUTHORIZED),
+    )
+
+
+def get_session_key_agent(user) -> DreamAgent | None:
+    """Grant that can redeemDelegations, including when Smart Copy is paused."""
+    return _agent_with_permission(
+        user,
+        (
+            DreamAgent.Status.RUNNING,
+            DreamAgent.Status.AUTHORIZED,
+            DreamAgent.Status.PAUSED,
+        ),
+    )
 
 
 def active_permission(agent: DreamAgent) -> DreamAgentPermission | None:

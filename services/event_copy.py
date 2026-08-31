@@ -238,7 +238,7 @@ def event_window_copy(event: EventContract, now=None) -> dict[str, Any]:
             "blurb": (
                 "DreamDEX voided this window. Outcome tokens redeem back to collateral. "
                 "If you still hold YES or NO, claim below or on Portfolio. "
-                "DreamAgent claims Smart Account wins on its own. You cannot buy or sell."
+                "Claim Smart Account wins in the DreamAgent box on Portfolio. You cannot buy or sell."
             ),
             "closed_label": "Voided · stakes returned",
         }
@@ -249,7 +249,7 @@ def event_window_copy(event: EventContract, now=None) -> dict[str, Any]:
             blurb = (
                 "The oracle print finished above the strike, so YES won. "
                 "If you still hold YES, claim below or on Portfolio. "
-                "DreamAgent claims Smart Account wins on its own. NO is worth nothing. "
+                "Claim Smart Account wins in the DreamAgent box on Portfolio. NO is worth nothing. "
                 "Trading is closed."
             )
         elif winner == "NO":
@@ -257,7 +257,7 @@ def event_window_copy(event: EventContract, now=None) -> dict[str, Any]:
             blurb = (
                 "The oracle print did not finish above the strike, so NO won. "
                 "If you still hold NO, claim below or on Portfolio. "
-                "DreamAgent claims Smart Account wins on its own. YES is worth nothing. "
+                "Claim Smart Account wins in the DreamAgent box on Portfolio. YES is worth nothing. "
                 "Trading is closed."
             )
         else:
@@ -265,7 +265,7 @@ def event_window_copy(event: EventContract, now=None) -> dict[str, Any]:
             blurb = (
                 "This Event Contract has settled. "
                 "If you still hold the winning side, claim below or on Portfolio. "
-                "DreamAgent claims Smart Account wins on its own. "
+                "Claim Smart Account wins in the DreamAgent box on Portfolio. "
                 "Trading is closed."
             )
         return {

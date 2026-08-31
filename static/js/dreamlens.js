@@ -2558,13 +2558,69 @@
       .catch(function () {});
   }
 
+  async function claimViaDreamAgent(positionId) {
+    const res = await csrfFetch("/api/portfolio/claim/", {
+      method: "POST",
+      body: JSON.stringify({ position_id: Number(positionId) }),
+    });
+    const prepared = await readJsonResponse(res);
+    if (!res.ok) {
+      throw new Error(prepared.detail || prepared.error || "DreamAgent could not claim.");
+    }
+    const n = Number(prepared.claimed || 0);
+    if (!n) {
+      throw new Error(prepared.detail || "DreamAgent could not claim this win. Re-sign the grant at Activate.");
+    }
+    return prepared;
+  }
+
+  async function claimAllViaDreamAgent(btn) {
+    const original = btn.textContent;
+    btn.disabled = true;
+    try {
+      btn.textContent = "DreamAgent claiming…";
+      const res = await csrfFetch("/api/portfolio/claim/", {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      const data = await readJsonResponse(res);
+      if (!res.ok) {
+        throw new Error(data.detail || data.error || "DreamAgent could not claim.");
+      }
+      const n = Number(data.claimed || 0);
+      if (n === 0) {
+        throw new Error("Nothing for DreamAgent to claim. MetaMask fills still use Claim on Portfolio.");
+      }
+      toast(
+        n === 1
+          ? "DreamAgent claimed a win into your Smart Account."
+          : "DreamAgent claimed " + n + " wins into your Smart Account.",
+        "ok"
+      );
+      window.location.reload();
+    } catch (err) {
+      console.warn("DreamAgent claim failed", err);
+      alert(err.message || "DreamAgent could not claim.");
+      btn.disabled = false;
+      btn.textContent = original;
+    }
+  }
+
   async function claimPosition(btn) {
     const positionId = btn.getAttribute("data-claim-position");
     const expectedWallet = (btn.getAttribute("data-claim-wallet") || "").toLowerCase();
+    const viaAgent = btn.getAttribute("data-claim-agent") === "1";
     if (!positionId) return;
     const original = btn.textContent;
     btn.disabled = true;
     try {
+      if (viaAgent) {
+        btn.textContent = "DreamAgent claiming…";
+        await claimViaDreamAgent(positionId);
+        toast("Winnings claimed into your Smart Account.", "ok");
+        window.location.reload();
+        return;
+      }
       const wallet = await ensureWalletForTrade();
       if (expectedWallet && wallet.address.toLowerCase() !== expectedWallet) {
         throw new Error("Switch MetaMask to the wallet that holds these outcome tokens.");
@@ -2724,6 +2780,13 @@
         ev.preventDefault();
         ev.stopPropagation();
         claimPosition(btn);
+      });
+    });
+    document.querySelectorAll("[data-claim-agent-all]").forEach(function (btn) {
+      btn.addEventListener("click", function (ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        claimAllViaDreamAgent(btn);
       });
     });
     document.querySelectorAll("[data-close-position]").forEach(function (btn) {

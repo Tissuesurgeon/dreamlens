@@ -199,11 +199,11 @@
           </div>
           <div>
             <dt>Commands</dt>
-            <dd>/events · /trade · /positions</dd>
+            <dd>/events · /trade · /positions · /claim</dd>
           </div>
           <div>
             <dt>Claims</dt>
-            <dd>DreamAgent claims Smart Account wins when a window settles</dd>
+            <dd>/claim in Telegram, or the DreamAgent box on this page</dd>
           </div>
         </dl>
         <button type="button" class="dl-btn dl-btn--ghost dl-btn--sm" id="telegram-unlink">Unlink</button>
@@ -212,6 +212,43 @@
       <p class="dl-telegram-status" id="telegram-link-status" role="status" aria-live="polite"></p>
     </section>
   </div>
+
+  {% if agent or agent_claimable %}
+  <section class="dl-ta-panel dl-agent-claim-box" aria-labelledby="agent-claim-heading">
+    <div class="dl-section-head dl-section-head--table">
+      <div>
+        <h2 id="agent-claim-heading" class="dl-section__title">DreamAgent claims</h2>
+        <p class="dl-section__subtitle">Smart Account wins. DreamAgent redeems them here — no MetaMask.</p>
+      </div>
+      {% if agent_claimable %}
+      <button type="button" class="dl-btn dl-btn--primary dl-btn--sm" data-claim-agent-all>
+        {% if agent_claimable|length > 1 %}Claim all ({{ agent_claimable|length }}){% else %}Claim with DreamAgent{% endif %}
+      </button>
+      {% endif %}
+    </div>
+    {% if agent_claimable %}
+    <div class="dl-event-rows">
+      {% for pos in agent_claimable %}
+      <div class="dl-event-row dl-event-row--settled">
+        <span class="dl-event-row__side dl-event-row__side--{{ pos.outcome.outcome_type|lower }}">{{ pos.outcome.outcome_type }}</span>
+        <span class="dl-event-row__body">
+          <a href="{% url 'event_detail' pos.event.pk %}" class="dl-event-row__title">{{ pos.event|question_copy }}</a>
+          <span class="dl-event-row__line">
+            {% if pos.result == "void" %}Void — collateral back{% else %}Won{% endif %}
+            {% if pos.claim_payout %} · {{ pos.claim_payout|usd_plain }}{% endif %}
+          </span>
+        </span>
+        <span class="dl-event-row__settle">
+          {% include "components/claim_button.html" with pos=pos extra_class="dl-btn--sm" %}
+        </span>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="dl-muted">No Smart Account wins waiting. When a Telegram or copy trade settles, claim it here or send /claim in the bot.</p>
+    {% endif %}
+  </section>
+  {% endif %}
 
   <section class="dl-section" aria-labelledby="following-heading" data-agent-running="{% if agent_can_auto_copy %}1{% else %}0{% endif %}">
     <div class="dl-section-head dl-section-head--table">
@@ -356,14 +393,14 @@
   </section>
   {% endif %}
 
-  {% if settled_positions %}
+  {% if closed_positions %}
   <section class="dl-section">
     <div class="dl-section-head dl-section-head--table">
       <h2 class="dl-section__title">Closed</h2>
-      <p class="dl-section__count">{{ settled_positions|length }}</p>
+      <p class="dl-section__count">{{ closed_positions|length }}</p>
     </div>
     <div class="dl-event-rows">
-      {% for pos in settled_positions %}
+      {% for pos in closed_positions %}
       <div class="dl-event-row dl-event-row--settled">
         <span class="dl-event-row__side dl-event-row__side--{{ pos.outcome.outcome_type|lower }}">{{ pos.outcome.outcome_type }}</span>
         <span class="dl-event-row__body">
@@ -386,12 +423,7 @@
             {% if pos.pnl is not None %}{% if pos.pnl >= 0 %}+{% endif %}{{ pos.pnl|usd_plain }}{% else %}—{% endif %}
           </span>
           {% if pos.claimable %}
-          <button
-            type="button"
-            class="dl-btn dl-btn--primary dl-btn--sm"
-            data-claim-position="{{ pos.pk }}"
-            data-claim-wallet="{{ pos.claim_wallet }}"
-          >Claim {% if pos.claim_payout %}{{ pos.claim_payout|usd_plain }}{% endif %}</button>
+          {% include "components/claim_button.html" with pos=pos extra_class="dl-btn--sm" %}
           {% endif %}
         </span>
       </div>

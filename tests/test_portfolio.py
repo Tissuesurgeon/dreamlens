@@ -490,6 +490,95 @@ def test_redeem_api_session_claims_smart_account_tokens(
 
 
 @pytest.mark.django_db
+def test_redeem_api_dreamagent_claim_needs_no_wallet(
+    client, user, wallet, sample_event, mock_adapter, settings
+):
+    settings.MOCK_SMART_ACCOUNT = True
+    from services import smart_account_service
+    from services.portfolio_service import refresh_portfolio
+
+    sa = smart_account_service.create_account(user, owner_address=wallet.address)
+    smart_account_service.mark_funded(sa, amount=Decimal("50"))
+    smart_account_service.grant_agent(
+        user,
+        max_trade_amount=Decimal("10"),
+        max_daily_volume=Decimal("50"),
+        expires_in_days=30,
+        min_copy_score=50,
+        signed_delegation={
+            "delegate": "0xSession00000000000000000000000000000001",
+            "delegator": sa.address,
+            "authority": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "caveats": [],
+            "salt": "0x1",
+            "signature": "0xmockdeadbeef",
+            "mock": True,
+        },
+        activate=True,
+    )
+    _seed_user_fill(mock_adapter, sample_event, taker=sa.address)
+    mock_adapter.simulate_settlement(sample_event.external_id, "YES")
+    refresh_portfolio(user)
+    position = Position.objects.get(user=user)
+    client.force_login(user)
+    page = client.get("/portfolio/")
+    assert b"data-claim-agent" in page.content
+    assert b"DreamAgent claim" in page.content
+    assert b"DreamAgent claims" in page.content
+    assert b"no MetaMask" in page.content
+    agent_page = client.get("/agent/")
+    assert agent_page.status_code == 200
+    assert b"data-claim-agent" in agent_page.content
+    prepared = client.post(
+        f"/api/portfolio/positions/{position.pk}/redeem/",
+        data={},
+        content_type="application/json",
+    )
+    assert prepared.status_code == 200
+    assert prepared.json()["claimed"] is True
+    position.refresh_from_db()
+    assert position.status == Position.Status.CLOSED
+
+
+@pytest.mark.django_db
+def test_agent_claim_all_redeems_smart_account_wins(
+    client, user, wallet, sample_event, mock_adapter, settings
+):
+    settings.MOCK_SMART_ACCOUNT = True
+    from services import smart_account_service
+    from services.portfolio_service import refresh_portfolio
+
+    sa = smart_account_service.create_account(user, owner_address=wallet.address)
+    smart_account_service.mark_funded(sa, amount=Decimal("50"))
+    smart_account_service.grant_agent(
+        user,
+        max_trade_amount=Decimal("10"),
+        max_daily_volume=Decimal("50"),
+        expires_in_days=30,
+        min_copy_score=50,
+        signed_delegation={
+            "delegate": "0xSession00000000000000000000000000000001",
+            "delegator": sa.address,
+            "authority": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "caveats": [],
+            "salt": "0x1",
+            "signature": "0xmockdeadbeef",
+            "mock": True,
+        },
+        activate=True,
+    )
+    _seed_user_fill(mock_adapter, sample_event, taker=sa.address)
+    mock_adapter.simulate_settlement(sample_event.external_id, "YES")
+    refresh_portfolio(user)
+    client.force_login(user)
+    res = client.post("/api/portfolio/claim/", data={}, content_type="application/json")
+    assert res.status_code == 200
+    payload = res.json()
+    assert payload["claimed"] == 1
+    assert payload["via_smart_account"] is True
+
+
+@pytest.mark.django_db
 def test_event_detail_shows_claim_on_won_position(
     client, user, wallet, sample_event, mock_adapter
 ):
@@ -507,17 +596,13 @@ def test_event_detail_shows_claim_on_won_position(
 
 
 @pytest.mark.django_db
-def test_auto_claim_redeems_smart_account_wins(
-    user, wallet, sample_event, mock_adapter, settings
+def test_portfolio_does_not_auto_claim_smart_account_wins(
+    client, user, wallet, sample_event, mock_adapter, settings
 ):
-    from django.core.cache import cache
-
-    from apps.notifications.models import Notification
-    from services import smart_account_service
-    from services.portfolio_service import auto_claim_settled_positions, refresh_portfolio
-
-    cache.clear()
     settings.MOCK_SMART_ACCOUNT = True
+    from services import smart_account_service
+    from services.portfolio_service import refresh_portfolio
+
     sa = smart_account_service.create_account(user, owner_address=wallet.address)
     smart_account_service.mark_funded(sa, amount=Decimal("50"))
     smart_account_service.grant_agent(
@@ -542,77 +627,23 @@ def test_auto_claim_redeems_smart_account_wins(
     refresh_portfolio(user)
     position = Position.objects.get(user=user)
     assert position.status != Position.Status.CLOSED
-
-    stats = auto_claim_settled_positions()
-    assert stats["claimed"] == 1
+    client.force_login(user)
+    res = client.get("/portfolio/")
+    body = res.content.decode()
+    assert "DreamAgent claims" in body
+    assert f'data-claim-position="{position.pk}"' in body
+    assert "data-claim-agent" in body
+    closed_start = body.find(">Closed<")
+    claim_box = body.find("DreamAgent claims")
+    pos_marker = f'data-claim-position="{position.pk}"'
+    assert claim_box != -1
+    assert pos_marker in body[claim_box:closed_start] if closed_start > claim_box else pos_marker in body
+    res = client.post(
+        "/api/portfolio/claim/",
+        data={"position_id": position.pk},
+        content_type="application/json",
+    )
+    assert res.status_code == 200
+    assert res.json()["claimed"] == 1
     position.refresh_from_db()
     assert position.status == Position.Status.CLOSED
-    note = Notification.objects.filter(user=user, kind="auto_claim").first()
-    assert note is not None
-    assert "claimed" in note.body.lower()
-
-
-@pytest.mark.django_db
-def test_auto_claim_skips_metamask_held_tokens(
-    user, wallet, sample_event, mock_adapter, settings
-):
-    from django.core.cache import cache
-
-    from services import smart_account_service
-    from services.portfolio_service import auto_claim_settled_positions, refresh_portfolio
-
-    cache.clear()
-    settings.MOCK_SMART_ACCOUNT = True
-    sa = smart_account_service.create_account(user, owner_address=wallet.address)
-    smart_account_service.mark_funded(sa, amount=Decimal("50"))
-    smart_account_service.grant_agent(
-        user,
-        max_trade_amount=Decimal("10"),
-        max_daily_volume=Decimal("50"),
-        expires_in_days=30,
-        min_copy_score=50,
-        signed_delegation={
-            "delegate": "0xSession00000000000000000000000000000001",
-            "delegator": sa.address,
-            "authority": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-            "caveats": [],
-            "salt": "0x1",
-            "signature": "0xmockdeadbeef",
-            "mock": True,
-        },
-        activate=True,
-    )
-    _seed_user_fill(mock_adapter, sample_event, taker=wallet.address)
-    mock_adapter.simulate_settlement(sample_event.external_id, "YES")
-    refresh_portfolio(user)
-    position = Position.objects.get(user=user)
-    stats = auto_claim_settled_positions()
-    assert stats["claimed"] == 0
-    position.refresh_from_db()
-    assert position.status != Position.Status.CLOSED
-
-
-@pytest.mark.django_db
-def test_auto_claim_skips_users_without_grant(
-    user, wallet, sample_event, mock_adapter, settings
-):
-    from django.core.cache import cache
-
-    from services.portfolio_service import auto_claim_settled_positions, refresh_portfolio
-
-    cache.clear()
-    sa_addr = "0x481B210d927765133d55461c3EaCC96F41FdD6C3"
-    SmartAccount.objects.create(
-        user=user,
-        owner_address=wallet.address,
-        address=sa_addr,
-        chain_id=settings.DREAMDEX_CHAIN_ID,
-        status=SmartAccount.Status.DEPLOYED,
-    )
-    _seed_user_fill(mock_adapter, sample_event, taker=sa_addr)
-    mock_adapter.simulate_settlement(sample_event.external_id, "YES")
-    refresh_portfolio(user)
-    stats = auto_claim_settled_positions()
-    assert stats["claimed"] == 0
-    position = Position.objects.get(user=user)
-    assert position.status != Position.Status.CLOSED

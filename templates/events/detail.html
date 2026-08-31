@@ -58,7 +58,8 @@
             class="dl-btn dl-btn--primary"
             data-claim-position="{{ pos.pk }}"
             data-claim-wallet="{{ pos.claim_wallet }}"
-          >Claim{% if pos.claim_payout %} {{ pos.claim_payout|usd_plain }}{% endif %}</button>
+            {% if pos.claim_via_agent %}data-claim-agent="1"{% endif %}
+          >{% if pos.claim_via_agent %}DreamAgent claim{% else %}Claim{% endif %}{% if pos.claim_payout %} {{ pos.claim_payout|usd_plain }}{% endif %}</button>
         </div>
         {% elif pos.result == "won" or pos.result == "void" %}
         <div class="dl-your-position__card">

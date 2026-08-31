@@ -63,7 +63,7 @@ HELP = (
     "/trade 12 YES 5 — DreamAgent buys, no MetaMask\n"
     "Or say: Buy $5 YES on BTC\n\n"
     "<b>You</b>\n"
-    "/agent · /positions · /balance\n"
+    "/agent · /positions · /balance · /claim\n"
     "/pause · /resume — Smart Copy\n\n"
     "<b>Copy</b>\n"
     "/traders · /follow · /copy · /following"
@@ -80,16 +80,6 @@ _STATUS_LABEL = {
     "CREATED": "Needs grant",
 }
 
-_RESULT_LABEL = {
-    "open": "Open",
-    "won": "Won",
-    "void": "Void",
-    "lost": "Lost",
-    "settling": "Settling",
-    "claimed": "Claimed",
-    "closed": "Closed",
-}
-
 _DECISION_LABEL = {
     "COPY": "Copied",
     "SKIPPED": "Skipped",
@@ -102,6 +92,10 @@ _TRADE_RE = re.compile(
     r"^/trade(?:@\w+)?\s+(\d+)\s+(YES|NO)\s+([0-9]+(?:\.[0-9]+)?)\s*$",
     re.IGNORECASE,
 )
+_CLAIM_RE = re.compile(
+    r"^/claim(?:@\w+)?(?:\s+(\d+|all))?\s*$",
+    re.IGNORECASE,
+)
 _ANALYZE_RE = re.compile(
     r"^/analyze(?:@\w+)?(?:\s+(\d+|[A-Za-z]+))?\s*$",
     re.IGNORECASE,
@@ -109,6 +103,7 @@ _ANALYZE_RE = re.compile(
 _PAUSE_PHRASES = ("pause my agent", "pause agent", "pause the agent")
 _RESUME_PHRASES = ("resume my agent", "resume agent", "unpause", "start my agent")
 _POSITION_PHRASES = ("show positions", "my positions", "portfolio", "my portfolio")
+_CLAIM_PHRASES = ("claim winnings", "claim my wins", "claim my winnings", "claim all")
 _AGENT_PHRASES = ("how is my agent", "agent status", "my agent")
 
 LIMIT_TEMPLATE = (
@@ -138,7 +133,7 @@ def _nav_keyboard():
         [
             [("Events", "go:events"), ("Positions", "go:pos")],
             [("Agent", "go:agent"), ("Traders", "go:traders")],
-            [("Help", "go:help")],
+            [("Claim", "go:claim"), ("Help", "go:help")],
         ]
     )
 
@@ -191,6 +186,8 @@ def _handle_message(chat_id: int, text: str) -> None:
         _cmd_positions(chat_id, user)
     elif cmd == "/activity":
         _cmd_activity(chat_id, user)
+    elif cmd == "/claim":
+        _cmd_claim(chat_id, user, text)
     elif cmd == "/pause":
         _cmd_pause_resume(chat_id, user, pause=True)
     elif cmd == "/resume":
@@ -316,8 +313,6 @@ def _cmd_agent(chat_id: int, user) -> None:
         f"Max {_h(format_collateral(perm.get('max_trade_amount'), compact=True))} per trade · "
         f"{_h(format_collateral(perm.get('max_daily_volume'), compact=True))} / day",
     ]
-    if agent.status == DreamAgent.Status.RUNNING:
-        lines.append("\nDreamAgent claims Smart Account wins when a window settles.")
     _send(chat_id, "\n".join(lines), reply_markup=_agent_keyboard(agent))
 
 
@@ -349,6 +344,24 @@ def _cmd_balance(chat_id: int, user) -> None:
     )
 
 
+def _format_tg_position(pos, *, tag: str = "") -> str:
+    amount_s = f"{pos.amount:g}" if pos.amount is not None else ""
+    side = getattr(pos.outcome, "outcome_type", "") or ""
+    extra = ""
+    if getattr(pos, "claimable", False) and getattr(pos, "claim_via_agent", False):
+        extra = " · tap Claim"
+    elif getattr(pos, "claimable", False):
+        extra = " · claim on Portfolio"
+    prefix = f"{_h(tag)} " if tag else ""
+    pnl = ""
+    if pos.pnl is not None:
+        pnl = f"\n{_h(format_collateral(pos.pnl))}"
+    return (
+        f"{prefix}{_h(side)} {_h(amount_s)}{_h(extra)}\n"
+        f"{_h(event_question(pos.event))}{pnl}"
+    ).strip()
+
+
 def _cmd_positions(chat_id: int, user) -> None:
     from services.portfolio_service import annotate_positions, list_recent_trades, refresh_portfolio
     from apps.portfolio.models import Position
@@ -359,7 +372,7 @@ def _cmd_positions(chat_id: int, user) -> None:
         list(
             Position.objects.filter(user=user)
             .select_related("event", "outcome")
-            .order_by("-opened_at")[:12]
+            .order_by("-opened_at")[:40]
         ),
     )
     trades = list_recent_trades(user, limit=8)
@@ -370,33 +383,134 @@ def _cmd_positions(chat_id: int, user) -> None:
             reply_markup=_nav_keyboard(),
         )
         return
-    lines = ["<b>Positions</b>"]
+
+    open_rows: list = []
+    settling_rows: list = []
+    won_rows: list = []
+    lost_rows: list = []
+    void_rows: list = []
+    sold_rows: list = []
     for pos in positions:
         result = pos.result or "open"
-        label = _RESULT_LABEL.get(result, result)
-        amount = pos.amount
-        amount_s = f"{amount:g}" if amount is not None else ""
-        q = event_question(pos.event)
-        extra = ""
-        if getattr(pos, "claimable", False):
-            extra = " · claim on Portfolio" if result in ("won", "void") else extra
-        elif result == "won":
-            extra = " · DreamAgent claims Smart Account wins"
-        pnl = ""
-        if pos.pnl is not None:
-            pnl = f"\nToday’s result {_h(format_collateral(pos.pnl))}"
-        lines.append(
-            f"{_h(label)} {_h(pos.outcome.outcome_type)} {_h(amount_s)}"
-            f"{_h(extra)}\n{_h(q)}{pnl}"
-        )
+        if result == "open":
+            open_rows.append(pos)
+        elif result == "settling":
+            settling_rows.append(pos)
+        elif result in ("won", "claimed"):
+            won_rows.append(pos)
+        elif result == "lost":
+            lost_rows.append(pos)
+        elif result == "void":
+            void_rows.append(pos)
+        else:
+            sold_rows.append(pos)
+
+    per = 8
+    lines: list[str] = []
+
+    def add_group(title: str, rows: list, *, tag: str = "") -> None:
+        if not rows:
+            return
+        lines.append(f"<b>{_h(title)}</b>")
+        lines.extend(_format_tg_position(pos, tag=tag) for pos in rows[:per])
+
+    add_group("Open", open_rows)
+    add_group("Settling", settling_rows)
+    if won_rows or lost_rows or void_rows or sold_rows:
+        lines.append("<b>Closed</b>")
+        add_group("Won", won_rows)
+        add_group("Lost", lost_rows)
+        add_group("Void", void_rows)
+        add_group("Sold", sold_rows)
     if trades:
-        lines.append("\n<b>Trades</b>")
+        lines.append("<b>Recent fills</b>")
         for trade in trades:
             lines.append(
                 f"{_h(trade.outcome.outcome_type)} {_h(as_cents(trade.entry_price))}"
                 f" · {_h(event_question(trade.event))}"
             )
+    claimable = [
+        pos
+        for pos in won_rows + void_rows
+        if getattr(pos, "claimable", False) and getattr(pos, "claim_via_agent", False)
+    ]
+    _send(
+        chat_id,
+        "\n\n".join(lines),
+        reply_markup=_claim_keyboard(claimable) if claimable else _nav_keyboard(),
+    )
+
+
+def _claim_keyboard(claimable) -> dict:
+    rows = [
+        [("Events", "go:events"), ("Positions", "go:pos")],
+        [("Agent", "go:agent"), ("Traders", "go:traders")],
+    ]
+    for pos in claimable[:6]:
+        payout = (
+            format_collateral(pos.claim_payout, compact=True) if pos.claim_payout else ""
+        )
+        label = f"Claim #{pos.pk}"
+        if payout:
+            label = f"{label} {payout}"
+        rows.append([(label, f"cl:{pos.pk}")])
+    if len(claimable) > 1:
+        rows.append([("Claim all with DreamAgent", "go:claim")])
+    rows.append([("Help", "go:help")])
+    return inline_keyboard(rows)
+
+
+def _require_claim_agent(chat_id: int, user) -> bool:
+    from services.dream_agent_service import get_session_key_agent
+
+    if get_session_key_agent(user):
+        return True
+    _send(
+        chat_id,
+        f"{html_link(_activate_url(), 'Activate DreamAgent')} in the browser — "
+        "Telegram cannot sign MetaMask.",
+    )
+    return False
+
+
+def _send_claim_summary(chat_id: int, summary: dict) -> None:
+    n = int(summary.get("claimed") or 0)
+    if n == 0:
+        _send(
+            chat_id,
+            "Nothing for DreamAgent to claim.\n"
+            "MetaMask fills still use Claim on Portfolio.",
+            reply_markup=_nav_keyboard(),
+        )
+        return
+    title = "DreamAgent claimed a win" if n == 1 else f"DreamAgent claimed {n} wins"
+    lines = [f"<b>{title}</b>"]
+    for row in summary.get("results") or []:
+        pay = format_collateral(row.get("payout"), compact=True)
+        q = row.get("question") or "Event Contract"
+        kind = "void " if row.get("voided") else ""
+        line = f"{kind}{_h(pay)} · {_h(q)}"
+        anchor = explorer_tx_anchor(row.get("tx_hash") or "")
+        if anchor:
+            line += f"\n{anchor}"
+        lines.append(line)
     _send(chat_id, "\n\n".join(lines), reply_markup=_nav_keyboard())
+
+
+def _cmd_claim(chat_id: int, user, text: str = "/claim") -> None:
+    from services.portfolio_service import PortfolioError, claim_agent_positions
+
+    if not _require_claim_agent(chat_id, user):
+        return
+    match = _CLAIM_RE.match((text or "").strip())
+    token = (match.group(1) if match else "") or ""
+    position_id = int(token) if token.isdigit() else None
+    try:
+        summary = claim_agent_positions(user, position_id=position_id)
+    except PortfolioError as exc:
+        _send(chat_id, _h(str(exc)))
+        return
+    _send_claim_summary(chat_id, summary)
 
 
 def _cmd_activity(chat_id: int, user) -> None:
@@ -446,7 +560,7 @@ def _cmd_pause_resume(chat_id: int, user, *, pause: bool) -> None:
     _send(
         chat_id,
         f"<b>{_h(agent.name)}</b> is running.\n"
-        "Smart Copy is on. DreamAgent will claim Smart Account wins when windows settle.",
+        "Smart Copy is on. Claim Smart Account wins with /claim or on Portfolio.",
         reply_markup=_agent_keyboard(agent),
     )
 
@@ -800,7 +914,7 @@ def _send_trade_result(chat_id: int, user, *, event_id: int, outcome: str, amoun
     ]
     if anchor:
         lines.append(anchor)
-    lines.append("DreamAgent will claim Smart Account wins when this window settles.")
+    lines.append("Claim Smart Account wins with /claim or on Portfolio.")
     _send(chat_id, "\n".join(lines), reply_markup=_nav_keyboard())
 
 
@@ -872,6 +986,9 @@ def _handle_natural_language(chat_id: int, user, text: str) -> None:
         return
     if any(p in lower for p in _POSITION_PHRASES):
         _cmd_positions(chat_id, user)
+        return
+    if any(p in lower for p in _CLAIM_PHRASES) or lower == "claim":
+        _cmd_claim(chat_id, user, "/claim")
         return
     if any(p in lower for p in _AGENT_PHRASES):
         _cmd_agent(chat_id, user)
@@ -964,6 +1081,8 @@ def _handle_callback(query: dict[str, Any]) -> None:
             _cmd_pause_resume(chat_id, user, pause=False)
         elif dest == "activity":
             _cmd_activity(chat_id, user)
+        elif dest == "claim":
+            _cmd_claim(chat_id, user)
         elif dest == "help":
             _send(chat_id, HELP, reply_markup=_nav_keyboard())
         return
@@ -999,6 +1118,16 @@ def _handle_callback(query: dict[str, Any]) -> None:
             _send(chat_id, "Event not found.")
             return
         _offer_trade(chat_id, user, event, outcome, _default_trade_amount(user))
+        return
+
+    if data.startswith("cl:"):
+        try:
+            position_id = int(data[3:])
+        except ValueError:
+            answer_callback(callback_id, "Bad claim")
+            return
+        answer_callback(callback_id, "Claiming")
+        _cmd_claim(chat_id, user, f"/claim {position_id}")
         return
 
     if data.startswith("fl:") or data.startswith("cp:"):

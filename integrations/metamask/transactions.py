@@ -265,9 +265,64 @@ def _explain_failed_redeem(w3, tx_hash: str, *, gas_limit: int) -> str:
     )
 
 
+def _revert_text_blobs(exc: Exception) -> list[str]:
+    blobs = [str(exc)]
+    for arg in getattr(exc, "args", ()) or ():
+        blobs.append(str(arg))
+        hex_fn = getattr(arg, "hex", None)
+        if callable(hex_fn):
+            try:
+                blobs.append(str(hex_fn()))
+            except Exception:  # noqa: BLE001
+                pass
+    data = getattr(exc, "data", None)
+    if data is not None:
+        blobs.append(str(data))
+        hex_fn = getattr(data, "hex", None)
+        if callable(hex_fn):
+            try:
+                blobs.append(str(hex_fn()))
+            except Exception:  # noqa: BLE001
+                pass
+    return blobs
+
+
+def _decode_solidity_error_string(exc: Exception) -> str:
+    """Turn Error(string) hex (0x08c379a0…) into the revert reason."""
+    import re
+
+    from eth_abi import decode
+
+    joined = " ".join(_revert_text_blobs(exc))
+    match = re.search(r"08c379a0([0-9a-fA-F]*)", joined, re.IGNORECASE)
+    if match:
+        hex_body = match.group(0)
+        if len(hex_body) % 2:
+            hex_body = hex_body[:-1]
+        try:
+            payload = bytes.fromhex(hex_body)
+            (message,) = decode(["string"], payload[4:])
+            if message:
+                return message
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            ascii_blob = bytes.fromhex(hex_body)
+            printable = "".join(chr(b) if 32 <= b < 127 else " " for b in ascii_blob)
+            collapsed = " ".join(printable.split())
+            if collapsed:
+                return collapsed
+        except Exception:  # noqa: BLE001
+            pass
+    return ""
+
+
 def _humanize_redeem_revert(exc: Exception) -> str:
+    from integrations.metamask.delegation import GRANT_MISSING_REDEEM
+
     raw = str(exc)
-    lowered = raw.lower()
+    decoded = _decode_solidity_error_string(exc)
+    lowered = f"{raw} {decoded}".lower()
     if "account does not exist" in lowered or "'0x02'" in raw or '"0x02"' in raw:
         return (
             "Shannon rejected a type-2 session transaction. DreamAgent now sends a "
@@ -277,13 +332,13 @@ def _humanize_redeem_revert(exc: Exception) -> str:
         return (
             "Session key is not the grant delegate. Re-sign DreamAgent at /agent/activate/."
         )
-    if "invaliderc1271" in lowered or "invalid eoa" in lowered or "signature" in lowered:
+    if "invaliderc1271" in lowered or "invalid eoa" in lowered:
         return (
             "Delegation signature does not match DelegationManager. "
             "Re-sign DreamAgent at /agent/activate/."
         )
-    if "method-not-allowed" in lowered:
-        return "This grant does not allow that DreamDEX method."
+    if "method-not-allowed" in lowered or "allowedmethodenforcer" in lowered:
+        return GRANT_MISSING_REDEEM
     if "value-too-high" in lowered:
         return "This grant cannot send native STT."
     if "expired-delegation" in lowered:
@@ -298,6 +353,8 @@ def _humanize_redeem_revert(exc: Exception) -> str:
             return dex
     except Exception:  # noqa: BLE001
         pass
-    if raw.strip():
+    if decoded.strip():
+        return decoded[:400]
+    if raw.strip() and "08c379a0" not in raw.lower():
         return raw[:400]
     return "DreamAgent redeem was rejected on-chain."

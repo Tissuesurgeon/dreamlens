@@ -226,6 +226,16 @@
       </button>
       {% endif %}
     </div>
+    {% if grant_health.needs_resign %}
+    <article class="dl-agent-callout" role="status">
+      <h3 class="dl-agent-callout__title">This grant cannot claim on Shannon</h3>
+      <p class="dl-agent-callout__copy">Re-sign DelegationManager at Activate so redeem is allowed — then claim here or send /claim in Telegram.</p>
+      {% if grant_health.reasons %}
+      <p class="dl-muted">{{ grant_health.reasons.0 }}</p>
+      {% endif %}
+      <a href="{% url 'dream_agent_activate' %}" class="dl-btn dl-btn--primary dl-btn--sm">Re-sign grant</a>
+    </article>
+    {% endif %}
     {% if agent_claimable %}
     <div class="dl-event-rows">
       {% for pos in agent_claimable %}

@@ -103,6 +103,7 @@ def validate_delegation(permission: DreamAgentPermission) -> tuple[bool, list[st
 
 def grant_health(user) -> dict[str, Any]:
     """What the agent pages should show about the current grant + session key."""
+    from integrations.metamask.delegation import GRANT_MISSING_REDEEM, grant_allows_redeem
     from integrations.metamask.transactions import SessionKeyError, get_session_address
 
     session = ""
@@ -123,6 +124,11 @@ def grant_health(user) -> dict[str, Any]:
     if perm:
         ok, reasons = validate_delegation(perm)
         needs_resign = not ok
+        blob = perm.signed_delegation_json or {}
+        if not grant_allows_redeem(blob):
+            needs_resign = True
+            if GRANT_MISSING_REDEEM not in reasons:
+                reasons = list(reasons) + [GRANT_MISSING_REDEEM]
     elif agent:
         needs_resign = True
         reasons = ["Sign a DelegationManager grant at /agent/activate/."]

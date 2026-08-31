@@ -485,6 +485,7 @@ def portfolio(request):
                 "copy_relationships": [],
                 "pending_copy_count": 0,
                 "agent_can_auto_copy": False,
+                "grant_health": {"needs_resign": False, "reasons": []},
             },
         )
 
@@ -617,6 +618,7 @@ def portfolio(request):
             "copy_relationships": copy_relationships,
             "pending_copy_count": pending_copy_count,
             "agent_can_auto_copy": agent_can_auto_copy,
+            "grant_health": dream_agent_service.grant_health(request.user),
         },
     )
 

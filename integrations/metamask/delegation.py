@@ -75,6 +75,92 @@ def _selector(signature: str) -> bytes:
     return function_signature_to_4byte_selector(signature)
 
 
+REDEEM_METHOD_SIGNATURE = "redeem(uint32,bytes32,bytes32,uint8,uint256)"
+ALLOWED_CALL_SELECTORS = (
+    _selector(PLACE_BINARY_ORDER_SELECTOR),
+    _selector("approve(address,uint256)"),
+    _selector("setOperator(address,bool)"),
+    _selector(REDEEM_METHOD_SIGNATURE),
+    _selector("finalizeMarket(bytes32)"),
+    _selector("pokeOracle(uint256)"),
+    _selector("syncSettlement(bytes32)"),
+)
+REDEEM_SELECTOR = ALLOWED_CALL_SELECTORS[3]
+GRANT_MISSING_REDEEM = (
+    "This DreamAgent grant cannot claim winnings. "
+    "Re-sign at /agent/activate/ so redeem is allowed, then try again."
+)
+
+
+def _caveat_entries(signed_delegation: dict[str, Any]) -> list[dict[str, Any]]:
+    caveats = signed_delegation.get("caveats") or []
+    if isinstance(caveats, list) and caveats:
+        return [c for c in caveats if isinstance(c, dict)]
+    typed = signed_delegation.get("typed_data") or {}
+    if not isinstance(typed, dict):
+        return []
+    message = typed.get("message") or {}
+    if not isinstance(message, dict):
+        return []
+    nested = message.get("caveats") or []
+    return [c for c in nested if isinstance(c, dict)] if isinstance(nested, list) else []
+
+
+def allowed_method_selectors(signed_delegation: dict[str, Any]) -> set[bytes] | None:
+    """Packed 4-byte selectors from AllowedMethods terms, or None if unrestricted."""
+    from django.conf import settings
+
+    methods_enforcer = (
+        getattr(settings, "METAMASK_ALLOWED_METHODS_ENFORCER", "") or ""
+    ).lower()
+    found: set[bytes] | None = None
+    for caveat in _caveat_entries(signed_delegation):
+        terms = str(caveat.get("terms") or "")
+        if not terms or terms == "0x":
+            continue
+        try:
+            raw = _hex_to_bytes(terms)
+        except ValueError:
+            continue
+        if not raw or len(raw) % 4:
+            continue
+        packed = {raw[i : i + 4] for i in range(0, len(raw), 4)}
+        enforcer = str(caveat.get("enforcer") or "").lower()
+        if methods_enforcer and enforcer == methods_enforcer:
+            return packed
+        # valueLte and timestamp terms are 32 bytes; AllowedMethods is 4*N (not 32).
+        if len(raw) == 32:
+            continue
+        if found is None:
+            found = packed
+    return found
+
+
+def calldata_selector(data: str) -> bytes:
+    try:
+        raw = _hex_to_bytes(data or "0x")
+    except ValueError:
+        return b""
+    return raw[:4] if len(raw) >= 4 else b""
+
+
+def grant_allows_calldata(signed_delegation: dict[str, Any], data: str) -> bool:
+    allowed = allowed_method_selectors(signed_delegation)
+    if allowed is None:
+        return True
+    selector = calldata_selector(data)
+    if not selector:
+        return False
+    return selector in allowed
+
+
+def grant_allows_redeem(signed_delegation: dict[str, Any]) -> bool:
+    allowed = allowed_method_selectors(signed_delegation)
+    if allowed is None:
+        return True
+    return REDEEM_SELECTOR in allowed
+
+
 def function_call_caveats(*, expires_at: int) -> list[dict[str, str]]:
     """AllowedMethods + valueLte(0) + timestamp — matches FunctionCall scope.
 
@@ -90,16 +176,7 @@ def function_call_caveats(*, expires_at: int) -> list[dict[str, str]]:
     caveats: list[dict[str, str]] = []
     if methods:
         # AllowedMethodsEnforcer.getTermsInfo reads packed 4-byte selectors, not ABI arrays.
-        selectors = [
-            _selector(PLACE_BINARY_ORDER_SELECTOR),
-            _selector("approve(address,uint256)"),
-            _selector("setOperator(address,bool)"),
-            _selector("redeem(uint32,bytes32,bytes32,uint8,uint256)"),
-            _selector("finalizeMarket(bytes32)"),
-            _selector("pokeOracle(uint256)"),
-            _selector("syncSettlement(bytes32)"),
-        ]
-        terms = "0x" + b"".join(selectors).hex()
+        terms = "0x" + b"".join(ALLOWED_CALL_SELECTORS).hex()
         caveats.append(
             {
                 "enforcer": to_checksum_address(methods),

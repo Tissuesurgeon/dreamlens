@@ -247,6 +247,49 @@ def test_humanize_somnia_type2_reject():
     assert "legacy" in msg.lower() or "session" in msg.lower()
 
 
+def test_humanize_allowed_method_hex_error():
+    from eth_abi import encode
+    from integrations.metamask.delegation import GRANT_MISSING_REDEEM
+    from integrations.metamask.transactions import _humanize_redeem_revert
+
+    payload = encode(["string"], ["AllowedMethodEnforcer:method-not-allowed"])
+    hex_data = "0x08c379a0" + payload.hex()
+    msg = _humanize_redeem_revert(Exception(("execution reverted", hex_data)))
+    assert msg == GRANT_MISSING_REDEEM
+    assert "08c379a0" not in msg.lower()
+
+
+def test_grant_allows_redeem_detects_old_allowed_methods(settings):
+    from eth_utils import function_signature_to_4byte_selector
+    from integrations.metamask import PLACE_BINARY_ORDER_SELECTOR
+    from integrations.metamask.delegation import (
+        REDEEM_SELECTOR,
+        grant_allows_calldata,
+        grant_allows_redeem,
+    )
+
+    packed = (
+        function_signature_to_4byte_selector(PLACE_BINARY_ORDER_SELECTOR)
+        + function_signature_to_4byte_selector("approve(address,uint256)")
+    )
+    blob = {
+        "caveats": [
+            {
+                "enforcer": settings.METAMASK_ALLOWED_METHODS_ENFORCER,
+                "terms": "0x" + packed.hex(),
+                "args": "0x",
+            }
+        ]
+    }
+    assert grant_allows_redeem(blob) is False
+    assert grant_allows_calldata(blob, "0x" + REDEEM_SELECTOR.hex()) is False
+    approve = function_signature_to_4byte_selector("approve(address,uint256)")
+    assert grant_allows_calldata(blob, "0x" + approve.hex() + "00" * 64) is True
+    poke = function_signature_to_4byte_selector("pokeOracle(uint256)")
+    assert grant_allows_calldata(blob, "0x" + poke.hex()) is False
+    assert grant_allows_redeem({"caveats": []}) is True
+
+
 def test_wrap_owner_execute_targets_smart_account():
     from integrations.dreamdex.types import UnsignedTxDTO
     from integrations.metamask.execution import wrap_owner_execute

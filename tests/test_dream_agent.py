@@ -148,6 +148,31 @@ def test_grant_health_flags_stale_caveat_args(running_agent, user, settings):
 
 
 @pytest.mark.django_db
+def test_grant_health_flags_grant_without_redeem(running_agent, user, settings):
+    from eth_utils import function_signature_to_4byte_selector
+    from integrations.metamask import PLACE_BINARY_ORDER_SELECTOR
+
+    perm = DreamAgentPermission.objects.get(agent=running_agent)
+    blob = dict(perm.signed_delegation_json or {})
+    packed = (
+        function_signature_to_4byte_selector(PLACE_BINARY_ORDER_SELECTOR)
+        + function_signature_to_4byte_selector("approve(address,uint256)")
+    )
+    blob["caveats"] = [
+        {
+            "enforcer": settings.METAMASK_ALLOWED_METHODS_ENFORCER,
+            "terms": "0x" + packed.hex(),
+            "args": "0x",
+        }
+    ]
+    perm.signed_delegation_json = blob
+    perm.save(update_fields=["signed_delegation_json"])
+    health = dream_agent_service.grant_health(user)
+    assert health["needs_resign"] is True
+    assert any("redeem" in r.lower() for r in health["reasons"])
+
+
+@pytest.mark.django_db
 def test_authorized_grant_is_tradable_without_autonomous_copy(
     user, smart_account, trader, sample_event, settings
 ):
@@ -213,13 +238,20 @@ def test_grant_typed_data_is_delegation_manager_payload():
         assert "args" not in caveat
         assert set(caveat) == {"enforcer", "terms"}
     methods = next(
-        (c for c in typed["message"]["caveats"] if len(c["terms"]) == 18),
-        typed["message"]["caveats"][0] if typed["message"]["caveats"] else None,
+        (
+            c
+            for c in typed["message"]["caveats"]
+            if c["terms"].startswith("0x")
+            and len(bytes.fromhex(c["terms"][2:])) not in (0, 32)
+        ),
+        None,
     )
-    if methods:
-        assert methods["terms"].startswith("0x")
-        raw = bytes.fromhex(methods["terms"][2:])
-        assert len(raw) % 4 == 0
+    assert methods is not None
+    raw = bytes.fromhex(methods["terms"][2:])
+    assert len(raw) == 28  # seven 4-byte selectors
+    from integrations.metamask.delegation import REDEEM_SELECTOR
+
+    assert REDEEM_SELECTOR in {raw[i : i + 4] for i in range(0, len(raw), 4)}
     assert typed["dreamlens"]["permission"] == "TRADE_EVENT_CONTRACT"
     assert isinstance(typed["message"]["salt"], int)
 

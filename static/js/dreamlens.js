@@ -2600,7 +2600,7 @@
       window.location.reload();
     } catch (err) {
       console.warn("DreamAgent claim failed", err);
-      alert(err.message || "DreamAgent could not claim.");
+      toast(err.message || "DreamAgent could not claim.", "error");
       btn.disabled = false;
       btn.textContent = original;
     }
@@ -2696,7 +2696,7 @@
       window.location.reload();
     } catch (err) {
       console.warn("Claim failed", err);
-      alert(err.message || "Claim failed. Check MetaMask and try again.");
+      toast(err.message || "Claim failed. Check MetaMask and try again.", "error");
       btn.disabled = false;
       btn.textContent = original;
     }

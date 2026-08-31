@@ -579,6 +579,59 @@ def test_agent_claim_all_redeems_smart_account_wins(
 
 
 @pytest.mark.django_db
+def test_agent_claim_refuses_grant_without_redeem(
+    client, user, wallet, sample_event, mock_adapter, settings
+):
+    from eth_utils import function_signature_to_4byte_selector
+    from integrations.metamask import PLACE_BINARY_ORDER_SELECTOR
+    from services import smart_account_service
+    from services.portfolio_service import refresh_portfolio
+
+    settings.MOCK_SMART_ACCOUNT = True
+    sa = smart_account_service.create_account(user, owner_address=wallet.address)
+    smart_account_service.mark_funded(sa, amount=Decimal("50"))
+    packed = (
+        function_signature_to_4byte_selector(PLACE_BINARY_ORDER_SELECTOR)
+        + function_signature_to_4byte_selector("approve(address,uint256)")
+    )
+    smart_account_service.grant_agent(
+        user,
+        max_trade_amount=Decimal("10"),
+        max_daily_volume=Decimal("50"),
+        expires_in_days=30,
+        min_copy_score=50,
+        signed_delegation={
+            "delegate": "0xSession00000000000000000000000000000001",
+            "delegator": sa.address,
+            "authority": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "caveats": [
+                {
+                    "enforcer": settings.METAMASK_ALLOWED_METHODS_ENFORCER,
+                    "terms": "0x" + packed.hex(),
+                    "args": "0x",
+                }
+            ],
+            "salt": "0x1",
+            "signature": "0xmockdeadbeef",
+            "mock": True,
+        },
+        activate=True,
+    )
+    _seed_user_fill(mock_adapter, sample_event, taker=sa.address)
+    mock_adapter.simulate_settlement(sample_event.external_id, "YES")
+    refresh_portfolio(user)
+    client.force_login(user)
+    res = client.post("/api/portfolio/claim/", data={}, content_type="application/json")
+    assert res.status_code == 400
+    detail = res.json()["detail"].lower()
+    assert "redeem" in detail
+    assert "activate" in detail
+    page = client.get("/portfolio/")
+    assert b"Re-sign grant" in page.content
+    assert b"cannot claim on Shannon" in page.content
+
+
+@pytest.mark.django_db
 def test_event_detail_shows_claim_on_won_position(
     client, user, wallet, sample_event, mock_adapter
 ):

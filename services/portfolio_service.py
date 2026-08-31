@@ -877,17 +877,38 @@ def _claim_via_session_key(
     blob = permission.signed_delegation_json or {}
     if not blob:
         return None
+    from integrations.metamask.delegation import (
+        GRANT_MISSING_REDEEM,
+        grant_allows_calldata,
+        grant_allows_redeem,
+    )
+
+    if not grant_allows_redeem(blob):
+        raise PortfolioError(GRANT_MISSING_REDEEM)
+    approval_allowed = (
+        approval
+        if approval
+        and approval.to
+        and approval.data
+        and grant_allows_calldata(blob, approval.data)
+        else None
+    )
     sa = agent.smart_account
     try:
         delegated = build_delegated_trade_execution(
             signed_delegation=blob,
             dreamdex_tx=unsigned,
             chain_id=sa.chain_id,
-            approval_tx=approval,
+            approval_tx=approval_allowed,
         )
         extra_pre = []
         for step in (poke_tx, finalize_tx, sync_tx):
-            if step and step.to and step.data:
+            if (
+                step
+                and step.to
+                and step.data
+                and grant_allows_calldata(blob, step.data)
+            ):
                 extra_pre.append((step.to, int(step.value or 0), step.data))
         if extra_pre:
             from dataclasses import replace
@@ -928,10 +949,15 @@ def _claim_via_session_key(
             "unsigned_tx": None,
             "approval_tx": None,
         }
+    except PortfolioError:
+        raise
     except SessionKeyError as exc:
         logger.warning("session-key claim failed position=%s: %s", position.pk, exc)
+        text = str(exc).rstrip(".")
+        if "re-sign" in text.lower() or "activate" in text.lower():
+            raise PortfolioError(text + ".") from exc
         raise PortfolioError(
-            str(exc).rstrip(".")
+            text
             + ". If this grant is older, re-sign DreamAgent at /agent/activate/ "
             "so it can claim winnings."
         ) from exc

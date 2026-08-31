@@ -353,3 +353,4 @@ def test_claim_js_uses_sdk_gas_ceiling():
     assert "prepared.claimed" in js
     assert "/api/portfolio/claim/" in js
     assert "data-claim-agent" in js
+    assert "toast(err.message" in js

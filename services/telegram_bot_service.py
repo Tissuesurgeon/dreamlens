@@ -13,20 +13,24 @@ from django.utils import timezone
 from apps.dreamcopy.models import CopyRelationship
 from apps.events.models import EventContract
 from integrations.telegram.client import (
-    TelegramError,
     answer_callback,
     bot_url,
-    explorer_tx_url,
+    explorer_tx_anchor,
+    html_escape,
+    html_link,
     inline_keyboard,
-    send_message,
+    send_html,
 )
 from services.ai_service import analyze_event, parse_intent
 from services.event_copy import (
+    SCORE_DISCLAIMER,
     as_cents,
     event_question,
     format_collateral,
-    format_window_line,
     format_event_card_text,
+    format_payout_block,
+    format_window_line,
+    watching_brief,
     yes_no_outcomes,
 )
 from services.copy_service import CopyError, create_copy_relationship
@@ -50,17 +54,47 @@ from services.trader_service import list_active_traders
 logger = logging.getLogger("dreamlens.telegram.bot")
 
 HELP = (
-    "DreamLens bot — DreamAgent on Somnia.\n"
-    "/start /help /connect — link this chat\n"
-    "/events /markets — live events\n"
-    "/analyze [id|BTC|ETH] — understand a market\n"
-    "/trade <id> YES|NO <amount> — DreamAgent places it (no MetaMask)\n"
-    "/agent /status /balance — agent + Smart Account\n"
-    "/positions /activity — portfolio and evaluations\n"
-    "/pause /resume — stop or start autonomous copy\n"
-    "/traders /follow /copy /following — Smart Copy\n"
-    "Or say: Buy $5 YES on BTC"
+    "<b>DreamLens</b> — DreamAgent on Somnia.\n"
+    "This chat is an interface. Trades and claims use your Smart Account.\n\n"
+    "<b>Look</b>\n"
+    "/events — live Event Contracts\n"
+    "/analyze 12 — reading on a window\n\n"
+    "<b>Trade</b>\n"
+    "/trade 12 YES 5 — DreamAgent buys, no MetaMask\n"
+    "Or say: Buy $5 YES on BTC\n\n"
+    "<b>You</b>\n"
+    "/agent · /positions · /balance\n"
+    "/pause · /resume — Smart Copy\n\n"
+    "<b>Copy</b>\n"
+    "/traders · /follow · /copy · /following"
 )
+
+_STATUS_LABEL = {
+    "RUNNING": "Active",
+    "PAUSED": "Paused",
+    "AUTHORIZED": "Ready — copy off",
+    "EXPIRED": "Grant expired",
+    "REVOKED": "Revoked",
+    "CONFIGURED": "Needs grant",
+    "FUNDED": "Needs grant",
+    "CREATED": "Needs grant",
+}
+
+_RESULT_LABEL = {
+    "open": "Open",
+    "won": "Won",
+    "void": "Void",
+    "lost": "Lost",
+    "settling": "Settling",
+    "claimed": "Claimed",
+    "closed": "Closed",
+}
+
+_DECISION_LABEL = {
+    "COPY": "Copied",
+    "SKIPPED": "Skipped",
+    "FAILED": "Failed",
+}
 
 TRADE_TTL = 300
 _TG_TRADES_KEY = "tg_trades"
@@ -81,6 +115,45 @@ LIMIT_TEMPLATE = (
     "Your DreamAgent limit is {max} per trade. I cannot execute {asked}. "
     "Change limits on the Agent page with MetaMask."
 )
+
+
+def _h(text) -> str:
+    return html_escape(text)
+
+
+def _send(chat_id: int, text: str, *, reply_markup: dict | None = None) -> None:
+    send_html(chat_id, text, reply_markup=reply_markup)
+
+
+def _activate_url() -> str:
+    return f"{site_origin()}/agent/activate/"
+
+
+def _portfolio_url() -> str:
+    return f"{site_origin()}/portfolio/"
+
+
+def _nav_keyboard():
+    return inline_keyboard(
+        [
+            [("Events", "go:events"), ("Positions", "go:pos")],
+            [("Agent", "go:agent"), ("Traders", "go:traders")],
+            [("Help", "go:help")],
+        ]
+    )
+
+
+def _agent_keyboard(agent) -> dict:
+    from apps.agents.models import DreamAgent
+
+    rows: list[list[tuple[str, str]]] = []
+    if agent and agent.status == DreamAgent.Status.RUNNING:
+        rows.append([("Pause copy", "go:pause")])
+    elif agent and agent.status == DreamAgent.Status.PAUSED:
+        rows.append([("Resume copy", "go:resume")])
+    rows.append([("Positions", "go:pos"), ("Activity", "go:activity")])
+    rows.append([("Events", "go:events")])
+    return inline_keyboard(rows)
 
 
 def handle_update(update: dict[str, Any]) -> None:
@@ -137,7 +210,7 @@ def _handle_message(chat_id: int, text: str) -> None:
     elif cmd == "/trade":
         _cmd_trade(chat_id, user, text)
     elif cmd.startswith("/"):
-        send_message(chat_id, "Unknown command.\n" + HELP)
+        _send(chat_id, "I didn’t catch that.\n\n" + HELP, reply_markup=_nav_keyboard())
     else:
         _handle_natural_language(chat_id, user, text)
 
@@ -145,25 +218,21 @@ def _handle_message(chat_id: int, text: str) -> None:
 def _require_user(chat_id: int):
     link = active_link_for_chat(chat_id)
     if not link:
-        origin = site_origin()
-        send_message(
+        bot = bot_url()
+        bot_bit = html_link(bot, "the DreamLens bot") if bot else "the DreamLens bot"
+        _send(
             chat_id,
-            "This chat is not linked yet.\n"
-            f"1. Open {bot_url() or 'the DreamLens bot'} (/connect) and note your chat ID: {chat_id}\n"
-            f"2. Paste it on {origin}/portfolio/\n"
-            "3. Tap Confirm here.",
+            "This chat is not linked yet.\n\n"
+            f"1. Open {bot_bit} and tap Start\n"
+            f"2. Copy this chat ID: <code>{chat_id}</code>\n"
+            f"3. Paste it on {html_link(_portfolio_url(), 'Portfolio')}, then tap Confirm here.",
         )
         return None
     return link.user
 
 
 def _linked_keyboard():
-    return inline_keyboard(
-        [
-            [("Events", "go:events"), ("Agent", "go:agent")],
-            [("Positions", "go:pos"), ("Traders", "go:traders")],
-        ]
-    )
+    return _nav_keyboard()
 
 
 def _cmd_start(chat_id: int, text: str, *, connect: bool = False) -> None:
@@ -172,27 +241,25 @@ def _cmd_start(chat_id: int, text: str, *, connect: bool = False) -> None:
     if payload.startswith("ok_"):
         try:
             confirm_link(chat_id=chat_id, token=payload[3:])
-            send_message(
+            _send(
                 chat_id,
-                "Telegram is linked to your DreamLens wallet.\n" + HELP,
+                "<b>Telegram is linked</b> to your DreamLens wallet.\n\n" + HELP,
                 reply_markup=_linked_keyboard(),
             )
         except TelegramLinkError as exc:
-            send_message(chat_id, str(exc))
+            _send(chat_id, _h(str(exc)))
         return
-    link = active_link_for_chat(chat_id)
-    origin = site_origin()
-    if link:
-        send_message(
+    if active_link_for_chat(chat_id):
+        _send(
             chat_id,
-            f"Linked to DreamLens. Chat ID: {chat_id}\n" + HELP,
+            f"<b>Linked</b> to DreamLens. Chat ID <code>{chat_id}</code>\n\n" + HELP,
             reply_markup=_linked_keyboard(),
         )
         return
-    send_message(
+    _send(
         chat_id,
-        f"Your Telegram chat ID is {chat_id}.\n"
-        f"Paste it on {origin}/portfolio/ then tap Confirm in this chat.\n\n"
+        f"Your Telegram chat ID is <code>{chat_id}</code>.\n"
+        f"Paste it on {html_link(_portfolio_url(), 'Portfolio')}, then tap Confirm in this chat.\n\n"
         + HELP,
     )
 
@@ -214,10 +281,11 @@ def _cmd_agent(chat_id: int, user) -> None:
 
     agent = _user_agent(user)
     if not agent:
-        send_message(
+        _send(
             chat_id,
-            "No DreamAgent on this wallet. Activate it at "
-            f"{site_origin()}/agent/activate/ — Telegram cannot sign MetaMask.",
+            "No DreamAgent on this wallet. "
+            f"{html_link(_activate_url(), 'Activate DreamAgent')} in the browser — "
+            "Telegram cannot sign MetaMask.",
         )
         return
     perf = agent_performance(agent)
@@ -233,24 +301,24 @@ def _cmd_agent(chat_id: int, user) -> None:
     perm = perf.get("permission") or {}
     from apps.agents.models import DreamAgent
 
-    copy_on = "ON" if agent.status == DreamAgent.Status.RUNNING else "OFF"
-    send_message(
-        chat_id,
-        f"{agent.name}\n"
-        f"Status: {agent.status}\n"
-        f"Smart Copy: {copy_on}\n"
-        f"Collateral: {coll}\n"
-        f"Gas: {native} {native_sym}\n"
-        f"Copied / skipped: {perf.get('trades_copied', 0)} / {perf.get('trades_skipped', 0)}\n"
-        f"P&L: {format_collateral(perf.get('pnl')) if perf.get('pnl') not in (None, '—') else '—'}\n"
-        f"Max trade: {format_collateral(perm.get('max_trade_amount'), compact=True)} · daily {format_collateral(perm.get('max_daily_volume'), compact=True)}",
-        reply_markup=inline_keyboard(
-            [
-                [("Pause", "go:pause"), ("Resume", "go:resume")],
-                [("Positions", "go:pos"), ("Activity", "go:activity")],
-            ]
-        ),
-    )
+    copy_on = "On" if agent.status == DreamAgent.Status.RUNNING else "Off"
+    status = _STATUS_LABEL.get(agent.status, agent.status)
+    pnl = perf.get("pnl")
+    pnl_line = format_collateral(pnl) if pnl not in (None, "—") else "—"
+    lines = [
+        f"<b>{_h(agent.name)}</b>",
+        f"{_h(status)} · Smart Copy {copy_on}",
+        "",
+        f"Collateral  {_h(coll)}",
+        f"Gas  {_h(native)} {_h(native_sym)}",
+        f"Copied / skipped  {perf.get('trades_copied', 0)} / {perf.get('trades_skipped', 0)}",
+        f"{_h('Today’s result')}  {_h(pnl_line)}",
+        f"Max {_h(format_collateral(perm.get('max_trade_amount'), compact=True))} per trade · "
+        f"{_h(format_collateral(perm.get('max_daily_volume'), compact=True))} / day",
+    ]
+    if agent.status == DreamAgent.Status.RUNNING:
+        lines.append("\nDreamAgent claims Smart Account wins when a window settles.")
+    _send(chat_id, "\n".join(lines), reply_markup=_agent_keyboard(agent))
 
 
 def _cmd_balance(chat_id: int, user) -> None:
@@ -258,23 +326,26 @@ def _cmd_balance(chat_id: int, user) -> None:
 
     agent = _user_agent(user)
     if not agent:
-        send_message(
+        _send(
             chat_id,
-            "No Smart Account yet. Activate DreamAgent at "
-            f"{site_origin()}/agent/activate/",
+            "No Smart Account yet. "
+            f"{html_link(_activate_url(), 'Activate DreamAgent')} in the browser.",
         )
         return
     try:
         bal = smart_account_service.get_balance(agent.smart_account)
     except Exception:
         logger.warning("telegram balance failed", exc_info=True)
-        send_message(chat_id, "Could not read on-chain balances right now.")
+        _send(chat_id, "Could not read on-chain balances right now.")
         return
-    send_message(
+    addr = agent.smart_account.address
+    _send(
         chat_id,
-        f"Collateral: {bal.get('collateral', '—')} {bal.get('collateral_symbol', '')}\n"
-        f"Gas: {bal.get('native', '—')} {bal.get('native_symbol', 'STT')}\n"
-        f"{agent.smart_account.address}",
+        "<b>Smart Account</b>\n"
+        f"Collateral  {_h(bal.get('collateral', '—'))} {_h(bal.get('collateral_symbol', ''))}\n"
+        f"Gas  {_h(bal.get('native', '—'))} {_h(bal.get('native_symbol', 'STT'))}\n"
+        f"<code>{_h(addr)}</code>",
+        reply_markup=_nav_keyboard(),
     )
 
 
@@ -293,22 +364,39 @@ def _cmd_positions(chat_id: int, user) -> None:
     )
     trades = list_recent_trades(user, limit=8)
     if not positions and not trades:
-        send_message(chat_id, "No positions yet. Open an event on Discover or /events.")
+        _send(
+            chat_id,
+            "No positions yet. Open a window on Discover or send /events.",
+            reply_markup=_nav_keyboard(),
+        )
         return
-    lines = ["Positions"]
+    lines = ["<b>Positions</b>"]
     for pos in positions:
-        label = (pos.result or "open").upper()
-        result = f" · Today's result {pos.pnl}" if pos.pnl is not None else ""
+        result = pos.result or "open"
+        label = _RESULT_LABEL.get(result, result)
+        amount = pos.amount
+        amount_s = f"{amount:g}" if amount is not None else ""
+        q = event_question(pos.event)
+        extra = ""
+        if getattr(pos, "claimable", False):
+            extra = " · claim on Portfolio" if result in ("won", "void") else extra
+        elif result == "won":
+            extra = " · DreamAgent claims Smart Account wins"
+        pnl = ""
+        if pos.pnl is not None:
+            pnl = f"\nToday’s result {_h(format_collateral(pos.pnl))}"
         lines.append(
-            f"{label} {pos.outcome.outcome_type} {pos.amount} · {event_question(pos.event)[:72]}{result}"
+            f"{_h(label)} {_h(pos.outcome.outcome_type)} {_h(amount_s)}"
+            f"{_h(extra)}\n{_h(q)}{pnl}"
         )
     if trades:
-        lines.append("Trades")
+        lines.append("\n<b>Trades</b>")
         for trade in trades:
             lines.append(
-                f"{trade.outcome.outcome_type} {as_cents(trade.entry_price)} · {event_question(trade.event)[:64]}"
+                f"{_h(trade.outcome.outcome_type)} {_h(as_cents(trade.entry_price))}"
+                f" · {_h(event_question(trade.event))}"
             )
-    send_message(chat_id, "\n".join(lines))
+    _send(chat_id, "\n\n".join(lines), reply_markup=_nav_keyboard())
 
 
 def _cmd_activity(chat_id: int, user) -> None:
@@ -316,23 +404,25 @@ def _cmd_activity(chat_id: int, user) -> None:
 
     agent = _user_agent(user)
     if not agent:
-        send_message(chat_id, "No DreamAgent evaluations yet.")
+        _send(chat_id, "No DreamAgent evaluations yet.", reply_markup=_nav_keyboard())
         return
     rows = list(
         AgentEvaluation.objects.filter(agent=agent).order_by("-created_at")[:10]
     )
     if not rows:
-        send_message(chat_id, "No agent activity yet.")
+        _send(chat_id, "No agent activity yet.", reply_markup=_nav_keyboard())
         return
-    lines = ["Agent activity"]
+    lines = ["<b>Agent activity</b>"]
     for ev in rows:
         title = ev.event_title or "event"
-        amt = f" {format_collateral(ev.amount, compact=True)}" if ev.amount is not None else ""
-        line = f"{ev.decision}{amt} · {title[:40]}"
-        if ev.tx_hash:
-            line += f"\n{explorer_tx_url(ev.tx_hash)}"
+        amt = f" {_h(format_collateral(ev.amount, compact=True))}" if ev.amount is not None else ""
+        decision = _DECISION_LABEL.get(ev.decision, ev.decision)
+        line = f"{_h(decision)}{amt} · {_h(title)}"
+        anchor = explorer_tx_anchor(ev.tx_hash or "")
+        if anchor:
+            line += f"\n{anchor}"
         lines.append(line)
-    send_message(chat_id, "\n".join(lines))
+    _send(chat_id, "\n\n".join(lines), reply_markup=_nav_keyboard())
 
 
 def _cmd_pause_resume(chat_id: int, user, *, pause: bool) -> None:
@@ -343,41 +433,57 @@ def _cmd_pause_resume(chat_id: int, user, *, pause: bool) -> None:
     try:
         agent = set_agent_status(user, target)
     except SmartAccountError as exc:
-        send_message(chat_id, str(exc))
+        _send(chat_id, _h(str(exc)))
         return
-    verb = "paused" if pause else "running"
-    send_message(chat_id, f"{agent.name} is {verb}.")
+    if pause:
+        _send(
+            chat_id,
+            f"<b>{_h(agent.name)}</b> is paused.\n"
+            "Smart Copy is off. Send /resume, then /trade.",
+            reply_markup=_agent_keyboard(agent),
+        )
+        return
+    _send(
+        chat_id,
+        f"<b>{_h(agent.name)}</b> is running.\n"
+        "Smart Copy is on. DreamAgent will claim Smart Account wins when windows settle.",
+        reply_markup=_agent_keyboard(agent),
+    )
 
 
 def _cmd_traders(chat_id: int) -> None:
     traders = list_active_traders(limit=12)
     if not traders:
-        send_message(chat_id, "No on-chain traders indexed yet. Try again in a minute.")
+        _send(chat_id, "No on-chain traders indexed yet. Try again in a minute.")
         return
-    lines = ["Active on-chain traders:"]
+    lines = ["<b>On-chain traders</b>"]
     rows = []
-    for t in traders:
+    for t in traders[:8]:
         wr = t.win_rate or Decimal("0")
         wr_pct = wr if wr > 1 else wr * 100
-        name = t.display_name or t.wallet_address[:10]
+        name = t.display_name or (t.wallet_address[:8] + "…")
+        vol = format_collateral(t.total_volume, compact=True)
         lines.append(
-            f"#{t.pk} {name}  score {t.trader_score}  WR {wr_pct:.0f}%  vol {t.total_volume}"
+            f"<b>#{t.pk} {_h(name)}</b>\n"
+            f"Score {int(t.trader_score or 0)} · {wr_pct:.0f}% observed · vol {_h(vol)}"
         )
+        short = (name[:14] + "…") if len(name) > 15 else name
         rows.append(
             [
-                (f"Follow {t.pk}", f"fl:{t.pk}"),
-                (f"Copy {t.pk}", f"cp:{t.pk}"),
+                (f"Follow {short}", f"fl:{t.pk}"),
+                (f"Copy {short}", f"cp:{t.pk}"),
             ]
         )
-    send_message(chat_id, "\n".join(lines), reply_markup=inline_keyboard(rows))
+    _send(chat_id, "\n\n".join(lines), reply_markup=inline_keyboard(rows))
 
 
 def _cmd_follow(chat_id: int, user, text: str, *, auto: bool) -> None:
     parts = text.split()
     if len(parts) < 2:
-        send_message(
+        _send(
             chat_id,
-            "Usage: /follow <trader_id|0xaddress>  or  /copy <trader_id|0xaddress>",
+            "Usage: /follow 12  or  /copy 12\n"
+            "You can also paste a 0x wallet. /traders lists IDs.",
         )
         return
     arg = parts[1]
@@ -385,9 +491,10 @@ def _cmd_follow(chat_id: int, user, text: str, *, auto: bool) -> None:
         _do_follow(chat_id, user, auto=auto, wallet_address=arg)
         return
     if not arg.isdigit():
-        send_message(
+        _send(
             chat_id,
-            "Usage: /follow <trader_id|0xaddress>  or  /copy <trader_id|0xaddress>",
+            "Usage: /follow 12  or  /copy 12\n"
+            "You can also paste a 0x wallet. /traders lists IDs.",
         )
         return
     _do_follow(chat_id, user, int(arg), auto=auto)
@@ -414,30 +521,41 @@ def _do_follow(
         payload["wallet_address"] = wallet_address
     elif trader_id:
         if not TraderProfile.objects.filter(pk=trader_id).exists():
-            send_message(chat_id, f"Trader {trader_id} not found.")
+            _send(chat_id, f"Trader {trader_id} not found.")
             return
         payload["trader_id"] = trader_id
     else:
-        send_message(chat_id, "Trader not found.")
+        _send(chat_id, "Trader not found.")
         return
     running = get_running_agent(user) is not None
     payload["auto_execute"] = bool(auto and running)
     try:
         rel = create_copy_relationship(user, payload)
     except (CopyError, Exception) as exc:
-        send_message(chat_id, str(exc))
+        _send(chat_id, _h(str(exc)))
         return
     name = rel.trader.display_name or rel.trader.wallet_address
     label = f"#{rel.trader_id}"
     if auto and not running:
-        send_message(
+        _send(
             chat_id,
-            f"Following {name} ({label}). Auto-copy needs a RUNNING DreamAgent — "
-            f"activate at {site_origin()}/agent/activate/",
+            f"Following <b>{_h(name)}</b> ({_h(label)}).\n"
+            "Auto-copy needs an Active DreamAgent — "
+            f"{html_link(_activate_url(), 'Activate DreamAgent')}.",
         )
         return
-    mode = "Smart Copy (auto)" if payload["auto_execute"] else "Follow"
-    send_message(chat_id, f"{mode}: {name} ({label}).")
+    if payload["auto_execute"]:
+        _send(
+            chat_id,
+            f"<b>Smart Copy is on</b> for {_h(name)} ({_h(label)}).\n"
+            "DreamAgent will copy when the score clears your limit.",
+        )
+        return
+    _send(
+        chat_id,
+        f"<b>Following</b> {_h(name)} ({_h(label)}).\n"
+        "You’ll get a Telegram alert when they trade. DreamAgent will not copy until you /copy or turn Smart Copy on.",
+    )
 
 
 def _cmd_following(chat_id: int, user) -> None:
@@ -447,14 +565,18 @@ def _cmd_following(chat_id: int, user) -> None:
         .order_by("-updated_at")[:15]
     )
     if not rows:
-        send_message(chat_id, "You are not following anyone. /traders")
+        _send(
+            chat_id,
+            "You are not following anyone yet. Send /traders to pick someone.",
+            reply_markup=_nav_keyboard(),
+        )
         return
-    lines = ["Following:"]
+    lines = ["<b>Following</b>"]
     for rel in rows:
         name = rel.trader.display_name or rel.trader.wallet_address
-        auto = "auto" if rel.auto_execute else "review"
-        lines.append(f"#{rel.trader_id} {name} · {rel.copy_mode} · {auto}")
-    send_message(chat_id, "\n".join(lines))
+        auto = "Smart Copy" if rel.auto_execute else "Alert only"
+        lines.append(f"#{rel.trader_id} {_h(name)} · {_h(auto)}")
+    _send(chat_id, "\n".join(lines), reply_markup=_nav_keyboard())
 
 
 def _live_events(*, asset: str | None = None):
@@ -468,35 +590,27 @@ def _live_events(*, asset: str | None = None):
     )
     if asset:
         qs = qs.filter(underlying_asset__iexact=asset)
-    return list(qs[:10])
-
-
-def _yes_price(event: EventContract) -> str:
-    yes, _ = yes_no_outcomes(event)
-    if not yes:
-        return "—"
-    return as_cents(yes.current_price)
+    return list(qs[:8])
 
 
 def _cmd_markets(chat_id: int, *, asset: str | None = None) -> None:
     events = _live_events(asset=asset)
     if not events:
-        send_message(chat_id, "No live markets right now.")
+        _send(chat_id, "No live Event Contracts right now. Check back when a window opens.")
         return
-    lines = ["Live events"]
+    lines = ["<b>Live Event Contracts</b>"]
     rows = []
     for ev in events:
-        lines.append(format_event_card_text(ev))
-        lines.append(f"/trade {ev.pk}")
-        lines.append("")
+        lines.append(f"<b>#{ev.pk}</b>\n{_h(format_event_card_text(ev))}")
         rows.append(
             [
                 ("Explain", f"an:{ev.pk}"),
-                ("Trade YES", f"by:{ev.pk}:YES"),
-                ("Trade NO", f"by:{ev.pk}:NO"),
+                ("YES", f"by:{ev.pk}:YES"),
+                ("NO", f"by:{ev.pk}:NO"),
             ]
         )
-    send_message(chat_id, "\n".join(lines).strip(), reply_markup=inline_keyboard(rows))
+    lines.append("Or /trade 12 YES 5")
+    _send(chat_id, "\n\n".join(lines), reply_markup=inline_keyboard(rows))
 
 
 def _resolve_event(*, event_id: int | None = None, asset: str | None = None) -> EventContract | None:
@@ -534,7 +648,7 @@ def _cmd_analyze(chat_id: int, user, text: str) -> None:
             _cmd_markets(chat_id)
             return
     if event is None:
-        send_message(chat_id, "Event not found. /events")
+        _send(chat_id, "Event not found. Send /events.")
         return
     _send_analysis(chat_id, user, event)
 
@@ -545,25 +659,28 @@ def _send_analysis(chat_id: int, user, event: EventContract) -> None:
     except Exception:
         logger.warning("telegram analyze failed", exc_info=True)
         insight = {}
+    brief = watching_brief(event)
     reasons = insight.get("reasons") or []
-    reason = reasons[0] if reasons else "Market data from DreamDEX."
+    reason = reasons[0] if reasons else brief.get("lead") or "Market data from DreamDEX."
     yes, no = yes_no_outcomes(event)
     lines = [
-        event_question(event),
-        f"YES {as_cents(yes.current_price if yes else None)}",
-        f"NO {as_cents(no.current_price if no else None)}",
-        format_window_line(event),
-        reason,
+        f"<b>{_h(event_question(event))}</b>",
+        f"YES {_h(as_cents(yes.current_price if yes else None))} · "
+        f"NO {_h(as_cents(no.current_price if no else None))}",
+        _h(format_window_line(event)),
+        _h(reason),
+        _h(brief.get("reading") or ""),
+        _h(SCORE_DISCLAIMER),
         "This is a market price, not a guarantee.",
     ]
-    send_message(
+    _send(
         chat_id,
-        "\n".join(str(x) for x in lines),
+        "\n".join(str(x) for x in lines if x),
         reply_markup=inline_keyboard(
             [
                 [
-                    ("Trade YES", f"by:{event.pk}:YES"),
-                    ("Trade NO", f"by:{event.pk}:NO"),
+                    ("YES", f"by:{event.pk}:YES"),
+                    ("NO", f"by:{event.pk}:NO"),
                 ]
             ]
         ),
@@ -632,19 +749,19 @@ def _require_running_agent(chat_id: int, user) -> bool:
         return True
     agent = _user_agent(user)
     if agent and agent.status == DreamAgent.Status.PAUSED:
-        send_message(chat_id, "DreamAgent is paused. Send /resume to trade.")
+        _send(chat_id, "DreamAgent is paused. Send /resume to trade.")
         return False
-    origin = site_origin()
     if agent and agent.status == DreamAgent.Status.EXPIRED:
-        send_message(
+        _send(
             chat_id,
-            f"Your DreamAgent grant expired. Re-sign it at {origin}/agent/activate/ "
+            f"Your DreamAgent grant expired. Re-sign it at {html_link(_activate_url(), 'Activate DreamAgent')} "
             "in the browser — Telegram cannot use MetaMask.",
         )
         return False
-    send_message(
+    _send(
         chat_id,
-        "Activate DreamAgent on /agent/activate/ — Telegram cannot sign MetaMask.",
+        f"{html_link(_activate_url(), 'Activate DreamAgent')} in the browser — "
+        "Telegram cannot sign MetaMask.",
     )
     return False
 
@@ -661,7 +778,7 @@ def _send_trade_result(chat_id: int, user, *, event_id: int, outcome: str, amoun
         msg = str(exc)
         cap = _max_trade(user)
         if cap is not None and "exceeds max" in msg.lower():
-            send_message(
+            _send(
                 chat_id,
                 LIMIT_TEMPLATE.format(
                     max=format_collateral(cap, compact=True),
@@ -669,13 +786,22 @@ def _send_trade_result(chat_id: int, user, *, event_id: int, outcome: str, amoun
                 ),
             )
         else:
-            send_message(chat_id, msg)
+            _send(chat_id, _h(msg))
         return
     tx = trade.transaction_hash or ""
-    send_message(
-        chat_id,
-        f"Trade submitted ({trade.status}).\n{explorer_tx_url(tx) if tx else ''}".strip(),
-    )
+    event = getattr(trade, "event", None)
+    q = event_question(event) if event is not None else "Event Contract"
+    side = getattr(getattr(trade, "outcome", None), "outcome_type", "") or ""
+    stake = format_collateral(trade.amount, compact=True) if getattr(trade, "amount", None) is not None else ""
+    anchor = explorer_tx_anchor(tx)
+    lines = [
+        "<b>Trade submitted</b>",
+        f"{_h(side)} {_h(stake)} · {_h(q)}".strip(" ·"),
+    ]
+    if anchor:
+        lines.append(anchor)
+    lines.append("DreamAgent will claim Smart Account wins when this window settles.")
+    _send(chat_id, "\n".join(lines), reply_markup=_nav_keyboard())
 
 
 def _offer_trade(chat_id: int, user, event: EventContract, outcome: str, amount: Decimal) -> None:
@@ -684,7 +810,7 @@ def _offer_trade(chat_id: int, user, event: EventContract, outcome: str, amount:
         return
     cap = _max_trade(user)
     if cap is not None and amount > cap:
-        send_message(
+        _send(
             chat_id,
             LIMIT_TEMPLATE.format(
                 max=format_collateral(cap, compact=True),
@@ -695,15 +821,15 @@ def _offer_trade(chat_id: int, user, event: EventContract, outcome: str, amount:
     yes, no = yes_no_outcomes(event)
     side = yes if outcome.upper() == "YES" else no
     price = side.current_price if side else None
-    send_message(
+    payout = format_payout_block(amount, price)
+    _send(
         chat_id,
         "\n".join(
             [
-                event_question(event),
-                f"{outcome} {as_cents(price)}",
-                f"You pay {format_collateral(amount)}",
-                f"Maximum loss {format_collateral(amount)}",
-                format_window_line(event),
+                f"<b>{_h(event_question(event))}</b>",
+                f"{_h(outcome)} {_h(as_cents(price))}",
+                _h(payout),
+                _h(format_window_line(event)),
                 "DreamAgent is placing this on-chain.",
             ]
         ),
@@ -714,9 +840,10 @@ def _offer_trade(chat_id: int, user, event: EventContract, outcome: str, amount:
 def _cmd_trade(chat_id: int, user, text: str) -> None:
     match = _TRADE_RE.match(text.strip())
     if not match:
-        send_message(
+        _send(
             chat_id,
-            "Usage: /trade <event_id> YES|NO <usd>\nExample: /trade 12 YES 10",
+            "Usage: /trade 12 YES 5\n"
+            "That’s event id, side, and dollars. Example: /trade 12 YES 10",
         )
         return
     if not _require_running_agent(chat_id, user):
@@ -726,11 +853,11 @@ def _cmd_trade(chat_id: int, user, text: str) -> None:
     try:
         amount = Decimal(match.group(3))
     except InvalidOperation:
-        send_message(chat_id, "Amount must be a number.")
+        _send(chat_id, "Amount must be a number.")
         return
     event = EventContract.objects.filter(pk=event_id).first()
     if not event:
-        send_message(chat_id, f"Event {event_id} not found. /markets")
+        _send(chat_id, f"Event {event_id} not found. Send /events.")
         return
     _offer_trade(chat_id, user, event, outcome, amount)
 
@@ -757,10 +884,10 @@ def _handle_natural_language(chat_id: int, user, text: str) -> None:
         asset = parsed.params.get("asset")
         event = _resolve_event(asset=asset)
         if event is None:
-            send_message(
+            _send(
                 chat_id,
-                "Which event? Send /events and then /trade <id> "
-                f"{outcome} {amount}.",
+                "Which event? Send /events, then /trade "
+                f"{_h(outcome)} {_h(amount)}.",
             )
             _cmd_markets(chat_id, asset=asset)
             return
@@ -779,7 +906,7 @@ def _handle_natural_language(chat_id: int, user, text: str) -> None:
             return
         _send_analysis(chat_id, user, event)
         return
-    send_message(chat_id, "Unknown command.\n" + HELP)
+    _send(chat_id, "I didn’t catch that.\n\n" + HELP, reply_markup=_nav_keyboard())
 
 
 def _handle_callback(query: dict[str, Any]) -> None:
@@ -796,20 +923,23 @@ def _handle_callback(query: dict[str, Any]) -> None:
         try:
             confirm_link(chat_id=chat_id, token=token)
             answer_callback(callback_id, "Linked")
-            send_message(
+            _send(
                 chat_id,
-                "Telegram is linked to your DreamLens wallet.\n" + HELP,
+                "<b>Telegram is linked</b> to your DreamLens wallet.\n\n" + HELP,
                 reply_markup=_linked_keyboard(),
             )
         except TelegramLinkError as exc:
             answer_callback(callback_id, "Could not link")
-            send_message(chat_id, str(exc))
+            _send(chat_id, _h(str(exc)))
         return
     if data.startswith("tg:no:"):
         token = data[6:]
         cancel_pending_link(chat_id=chat_id, token=token)
         answer_callback(callback_id, "Cancelled")
-        send_message(chat_id, "Link cancelled. Paste a chat ID on Portfolio when you are ready.")
+        _send(
+            chat_id,
+            "Link cancelled. Paste a chat ID on Portfolio when you are ready.",
+        )
         return
 
     user = _require_user(chat_id)
@@ -834,6 +964,8 @@ def _handle_callback(query: dict[str, Any]) -> None:
             _cmd_pause_resume(chat_id, user, pause=False)
         elif dest == "activity":
             _cmd_activity(chat_id, user)
+        elif dest == "help":
+            _send(chat_id, HELP, reply_markup=_nav_keyboard())
         return
 
     if data.startswith("an:"):
@@ -845,7 +977,7 @@ def _handle_callback(query: dict[str, Any]) -> None:
         answer_callback(callback_id)
         event = _resolve_event(event_id=event_id)
         if not event:
-            send_message(chat_id, "Event not found.")
+            _send(chat_id, "Event not found.")
             return
         _send_analysis(chat_id, user, event)
         return
@@ -864,7 +996,7 @@ def _handle_callback(query: dict[str, Any]) -> None:
         answer_callback(callback_id)
         event = _resolve_event(event_id=event_id)
         if not event:
-            send_message(chat_id, "Event not found.")
+            _send(chat_id, "Event not found.")
             return
         _offer_trade(chat_id, user, event, outcome, _default_trade_amount(user))
         return
@@ -885,7 +1017,7 @@ def _handle_callback(query: dict[str, Any]) -> None:
         payload = _pop_pending_trade(user, token)
         if not payload or int(payload.get("user_id") or 0) != user.pk:
             answer_callback(callback_id, "Expired")
-            send_message(chat_id, "That trade request expired. Send /trade again.")
+            _send(chat_id, "That trade request expired. Send /trade again.")
             return
         answer_callback(callback_id, "Sending")
         _send_trade_result(
@@ -900,7 +1032,7 @@ def _handle_callback(query: dict[str, Any]) -> None:
         token = data[6:]
         _pop_pending_trade(user, token)
         answer_callback(callback_id, "Cancelled")
-        send_message(chat_id, "Trade cancelled.")
+        _send(chat_id, "Trade cancelled.")
         return
 
     answer_callback(callback_id)

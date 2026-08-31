@@ -174,6 +174,7 @@ def test_window_copy_never_says_ends_in_expired(sample_event, expired_event):
     settled = event_window_copy(expired_event)
     assert settled["line"] == "Settled · YES won"
     assert "claim below or on Portfolio" in settled["blurb"]
+    assert "DreamAgent claims Smart Account wins" in settled["blurb"]
 
 
 @pytest.mark.django_db
@@ -225,6 +226,7 @@ def test_agent_can_cannot(client):
     body = res.content.decode()
     assert "Your Dream Agent" in body
     assert "Trade Event Contracts" in body
+    assert "Claim winnings when a window settles" in body
     assert "Withdraw your funds" in body
     assert "Change your permissions" in body
     assert "Exceed your limits" in body
@@ -339,3 +341,13 @@ def test_landing_tells_the_product_story(client):
     health = client.get("/healthz")
     assert health.status_code == 200
     assert health.content == b"ok"
+
+
+def test_claim_js_uses_sdk_gas_ceiling():
+    from pathlib import Path
+
+    js = Path("static/js/dreamlens.js").read_text()
+    assert "fallbackGas" in js
+    assert "10000000" in js
+    assert "prepared.sync_tx" in js
+    assert "prepared.claimed" in js

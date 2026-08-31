@@ -27,6 +27,7 @@ class DreamAgentPermissionSpec:
         return [
             "Buy Event Contract outcomes",
             "Sell/close supported positions",
+            "Claim settled Event Contract winnings automatically when a window ends",
             "Trade only through DreamDEX",
             "Place trades after one signature — no MetaMask per trade",
         ]
@@ -43,12 +44,19 @@ class DreamAgentPermissionSpec:
         """Caveat intent stored with the permission (enforced on-chain when live)."""
         return {
             "scope": "functionCall",
-            "selectors": [PLACE_BINARY_ORDER_SELECTOR],
+            "selectors": [
+                PLACE_BINARY_ORDER_SELECTOR,
+                "approve(address,uint256)",
+                "setOperator(address,bool)",
+                "redeem(uint32,bytes32,bytes32,uint8,uint256)",
+                "finalizeMarket(bytes32)",
+                "pokeOracle(uint256)",
+                "syncSettlement(bytes32)",
+            ],
             "targets": list(self.allowed_contracts),
             "forbidden_selectors": [
                 "transfer(address,uint256)",
                 "transferFrom(address,address,uint256)",
-                "approve(address,uint256)",
                 "withdraw(uint256)",
             ],
             "max_trade_amount": str(self.max_trade_amount),
@@ -67,7 +75,15 @@ class DreamAgentPermissionSpec:
             "scope": {
                 "type": "functionCall",
                 "targets": list(self.allowed_contracts),
-                "selectors": [PLACE_BINARY_ORDER_SELECTOR],
+                "selectors": [
+                    PLACE_BINARY_ORDER_SELECTOR,
+                    "approve(address,uint256)",
+                    "setOperator(address,bool)",
+                    "redeem(uint32,bytes32,bytes32,uint8,uint256)",
+                    "finalizeMarket(bytes32)",
+                    "pokeOracle(uint256)",
+                    "syncSettlement(bytes32)",
+                ],
             },
             "caveats": {
                 "timestamp": {

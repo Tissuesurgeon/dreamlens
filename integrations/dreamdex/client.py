@@ -271,6 +271,24 @@ def encode_module_redeem(
     return "0x" + (selector + encoded).hex()
 
 
+def encode_finalize_market(market_id: str) -> str:
+    selector = function_signature_to_4byte_selector("finalizeMarket(bytes32)")
+    encoded = encode(["bytes32"], [_bytes32(market_id)])
+    return "0x" + (selector + encoded).hex()
+
+
+def encode_poke_oracle(oracle_question_id: int) -> str:
+    selector = function_signature_to_4byte_selector("pokeOracle(uint256)")
+    encoded = encode(["uint256"], [int(oracle_question_id)])
+    return "0x" + (selector + encoded).hex()
+
+
+def encode_sync_settlement(market_id: str) -> str:
+    selector = function_signature_to_4byte_selector("syncSettlement(bytes32)")
+    encoded = encode(["bytes32"], [_bytes32(market_id)])
+    return "0x" + (selector + encoded).hex()
+
+
 def humanize_place_order_revert(exc: BaseException) -> str:
     blob = " ".join(str(part) for part in (exc, *getattr(exc, "args", ()))).lower()
     data = getattr(exc, "data", None)
@@ -974,7 +992,114 @@ class LiveDreamDEXClient:
                 "market_id": market_id,
                 "outcome_idx": str(outcome_idx),
                 "amount": str(amount),
+                "gas": hex(10_000_000),
             },
+        )
+
+    def read_settlement_ready(self, market_id: str) -> dict[str, Any]:
+        """On-chain isResolved / isVoided plus oracle id for pokeOracle."""
+        module = to_checksum_address(self.binary_module)
+        mid = _bytes32(market_id)
+        markets_abi = [
+            {
+                "name": "markets",
+                "type": "function",
+                "stateMutability": "view",
+                "inputs": [{"name": "marketId", "type": "bytes32"}],
+                "outputs": [
+                    {"name": "oracleQuestionId", "type": "uint256"},
+                    {"name": "outcomeSlotCount", "type": "uint8"},
+                    {"name": "voidPolicy", "type": "uint8"},
+                    {"name": "collateral", "type": "address"},
+                    {"name": "originOperatorId", "type": "uint32"},
+                    {"name": "originVenueId", "type": "bytes32"},
+                    {"name": "oracleAdapter", "type": "address"},
+                    {"name": "creator", "type": "address"},
+                    {"name": "market", "type": "address"},
+                    {"name": "pool", "type": "address"},
+                    {"name": "yesId", "type": "uint256"},
+                    {"name": "noId", "type": "uint256"},
+                    {"name": "tradingStart", "type": "uint64"},
+                    {"name": "expiry", "type": "uint64"},
+                ],
+            }
+        ]
+        rec = self._web3.eth.contract(address=module, abi=markets_abi).functions.markets(mid).call()
+        market_addr = rec[8]
+        if isinstance(market_addr, (bytes, bytearray)):
+            market_hex = "0x" + bytes(market_addr).hex()
+        else:
+            market_hex = str(market_addr)
+        if int(market_hex, 16) == 0:
+            return {
+                "is_resolved": False,
+                "is_voided": False,
+                "oracle_question_id": int(rec[0] or 0),
+                "operator_id": int(rec[4] or 0),
+                "venue_id": "0x" + (rec[5].hex() if isinstance(rec[5], (bytes, bytearray)) else ""),
+            }
+        view_abi = [
+            {
+                "name": "isResolved",
+                "type": "function",
+                "stateMutability": "view",
+                "inputs": [],
+                "outputs": [{"name": "", "type": "bool"}],
+            },
+            {
+                "name": "isVoided",
+                "type": "function",
+                "stateMutability": "view",
+                "inputs": [],
+                "outputs": [{"name": "", "type": "bool"}],
+            },
+        ]
+        market = self._web3.eth.contract(
+            address=to_checksum_address(market_hex), abi=view_abi
+        )
+        venue = rec[5]
+        venue_hex = (
+            "0x" + venue.hex()
+            if isinstance(venue, (bytes, bytearray))
+            else str(venue or "")
+        )
+        return {
+            "is_resolved": bool(market.functions.isResolved().call()),
+            "is_voided": bool(market.functions.isVoided().call()),
+            "oracle_question_id": int(rec[0] or 0),
+            "operator_id": int(rec[4] or 0),
+            "venue_id": venue_hex,
+            "market_address": to_checksum_address(market_hex),
+        }
+
+    def prepare_finalize_market(self, market_id: str) -> UnsignedTxDTO:
+        return UnsignedTxDTO(
+            to=to_checksum_address(self.binary_module),
+            data=encode_finalize_market(market_id),
+            value=0,
+            chain_id=self.chain_id,
+            description=f"finalize market {market_id}",
+            metadata={"gas": hex(10_000_000)},
+        )
+
+    def prepare_poke_oracle(self, oracle_question_id: int) -> UnsignedTxDTO:
+        return UnsignedTxDTO(
+            to=to_checksum_address(self.binary_module),
+            data=encode_poke_oracle(int(oracle_question_id)),
+            value=0,
+            chain_id=self.chain_id,
+            description=f"poke oracle {oracle_question_id}",
+            metadata={"gas": hex(10_000_000)},
+        )
+
+    def prepare_sync_settlement(self, market_id: str) -> UnsignedTxDTO:
+        return UnsignedTxDTO(
+            to=to_checksum_address(self.binary_module),
+            data=encode_sync_settlement(market_id),
+            value=0,
+            chain_id=self.chain_id,
+            description=f"sync settlement {market_id}",
+            metadata={"gas": hex(10_000_000)},
         )
 
     # -------------------------------------------------------------- internals

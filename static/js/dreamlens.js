@@ -1114,28 +1114,40 @@
     throw new Error("Timed out waiting for the wallet transaction.");
   }
 
-  async function sendWalletTx(eth, tx, from) {
+  async function sendWalletTx(eth, tx, from, options) {
     const params = walletTxParams(tx, from);
-    try {
-      const estimated = await eth.request({
-        method: "eth_estimateGas",
-        params: [
-          {
-            from: params.from,
-            to: params.to,
-            data: params.data,
-            value: params.value,
-          },
-        ],
-      });
-      params.gas = bumpHexGas(estimated, 2500);
-    } catch (err) {
-      const nested = err && err.data && (err.data.message || err.data.cause);
-      const msg =
-        nested ||
-        (err && (err.message || err.reason)) ||
-        "This transaction would fail on Somnia. Refresh and pick a still-open window.";
-      throw new Error(msg);
+    const fallbackGas = options && options.fallbackGas;
+    // DreamDEX settlement writes use a fixed 10M gas ceiling (SDK never estimates).
+    // eth_estimateGas often returns "execution reverted" until a prior step is
+    // mined, or under-estimates finalize-if-needed inside redeem.
+    if (fallbackGas) {
+      params.gas = toHexQuantity(fallbackGas);
+    } else {
+      try {
+        const estimated = await eth.request({
+          method: "eth_estimateGas",
+          params: [
+            {
+              from: params.from,
+              to: params.to,
+              data: params.data,
+              value: params.value,
+            },
+          ],
+        });
+        params.gas = bumpHexGas(estimated, 2500);
+      } catch (err) {
+        if (params.gas) {
+          // Keep backend-prepared gas (e.g. redeem metadata.gas).
+        } else {
+          const nested = err && err.data && (err.data.message || err.data.cause);
+          const msg =
+            nested ||
+            (err && (err.message || err.reason)) ||
+            "This transaction would fail on Somnia. Refresh and pick a still-open window.";
+          throw new Error(msg);
+        }
+      }
     }
     try {
       return await eth.request({
@@ -2443,7 +2455,7 @@
           const data = await res.json();
           render(data);
           if (data.status === "ACTIVE") {
-            showStatus("Telegram linked.");
+            showStatus("Telegram linked. Send /events in the bot.");
             stopPoll();
           } else if (data.status !== "PENDING") {
             stopPoll();
@@ -2497,7 +2509,7 @@
         })
         .then(function (data) {
           render(data);
-          if (data.status === "ACTIVE") showStatus("Telegram linked.");
+          if (data.status === "ACTIVE") showStatus("Telegram linked. Send /events in the bot.");
         })
         .catch(function (err) {
           showStatus(err.message || "Could not link Telegram", "error");
@@ -2525,7 +2537,7 @@
           const data = await res.json();
           if (!res.ok) throw new Error(data.detail || "Could not unlink");
           render(data);
-          showStatus("Unlinked.");
+          showStatus("Telegram unlinked.");
           stopPoll();
           if (input) input.value = "";
         } catch (err) {
@@ -2566,23 +2578,39 @@
       if (!res.ok) {
         throw new Error(prepared.detail || prepared.error || "Could not build the claim.");
       }
-      if (prepared.approval_tx) {
-        btn.textContent = "Approve tokens…";
-        const approveHash = await sendWalletTx(wallet.eth, prepared.approval_tx, wallet.address);
-        const approveReceipt = await waitForWalletReceipt(wallet.eth, approveHash, 120000);
-        const approveOk =
-          approveReceipt.status === "0x1" ||
-          approveReceipt.status === 1 ||
-          approveReceipt.status === "1";
-        if (!approveOk) {
-          throw new Error("Outcome token approval reverted on Shannon.");
+      if (prepared.claimed) {
+        toast(
+          prepared.via_smart_account
+            ? "Winnings claimed into your Smart Account."
+            : "Winnings claimed. Collateral is in this wallet.",
+          "ok"
+        );
+        window.location.reload();
+        return;
+      }
+      const claimGas = 10000000;
+      async function sendClaimStep(label, tx) {
+        if (!tx) return;
+        btn.textContent = label;
+        const hash = await sendWalletTx(wallet.eth, tx, wallet.address, { fallbackGas: claimGas });
+        const receipt = await waitForWalletReceipt(wallet.eth, hash, 120000);
+        const stepOk =
+          receipt.status === "0x1" || receipt.status === 1 || receipt.status === "1";
+        if (!stepOk) {
+          throw new Error(label + " reverted on Shannon.");
         }
       }
+      await sendClaimStep("Asking oracle…", prepared.poke_tx);
+      await sendClaimStep("Finalizing market…", prepared.finalize_tx);
+      await sendClaimStep("Syncing settlement…", prepared.sync_tx);
+      await sendClaimStep("Approve tokens…", prepared.approval_tx);
       if (!prepared.unsigned_tx) {
         throw new Error("Could not build the DreamDEX redeem.");
       }
       btn.textContent = "Claim on-chain…";
-      const txHash = await sendWalletTx(wallet.eth, prepared.unsigned_tx, wallet.address);
+      const txHash = await sendWalletTx(wallet.eth, prepared.unsigned_tx, wallet.address, {
+        fallbackGas: claimGas,
+      });
       if (!txHash) {
         throw new Error("Wallet did not return a transaction hash.");
       }

@@ -16,8 +16,9 @@ from integrations.telegram.client import (
     TelegramError,
     bot_url,
     bot_username,
+    html_escape,
     inline_keyboard,
-    send_message,
+    send_html,
 )
 
 logger = logging.getLogger("dreamlens.telegram.link")
@@ -132,9 +133,9 @@ def start_link(user, chat_id: int) -> TelegramLink:
 
     label = _primary_wallet_label(user)
     try:
-        send_message(
+        send_html(
             chat_id,
-            f"Link this DreamLens wallet ({label}) to this Telegram chat?\n"
+            f"Link this DreamLens wallet (<code>{html_escape(label)}</code>) to this Telegram chat?\n"
             "Confirm only if you started this from Portfolio.",
             reply_markup=inline_keyboard(
                 [

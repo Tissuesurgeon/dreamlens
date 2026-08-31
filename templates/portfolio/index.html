@@ -131,7 +131,7 @@
         <div>
           <h2 id="telegram-heading" class="dl-agent-status-card__name">Telegram</h2>
           <p class="dl-agent-status-card__addr">
-            Commands use DreamAgent on your Smart Account — not MetaMask.
+            Remote control for DreamAgent. Trades and claims use your Smart Account — not MetaMask.
             {% if telegram_link.bot_username %}
             <span class="dl-mono">@{{ telegram_link.bot_username }}</span>
             {% endif %}
@@ -160,7 +160,7 @@
         <ol class="dl-telegram-steps">
           <li>Open the DreamLens bot and tap <strong>Start</strong>.</li>
           <li>Copy the numeric chat ID it replies with.</li>
-          <li>Paste it here, tap <strong>Link</strong>, then <strong>Confirm</strong> in Telegram.</li>
+          <li>Paste it here, tap <strong>Link</strong>, then tap <strong>Confirm</strong> in Telegram.</li>
         </ol>
         <div class="dl-telegram-row">
           <label class="visually-hidden" for="telegram-chat-input">Telegram chat ID</label>
@@ -187,7 +187,7 @@
 
       <div class="dl-telegram-wait" id="telegram-pending" {% if telegram_link.status != "PENDING" %}hidden{% endif %}>
         <p class="dl-telegram-wait__title">Confirm in Telegram</p>
-        <p class="dl-telegram-wait__copy">Tap <strong>Confirm</strong> on the bot message. Keep this tab open — it updates when the chat is linked.</p>
+        <p class="dl-telegram-wait__copy">Tap <strong>Confirm</strong> on the bot message. This page updates when the chat is linked.</p>
         <p class="dl-telegram-wait__id">Chat ID <span class="dl-mono" id="telegram-pending-chat">{{ telegram_link.chat_id|default:"" }}</span></p>
       </div>
 
@@ -198,8 +198,12 @@
             <dd class="dl-mono" id="telegram-chat-id">{{ telegram_link.chat_id|default:"" }}</dd>
           </div>
           <div>
-            <dt>Remote control</dt>
-            <dd>/events · /trade · /agent</dd>
+            <dt>Commands</dt>
+            <dd>/events · /trade · /positions</dd>
+          </div>
+          <div>
+            <dt>Claims</dt>
+            <dd>DreamAgent claims Smart Account wins when a window settles</dd>
           </div>
         </dl>
         <button type="button" class="dl-btn dl-btn--ghost dl-btn--sm" id="telegram-unlink">Unlink</button>

@@ -32,6 +32,36 @@ def bot_url() -> str:
     return f"https://t.me/{name}" if name else ""
 
 
+def html_escape(text: Any) -> str:
+    """Escape user/event text for Telegram HTML parse_mode."""
+    return (
+        str(text or "")
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
+
+
+def html_link(url: str, label: str) -> str:
+    href = html_escape(url).replace('"', "&quot;")
+    return f'<a href="{href}">{html_escape(label)}</a>'
+
+
+def explorer_tx_anchor(tx_hash: str) -> str:
+    if not tx_hash:
+        return ""
+    return html_link(explorer_tx_url(tx_hash), "View on Somnia")
+
+
+def send_html(
+    chat_id: int,
+    text: str,
+    *,
+    reply_markup: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return send_message(chat_id, text, reply_markup=reply_markup, parse_mode="HTML")
+
+
 def explorer_tx_url(tx_hash: str) -> str:
     network = (getattr(settings, "DREAMDEX_NETWORK", "testnet") or "testnet").lower()
     base = (

@@ -79,7 +79,8 @@ def function_call_caveats(*, expires_at: int) -> list[dict[str, str]]:
     """AllowedMethods + valueLte(0) + timestamp — matches FunctionCall scope.
 
     Pool addresses change every window, so targets are not pinned. The session
-    key may only call placeBinaryOrder / approve and cannot send native value.
+    key may call placeBinaryOrder, approvals, and settlement claim methods, and
+    cannot send native value.
     """
     from django.conf import settings
 
@@ -92,6 +93,11 @@ def function_call_caveats(*, expires_at: int) -> list[dict[str, str]]:
         selectors = [
             _selector(PLACE_BINARY_ORDER_SELECTOR),
             _selector("approve(address,uint256)"),
+            _selector("setOperator(address,bool)"),
+            _selector("redeem(uint32,bytes32,bytes32,uint8,uint256)"),
+            _selector("finalizeMarket(bytes32)"),
+            _selector("pokeOracle(uint256)"),
+            _selector("syncSettlement(bytes32)"),
         ]
         terms = "0x" + b"".join(selectors).hex()
         caveats.append(

@@ -638,13 +638,13 @@ def _to_raw_amount(human: Decimal) -> int:
 def prepare_position_redeem(user, position_id: int, wallet_address: str):
     """Build the user-signed BinaryMarketsModule.redeem tx for a winning or voided position.
 
-    Telegram / DreamAgent fills land on the Hybrid Smart Account. MetaMask signs as
-    the owner EOA, so those claims are wrapped in owner → SA.execute(redeem).
+    Telegram / DreamAgent fills land on the Hybrid Smart Account. The owner EOA
+    cannot call HybridDeleGator.execute (onlyEntryPoint), so those claims go
+    through the session key's redeemDelegations — same path as /trade.
     """
     from django.conf import settings
 
     from integrations.dreamdex.adapter import get_adapter
-    from integrations.metamask.execution import wrap_owner_execute
     from services.trading_service import _quote_wallet_fees, _tx_payload
 
     if not wallet_address:
@@ -678,11 +678,7 @@ def prepare_position_redeem(user, position_id: int, wallet_address: str):
     if held <= 0 or not holder:
         raise PortfolioError("Nothing left to claim on-chain for this position.")
 
-    if signer and signer.lower() != wallet_address.lower():
-        if via_sa:
-            raise PortfolioError(
-                "Connect the MetaMask account that owns your DreamLens Smart Account."
-            )
+    if signer and signer.lower() != wallet_address.lower() and not via_sa:
         raise PortfolioError(
             "Switch MetaMask to the wallet that holds these outcome tokens."
         )
@@ -692,6 +688,48 @@ def prepare_position_redeem(user, position_id: int, wallet_address: str):
         raise PortfolioError("Claim size is below the venue lot size.")
 
     outcome_idx = 0 if position.outcome.outcome_type == "YES" else 1
+    poke_tx = None
+    finalize_tx = None
+    ready = {}
+    read_ready = getattr(adapter, "read_settlement_ready", None)
+    if callable(read_ready):
+        try:
+            ready = read_ready(position.event.external_id) or {}
+        except Exception:
+            logger.warning(
+                "on-chain settlement read failed position=%s",
+                position.pk,
+                exc_info=True,
+            )
+    sync_tx = None
+    if ready:
+        if not ready.get("is_resolved") and not ready.get("is_voided"):
+            qid = ready.get("oracle_question_id") or position.event.oracle_question_id
+            try:
+                qid_int = int(str(qid or "0"))
+            except (TypeError, ValueError):
+                qid_int = 0
+            prep_poke = getattr(adapter, "prepare_poke_oracle", None)
+            if qid_int and callable(prep_poke):
+                try:
+                    poke_tx = prep_poke(qid_int)
+                except Exception:
+                    logger.warning("pokeOracle prepare failed position=%s", position.pk)
+        # JS / session key run poke first, then this. No-op if already finalized.
+        prep_fin = getattr(adapter, "prepare_finalize_market", None)
+        if callable(prep_fin):
+            try:
+                finalize_tx = prep_fin(position.event.external_id)
+            except Exception:
+                logger.warning("finalizeMarket prepare failed position=%s", position.pk)
+        if ready.get("is_voided"):
+            prep_sync = getattr(adapter, "prepare_sync_settlement", None)
+            if callable(prep_sync):
+                try:
+                    sync_tx = prep_sync(position.event.external_id)
+                except Exception:
+                    logger.warning("syncSettlement prepare failed position=%s", position.pk)
+
     approval = None
     prep_op = getattr(adapter, "prepare_outcome_operator_approval", None)
     if callable(prep_op):
@@ -711,46 +749,150 @@ def prepare_position_redeem(user, position_id: int, wallet_address: str):
         raise PortfolioError(str(exc)) from exc
 
     if via_sa:
-        unsigned = wrap_owner_execute(holder, unsigned)
-        if approval is not None:
-            approval = wrap_owner_execute(holder, approval)
-
-    # Redeem often reverts in eth_estimateGas until setOperator is mined.
-    # Don't fail prepare — MetaMask estimates again after the approval tx.
-    try:
-        _quote_wallet_fees(adapter, unsigned, wallet_address, estimate=True)
-    except Exception:
-        logger.warning(
-            "redeem gas estimate failed position=%s; using default fees",
-            position.pk,
-            exc_info=True,
+        claimed = _claim_via_session_key(
+            user,
+            position,
+            unsigned=unsigned,
+            approval=approval,
+            poke_tx=poke_tx,
+            finalize_tx=finalize_tx,
+            sync_tx=sync_tx,
         )
+        if claimed:
+            return claimed
+
+    if via_sa:
+        raise PortfolioError(
+            "These winnings are on your Smart Account. Re-sign DreamAgent at "
+            "/agent/activate/ so DreamLens can claim them (the owner wallet "
+            "cannot call the Smart Account directly)."
+        )
+
+    if signer and signer.lower() != wallet_address.lower():
+        raise PortfolioError(
+            "Switch MetaMask to the wallet that holds these outcome tokens."
+        )
+
+    for tx in (poke_tx, finalize_tx, sync_tx, unsigned, approval):
+        if tx is None:
+            continue
         try:
-            _quote_wallet_fees(adapter, unsigned, wallet_address, estimate=False)
+            _quote_wallet_fees(adapter, tx, wallet_address, estimate=False)
         except Exception:
-            logger.warning("redeem fee quote failed position=%s", position.pk)
-    if approval is not None:
-        try:
-            _quote_wallet_fees(adapter, approval, wallet_address, estimate=True)
-        except Exception:
-            try:
-                _quote_wallet_fees(adapter, approval, wallet_address, estimate=False)
-            except Exception:
-                logger.warning("approval fee quote failed position=%s", position.pk)
+            logger.warning("claim fee quote failed position=%s", position.pk)
 
     payout = settlement_payout_price(position.event, position.outcome) or Decimal("0")
     return {
         "position_id": position.pk,
         "unsigned_tx": _tx_payload(unsigned),
         "approval_tx": _tx_payload(approval) if approval else None,
+        "poke_tx": _tx_payload(poke_tx) if poke_tx else None,
+        "finalize_tx": _tx_payload(finalize_tx) if finalize_tx else None,
+        "sync_tx": _tx_payload(sync_tx) if sync_tx else None,
         "outcome_idx": outcome_idx,
         "amount": str(held),
         "payout": str((held * payout).quantize(FOUR_PLACES)),
         "collateral_symbol": "Test USDC" if int(settings.DREAMDEX_CHAIN_ID) == 50312 else "USDso",
         "wallet_address": wallet_address,
         "holder": holder,
-        "via_smart_account": via_sa,
+        "via_smart_account": False,
+        "claimed": False,
     }
+
+
+def _claim_via_session_key(
+    user,
+    position,
+    *,
+    unsigned,
+    approval,
+    poke_tx,
+    finalize_tx,
+    sync_tx=None,
+):
+    """Session-key redeemDelegations for Smart Account-held outcome tokens."""
+    from integrations.metamask.execution import build_delegated_trade_execution
+    from integrations.metamask.transactions import SessionKeyError, broadcast_delegated_execution
+    from services.dream_agent_service import active_permission, get_tradable_agent
+
+    agent = get_tradable_agent(user)
+    if agent is None:
+        return None
+    permission = active_permission(agent)
+    if permission is None:
+        return None
+    blob = permission.signed_delegation_json or {}
+    if not blob:
+        return None
+    sa = agent.smart_account
+    try:
+        delegated = build_delegated_trade_execution(
+            signed_delegation=blob,
+            dreamdex_tx=unsigned,
+            chain_id=sa.chain_id,
+            approval_tx=approval,
+        )
+        extra_pre = []
+        for step in (poke_tx, finalize_tx, sync_tx):
+            if step and step.to and step.data:
+                extra_pre.append((step.to, int(step.value or 0), step.data))
+        if extra_pre:
+            from dataclasses import replace
+            from integrations.metamask.delegation import encode_redeem_delegations_calldata
+            from integrations.metamask.smart_account import mock_smart_account_enabled
+
+            pre = extra_pre + list(delegated.pre_executions or [])
+            if not delegated.mock and not mock_smart_account_enabled():
+                data = encode_redeem_delegations_calldata(
+                    signed_delegation=blob,
+                    target=delegated.inner_target,
+                    call_data=delegated.inner_data,
+                    value=delegated.inner_value,
+                    pre_executions=pre,
+                )
+                delegated = replace(delegated, data=data, pre_executions=pre)
+            else:
+                delegated = replace(delegated, pre_executions=pre)
+        tx_hash = broadcast_delegated_execution(
+            delegated,
+            metadata={
+                "agent_id": agent.pk,
+                "position_id": position.pk,
+                "smart_account": sa.address,
+                "source": "claim",
+            },
+        )
+        confirm_position_redeem(user, position.pk, tx_hash)
+        payout = settlement_payout_price(position.event, position.outcome) or Decimal("0")
+        return {
+            "position_id": position.pk,
+            "claimed": True,
+            "tx_hash": tx_hash,
+            "via_smart_account": True,
+            "holder": sa.address,
+            "wallet_address": sa.owner_address,
+            "payout": str((position.amount * payout).quantize(FOUR_PLACES)),
+            "unsigned_tx": None,
+            "approval_tx": None,
+        }
+    except SessionKeyError as exc:
+        logger.warning("session-key claim failed position=%s: %s", position.pk, exc)
+        raise PortfolioError(
+            str(exc).rstrip(".")
+            + ". If this grant is older, re-sign DreamAgent at /agent/activate/ "
+            "so it can claim winnings."
+        ) from exc
+    except Exception as exc:
+        logger.warning(
+            "session-key claim failed position=%s: %s",
+            position.pk,
+            exc,
+            exc_info=True,
+        )
+        raise PortfolioError(
+            "DreamAgent could not claim this win on-chain. "
+            + str(exc)[:240]
+        ) from exc
 
 
 def confirm_position_redeem(user, position_id: int, tx_hash: str) -> Position:
@@ -796,6 +938,124 @@ def confirm_position_redeem(user, position_id: int, tx_hash: str) -> Position:
         tx_hash,
     )
     return position
+
+
+_AUTO_CLAIM_LOCK_TTL = 180
+
+
+def _notify_auto_claim(user, position, payload: dict) -> None:
+    try:
+        from services.event_copy import event_question, format_collateral
+        from services.telegram_notify import notify_auto_claim
+
+        payout = payload.get("payout") or "0"
+        try:
+            payout_label = format_collateral(Decimal(str(payout)), compact=True)
+        except Exception:
+            payout_label = f"${payout}"
+        notify_auto_claim(
+            user,
+            question=event_question(position.event),
+            payout=payout_label,
+            tx_hash=str(payload.get("tx_hash") or ""),
+            voided=position.event.status == EventContract.Status.VOIDED,
+        )
+    except Exception:
+        logger.warning(
+            "auto-claim notify failed user=%s position=%s",
+            user.pk,
+            position.pk,
+            exc_info=True,
+        )
+
+
+def auto_claim_settled_positions() -> dict[str, int]:
+    """Redeem Smart Account wins after a window settles. Skips MetaMask-held tokens.
+
+    DreamAgent / Telegram fills land on the Hybrid Smart Account. Once the oracle
+    has posted, the same session-key grant that placed the trade can redeem it
+    without a MetaMask click. EOA fills still need the user to claim in the UI.
+    """
+    from apps.agents.models import DreamAgent
+    from services.dream_agent_service import get_tradable_agent
+
+    claimed = 0
+    skipped = 0
+    failed = 0
+    users = 0
+    seen: set[int] = set()
+    agents = (
+        DreamAgent.objects.filter(
+            status__in=(DreamAgent.Status.RUNNING, DreamAgent.Status.AUTHORIZED),
+        )
+        .select_related("user", "smart_account")
+        .order_by("-updated_at")
+    )
+    for agent in agents:
+        user = agent.user
+        if user.pk in seen:
+            continue
+        if get_tradable_agent(user) is None:
+            continue
+        sa = agent.smart_account
+        owner = (sa.owner_address if sa else "") or ""
+        if not owner:
+            skipped += 1
+            continue
+        seen.add(user.pk)
+        pending = Position.objects.filter(
+            user=user,
+            status__in=(Position.Status.OPEN, Position.Status.SETTLED),
+        )
+        if not pending.exists():
+            continue
+        users += 1
+        try:
+            refresh_portfolio(user)
+        except Exception:
+            logger.exception("auto-claim portfolio refresh failed user=%s", user.pk)
+            failed += 1
+            continue
+        positions = Position.objects.filter(
+            user=user,
+            status__in=(Position.Status.OPEN, Position.Status.SETTLED),
+        ).select_related("event", "outcome")
+        for position in positions:
+            if position_result(position) not in ("won", "void"):
+                continue
+            lock_key = f"auto-claim:{position.pk}"
+            if not cache.add(lock_key, "1", timeout=_AUTO_CLAIM_LOCK_TTL):
+                skipped += 1
+                continue
+            try:
+                payload = prepare_position_redeem(user, position.pk, owner)
+            except PortfolioError as exc:
+                logger.info("auto-claim skipped position=%s: %s", position.pk, exc)
+                skipped += 1
+                continue
+            except Exception:
+                logger.exception("auto-claim failed position=%s", position.pk)
+                failed += 1
+                continue
+            if payload.get("claimed"):
+                claimed += 1
+                _notify_auto_claim(user, position, payload)
+            else:
+                cache.set(lock_key, "eoa", timeout=6 * 3600)
+                skipped += 1
+    logger.info(
+        "auto_claim_settled_positions claimed=%s skipped=%s failed=%s users=%s",
+        claimed,
+        skipped,
+        failed,
+        users,
+    )
+    return {
+        "claimed": claimed,
+        "skipped": skipped,
+        "failed": failed,
+        "users": users,
+    }
 
 
 def prepare_position_close(user, position_id: int, wallet_address: str):

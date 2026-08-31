@@ -210,7 +210,9 @@ def test_apply_smart_account_gas_payment_skips_empty_sa(settings):
 
 
 def test_agent_can_includes_one_signature_trades():
-    assert any("signature" in item.lower() for item in DreamAgentPermissionSpec().agent_can())
+    can = DreamAgentPermissionSpec().agent_can()
+    assert any("signature" in item.lower() for item in can)
+    assert any("claim" in item.lower() and "automatically" in item.lower() for item in can)
 
 
 def test_legacy_session_tx_is_not_eip1559():

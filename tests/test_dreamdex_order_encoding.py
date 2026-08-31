@@ -158,6 +158,22 @@ def test_module_redeem_matches_sdk_abi():
     assert amount == 20_000_000
 
 
+def test_finalize_and_poke_oracle_selectors():
+    from integrations.dreamdex.client import (
+        encode_finalize_market,
+        encode_poke_oracle,
+        encode_sync_settlement,
+    )
+
+    market_id = "0x" + "11" * 32
+    fin = encode_finalize_market(market_id)
+    assert keccak(text="finalizeMarket(bytes32)")[:4] == bytes.fromhex(fin[2:10])
+    poke = encode_poke_oracle(42)
+    assert keccak(text="pokeOracle(uint256)")[:4] == bytes.fromhex(poke[2:10])
+    sync = encode_sync_settlement(market_id)
+    assert keccak(text="syncSettlement(bytes32)")[:4] == bytes.fromhex(sync[2:10])
+
+
 def test_winning_side_parses_indexer_shapes():
     assert _winning_side(0) == "YES"
     assert _winning_side(1) == "NO"

@@ -24,6 +24,7 @@
         <ul class="dl-check-list">
           <li>✓ Trade Event Contracts</li>
           <li>✓ Copy selected traders</li>
+          <li>✓ Claim winnings when a window settles</li>
         </ul>
       </section>
       <section>
@@ -63,6 +64,7 @@
         <ul class="dl-check-list">
           <li>✓ Trade Event Contracts</li>
           <li>✓ Copy selected traders</li>
+          <li>✓ Claim winnings when a window settles</li>
         </ul>
       </section>
       <section>
@@ -98,6 +100,7 @@
         <ul class="dl-check-list">
           <li>✓ Trade Event Contracts</li>
           <li>✓ Copy selected traders</li>
+          <li>✓ Claim winnings when a window settles</li>
         </ul>
       </section>
       <section>
@@ -124,7 +127,7 @@
         <div>
           <h2 class="dl-ta-identity__title">{{ agent.name }}</h2>
           <p class="dl-ta-identity__meta">
-            {% if agent.status == "RUNNING" %}I’m watching your selected traders and Event Contracts.
+            {% if agent.status == "RUNNING" %}I’m watching your selected traders and Event Contracts, and I claim Smart Account wins when a window settles.
             {% elif agent.status == "PAUSED" %}Paused — no new autonomous trades. Your funds and positions stay as they are.
             {% elif agent.status == "AUTHORIZED" %}Grant is signed. Resume to copy followed traders without MetaMask.
             {% elif agent.status == "REVOKED" %}Permission revoked

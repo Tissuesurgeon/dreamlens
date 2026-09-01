@@ -143,3 +143,23 @@ def test_get_llm_client_uses_lan_ollama_when_provider_is_ollama(settings):
     assert primary.label == "ollama"
     assert primary.model == "llama3.2"
     assert "192.168.0.110:11434" in (primary.base_url or "")
+
+
+def test_get_llm_client_uses_openrouter_ling_flash(settings):
+    from services.ai_service import CascadingLLMClient, OpenAICompatibleClient, get_llm_client
+
+    settings.LOCAL_LLM_ENABLED = False
+    settings.LLM_PROVIDER = "openrouter"
+    settings.LLM_MODEL = "inclusionai/ling-3.0-flash-fin:free"
+    settings.LLM_BASE_URL = "https://openrouter.ai/api/v1"
+    settings.LLM_API_KEY = ""
+    settings.OPENROUTER_API_KEY = "sk-or-test"
+    settings.GEMINI_API_KEY = "AQ.should-not-win"
+    settings.LLM_REASONING = True
+    client = get_llm_client()
+    assert isinstance(client, CascadingLLMClient)
+    primary = client.clients[0]
+    assert isinstance(primary, OpenAICompatibleClient)
+    assert primary.label == "openrouter"
+    assert primary.model == "inclusionai/ling-3.0-flash-fin:free"
+    assert primary.extra_body.get("reasoning") == {"enabled": True}

@@ -188,17 +188,33 @@ class OpenAICompatibleClient:
         import urllib.request
 
         def _request(use_json_mode: bool) -> str:
+            messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
+            for item in kwargs.get("history") or []:
+                if not isinstance(item, dict):
+                    continue
+                text = str(item.get("content") or item.get("text") or "").strip()
+                role = str(item.get("role") or "user").lower()
+                if role not in {"user", "assistant", "system"}:
+                    role = "user"
+                if not text and not item.get("reasoning_details"):
+                    continue
+                turn: dict[str, Any] = {"role": role, "content": text}
+                details = item.get("reasoning_details")
+                if role == "assistant" and details:
+                    turn["reasoning_details"] = details
+                messages.append(turn)
+            messages.append({"role": "user", "content": user})
             payload: dict[str, Any] = {
                 "model": self.model,
-                "messages": [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
+                "messages": messages,
                 "temperature": 0.2,
             }
             max_tokens = int(kwargs.get("max_output_tokens") or 0)
             if max_tokens > 0:
                 payload["max_tokens"] = max_tokens
+            elif (self.extra_body or {}).get("reasoning"):
+                # Reasoning tokens count against max_tokens; leave room for the answer.
+                payload["max_tokens"] = 2048
             if use_json_mode:
                 payload["response_format"] = {"type": "json_object"}
             if self.extra_body:
@@ -219,7 +235,9 @@ class OpenAICompatibleClient:
             choices = body.get("choices", [])
             if not choices:
                 return "{}"
-            return _strip_thoughts(choices[0].get("message", {}).get("content", "{}"))
+            message = choices[0].get("message") or {}
+            content = message.get("content") or ""
+            return _strip_thoughts(content or "{}")
 
         try:
             return _request(json_mode)
@@ -452,7 +470,7 @@ def _openrouter_api_key() -> str:
     llm = getattr(settings, "LLM_API_KEY", "") or ""
     if llm.startswith("sk-or-"):
         return llm
-    if _is_google_key(llm):
+    if _is_google_key(llm) or llm.lower() in {"", "local", "ollama"}:
         return or_key
     return or_key or llm
 
@@ -470,6 +488,17 @@ def _openrouter_headers() -> dict[str, str]:
     if title:
         headers["X-Title"] = title
     return headers
+
+
+def _openrouter_extra_body(model: str) -> dict[str, Any]:
+    """Ling 3 Flash (and other OpenRouter reasoning models) need this flag."""
+    if not getattr(settings, "LLM_REASONING", True):
+        return {}
+    name = (model or "").lower()
+    provider = (getattr(settings, "LLM_PROVIDER", "") or "").lower()
+    if provider == "openrouter" or "ling-3" in name or "inclusionai/" in name:
+        return {"reasoning": {"enabled": True}}
+    return {}
 
 
 def _ollama_llm_client() -> OpenAICompatibleClient | None:
@@ -498,7 +527,7 @@ def _ollama_llm_client() -> OpenAICompatibleClient | None:
 
 
 def get_llm_client() -> LLMClient:
-    """Ollama (when selected) → cloud LLM → local fallback → mock."""
+    """OpenRouter / Google / Ollama in that order, then local fallback → mock."""
     chain: list[LLMClient] = []
     model = settings.LLM_MODEL or "gemini-3.7-flash"
 
@@ -525,7 +554,9 @@ def get_llm_client() -> LLMClient:
                     base_url=getattr(settings, "LLM_BASE_URL", None)
                     or "https://openrouter.ai/api/v1",
                     label="openrouter",
+                    timeout=120,
                     extra_headers=_openrouter_headers(),
+                    extra_body=_openrouter_extra_body(model),
                 )
             )
 

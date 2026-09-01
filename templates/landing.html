@@ -23,9 +23,9 @@
 
   <div class="dl-landing-hero__stage">
     <div class="dl-landing-hero__copy">
-      <p class="dl-landing-eyebrow">Prediction markets, in plain language</p>
+      <p class="dl-landing-eyebrow">The book is already split</p>
       <h1 id="landing-headline" class="dl-landing-headline">Understand. Decide. Trade with Confidence.</h1>
-      <p class="dl-landing-lede">A prediction market is a yes-or-no question with a price. Pick YES if you think it happens, NO if you think it does not. DreamLens helps you understand it, then trade — the exchange underneath is DreamDEX, not the product you have to learn.</p>
+      <p class="dl-landing-lede">A yes-or-no question with a price. YES at $0.41 is the bet Bitcoin is still above $118,500 when the clock hits zero. NO at $0.59 is the other half of that same minute. DreamLens is the desk that reads the split — the exchange underneath is DreamDEX, not homework.</p>
       <div class="dl-landing-cta">
         <a href="{% url 'start' %}" class="dl-btn dl-btn--primary dl-btn--landing">Start trading</a>
         <a class="dl-landing-cta__secondary" href="#how-it-works">How It Works</a>
@@ -57,137 +57,89 @@
   </div>
 </section>
 
-<section class="dl-landing-section" data-landing-reveal aria-labelledby="problem-heading">
-  <h2 id="problem-heading" class="dl-landing-section__title">Prediction markets shouldn't feel complicated.</h2>
-  <ul class="dl-landing-triples">
-    <li>
-      <h3>Hard to understand</h3>
-      <p>Complex markets and unfamiliar terminology make it difficult to know what you're actually trading.</p>
-    </li>
-    <li>
-      <h3>Hard to decide</h3>
-      <p>Users need to discover markets, analyze activity and determine which opportunities are worth considering.</p>
-    </li>
-    <li>
-      <h3>Hard to automate safely</h3>
-      <p>Autonomous trading requires limits, permissions and transparency—not simply giving an AI access to your wallet.</p>
-    </li>
-  </ul>
-  <p class="dl-landing-pull">DreamLens puts intelligence between you and the complexity.</p>
+<section class="dl-landing-sides" aria-labelledby="sides-heading">
+  <h2 id="sides-heading" class="visually-hidden">What YES and NO mean on this desk</h2>
+  <div class="dl-landing-side dl-landing-side--yes">
+    <p class="dl-landing-side__tag">YES · $0.41</p>
+    <p class="dl-landing-side__line">You think it happens.</p>
+    <p class="dl-landing-side__copy">Pay forty-one cents now. If Bitcoin is still above the strike when the window closes, that share pays $1.00. If it isn’t, you keep nothing of the stake.</p>
+  </div>
+  <div class="dl-landing-side dl-landing-side--no">
+    <p class="dl-landing-side__tag">NO · $0.59</p>
+    <p class="dl-landing-side__line">You think it doesn’t.</p>
+    <p class="dl-landing-side__copy">Same question, other pane. The split on this page is the book: green if the street is paying up on YES, red if NO is heavier.</p>
+  </div>
 </section>
 
-<section class="dl-landing-section dl-landing-ways" data-landing-reveal aria-labelledby="ways-heading">
-  <div class="dl-landing-section__intro">
-    <h2 id="ways-heading" class="dl-landing-section__title">Look, then trade.</h2>
-    <p class="dl-landing-section__lede">Four moves. One yes-or-no question. You stay in control the whole way.</p>
-  </div>
-  <ol class="dl-landing-index">
-    <li class="dl-landing-index__item" data-landing-reveal>
-      <span class="dl-landing-index__num" aria-hidden="true">01</span>
-      <div>
-        <h3 class="dl-landing-index__name">Discover</h3>
-        <p class="dl-landing-index__desc">Find live questions people are trading — not a list of tickers.</p>
-        <ul class="dl-landing-chips" aria-label="Discover filters">
-          <li>Moving Fast</li>
-          <li>Popular</li>
-          <li>High DreamLens Score</li>
-          <li>Traders Active</li>
-          <li>Ending Soon</li>
-        </ul>
-      </div>
-    </li>
-    <li class="dl-landing-index__item" data-landing-reveal>
-      <span class="dl-landing-index__num" aria-hidden="true">02</span>
-      <div>
-        <h3 class="dl-landing-index__name">Understand</h3>
-        <p class="dl-landing-index__desc">DreamLens explains the event in plain language.</p>
-        <ul class="dl-landing-qs">
-          <li>What is happening?</li>
-          <li>What does YES mean?</li>
-          <li>What does NO mean?</li>
-          <li>What could I win or lose?</li>
-        </ul>
-      </div>
-    </li>
-    <li class="dl-landing-index__item" data-landing-reveal>
-      <span class="dl-landing-index__num" aria-hidden="true">03</span>
-      <div>
-        <h3 class="dl-landing-index__name">Smart Copy</h3>
-        <p class="dl-landing-index__desc">Follow a trader you trust. You set the limits; DreamLens can copy them or just alert you.</p>
-      </div>
-    </li>
-    <li class="dl-landing-index__item" data-landing-reveal>
-      <span class="dl-landing-index__num" aria-hidden="true">04</span>
-      <div>
-        <h3 class="dl-landing-index__name">DreamAgent</h3>
-        <p class="dl-landing-index__desc">Let DreamLens place trades within limits you signed. It cannot take your money out.</p>
-      </div>
-    </li>
-  </ol>
+<section class="dl-landing-section" data-landing-reveal aria-labelledby="desk-heading">
+  <h2 id="desk-heading" class="dl-landing-section__title">One question. Two prices. A clock.</h2>
+  <p class="dl-landing-section__lede">That’s the whole instrument. DreamLens names the question, shows what YES and NO pay, and keeps the score off the “you will win” shelf.</p>
+  <p class="dl-landing-pull">Intelligence sits between you and the book — not instead of you.</p>
 </section>
 
 <section class="dl-landing-section" id="how-it-works" data-landing-reveal aria-labelledby="how-heading">
   <p class="dl-landing-kicker">How it works</p>
   <h2 id="how-heading" class="dl-landing-section__title">From looking to a Decision Receipt.</h2>
-  <p class="dl-landing-section__lede">This is the whole product, in order.</p>
+  <p class="dl-landing-section__lede">You look. You decide. The agent only moves after your limits say it may.</p>
   <ol class="dl-landing-flow">
     <li>
       <span class="dl-landing-flow__n" aria-hidden="true">01</span>
       <div>
         <span class="dl-landing-flow__name">Discover</span>
-        <p>See live yes-or-no questions worth a look.</p>
+        <p>Live questions people are already pricing — this BTC window, not a wall of symbols.</p>
       </div>
     </li>
     <li>
       <span class="dl-landing-flow__n" aria-hidden="true">02</span>
       <div>
         <span class="dl-landing-flow__name">Understand</span>
-        <p>Read the question, YES, NO, and the clock in plain language.</p>
+        <p>What the question is, what YES means, what NO means, and how long the clock has.</p>
       </div>
     </li>
     <li>
       <span class="dl-landing-flow__n" aria-hidden="true">03</span>
       <div>
         <span class="dl-landing-flow__name">Decide</span>
-        <p>Use the DreamLens Score as an analysis signal—not a promise.</p>
+        <p>DreamLens Score is how busy and liquid the window is — an analysis signal, never a promise.</p>
       </div>
     </li>
     <li>
       <span class="dl-landing-flow__n" aria-hidden="true">04</span>
       <div>
         <span class="dl-landing-flow__name">Trade / Copy</span>
-        <p>Place an order yourself, or follow a trader you already trust.</p>
+        <p>Put your own dollars on a side, or follow a wallet you already watch.</p>
       </div>
     </li>
     <li>
       <span class="dl-landing-flow__n" aria-hidden="true">05</span>
       <div>
         <span class="dl-landing-flow__name">Risk check</span>
-        <p>We check the amount and the event before anything is placed.</p>
+        <p>Amount, event still open, max loss on the ticket — before anything is sent.</p>
       </div>
     </li>
     <li>
       <span class="dl-landing-flow__n" aria-hidden="true">06</span>
       <div>
         <span class="dl-landing-flow__name">Execute</span>
-        <p>DreamLens places the trade in your trading account.</p>
+        <p>The fill lands in your trading account. Telegram is a remote, not a wallet.</p>
       </div>
     </li>
     <li>
       <span class="dl-landing-flow__n" aria-hidden="true">07</span>
       <div>
         <span class="dl-landing-flow__name">Decision Receipt</span>
-        <p>Every autonomous trade comes back with why it ran—or why it did not.</p>
+        <p>If DreamAgent ran, you get why it copied — or why it sat on its hands.</p>
       </div>
     </li>
   </ol>
 </section>
 
 <section class="dl-landing-section" data-landing-reveal aria-labelledby="before-heading">
-  <h2 id="before-heading" class="dl-landing-section__title">Know exactly what you're doing before you trade.</h2>
+  <h2 id="before-heading" class="dl-landing-section__title">$5 on YES is not a mystery.</h2>
+  <p class="dl-landing-section__lede">Pay $5. If the side you bought is right, the ticket can pay $12.20. If it isn’t, $5 is the most you leave on the table.</p>
   <div class="dl-landing-pair">
     <article class="dl-landing-panel" aria-label="Example payout">
-      <p class="dl-landing-example">Example · possible result</p>
+      <p class="dl-landing-example">This ticket · $5 YES at $0.41</p>
       <p class="dl-landing-panel__hero"><span>$5</span> YES</p>
       <dl class="dl-landing-math">
         <div><dt>You pay</dt><dd>$5.00</dd></div>
@@ -198,7 +150,7 @@
       </dl>
     </article>
     <article class="dl-landing-panel" aria-label="Example trade check">
-      <p class="dl-landing-example">Example · trade check</p>
+      <p class="dl-landing-example">What we check before it sends</p>
       <ul class="dl-check-list">
         <li>✓ Event is still active</li>
         <li>✓ Amount is within your limit</li>
@@ -212,8 +164,8 @@
 </section>
 
 <section class="dl-landing-section" data-landing-reveal aria-labelledby="copy-heading">
-  <h2 id="copy-heading" class="dl-landing-section__title">Don't trade alone.</h2>
-  <p class="dl-landing-section__lede">Follow traders you believe in. DreamLens can copy their next YES or NO — or just tell you they traded.</p>
+  <h2 id="copy-heading" class="dl-landing-section__title">Follow a person. Cap the copy.</h2>
+  <p class="dl-landing-section__lede">If someone you trust takes YES at $0.41, DreamLens can take the same side at your size — or only ping you. You pick that once.</p>
   <div class="dl-landing-pair">
     <article class="dl-landing-panel" aria-label="Example trader">
       <header class="dl-landing-trader">
@@ -225,7 +177,7 @@
         <div><dt>Activity</dt><dd>91</dd></div>
         <div><dt>Sample size</dt><dd>68</dd></div>
       </dl>
-      <p class="dl-landing-panel__kicker">Usually trades</p>
+      <p class="dl-landing-panel__kicker">Usually sits in</p>
       <dl class="dl-landing-math">
         <div><dt>BTC Events</dt><dd>64%</dd></div>
         <div><dt>ETH Events</dt><dd>21%</dd></div>
@@ -234,20 +186,20 @@
       <a href="{% url 'following' %}" class="dl-btn dl-btn--primary">Follow Trader</a>
     </article>
     <article class="dl-landing-panel" aria-label="Copy limits">
-      <p class="dl-landing-panel__kicker">You stay in control</p>
-      <p class="dl-landing-index__desc">Set the ceiling once. DreamLens will not copy past it.</p>
+      <p class="dl-landing-panel__kicker">The ceiling is yours</p>
+      <p class="dl-landing-index__desc">Set it once. DreamLens will not copy past it — even if they size up.</p>
       <dl class="dl-landing-math">
         <div><dt>Max per copy</dt><dd>$5</dd></div>
         <div><dt>Daily maximum</dt><dd>$20</dd></div>
         <div><dt>YES or NO only</dt><dd>On</dd></div>
       </dl>
-      <p class="dl-landing-smart__lede">DreamLens watches and places the copy when you allow it.</p>
+      <p class="dl-landing-smart__lede">Copy now needs an Active DreamAgent. Notify me is a ping, not a fill.</p>
     </article>
   </div>
 </section>
 
 <section class="dl-landing-section" data-landing-reveal aria-labelledby="agent-heading">
-  <h2 id="agent-heading" class="dl-landing-section__title">Your AI agent. Your rules.</h2>
+  <h2 id="agent-heading" class="dl-landing-section__title">DreamAgent can buy YES. It cannot open the till.</h2>
   <article class="dl-landing-panel dl-landing-grant" aria-label="DreamAgent permissions">
     <div class="dl-agent-grant-cols">
       <div>
@@ -276,8 +228,8 @@
 </section>
 
 <section class="dl-landing-section" data-landing-reveal aria-labelledby="receipt-heading">
-  <h2 id="receipt-heading" class="dl-landing-section__title">Don't just trust your agent. Understand it.</h2>
-  <p class="dl-landing-section__lede">Every autonomous trade comes with an explanation.</p>
+  <h2 id="receipt-heading" class="dl-landing-section__title">If it traded, you can read why.</h2>
+  <p class="dl-landing-section__lede">Autonomous fills come back as a Decision Receipt — the same paper the desk would slide across after the copy.</p>
   <article class="dl-receipt dl-landing-receipt" aria-label="Example Decision Receipt">
     <header class="dl-receipt__head">
       <p class="dl-receipt__kicker">Decision Receipt</p>
@@ -315,7 +267,7 @@
 </section>
 
 <section class="dl-landing-section" data-landing-reveal aria-labelledby="security-heading">
-  <h2 id="security-heading" class="dl-landing-section__title">Your funds. Your rules. Your control.</h2>
+  <h2 id="security-heading" class="dl-landing-section__title">The keys stay in MetaMask.</h2>
   <ul class="dl-landing-triples">
     <li>
       <h3>Trading account</h3>
@@ -334,7 +286,7 @@
 </section>
 
 <section class="dl-landing-section dl-landing-arch-wrap" data-landing-reveal aria-labelledby="arch-heading">
-  <h2 id="arch-heading" class="dl-landing-section__title">What you use — and what’s underneath.</h2>
+  <h2 id="arch-heading" class="dl-landing-section__title">What you touch — and what settles.</h2>
   <ol class="dl-landing-arch">
     <li>DreamLens</li>
     <li>Your limits</li>
@@ -346,8 +298,8 @@
 </section>
 
 <section class="dl-landing-end" data-landing-reveal>
-  <p class="dl-landing-end__line">Ready to experience prediction markets differently?</p>
-  <p class="dl-landing-section__lede">Try it with test money. No real monetary value.</p>
+  <p class="dl-landing-end__line">The next window is already on the book.</p>
+  <p class="dl-landing-section__lede">Try a dollar on a yes-or-no. Test money only.</p>
   <a href="{% url 'start' %}" class="dl-btn dl-btn--primary dl-btn--landing">Start trading</a>
   <p class="dl-landing-fine">Testnet only. No real monetary value.</p>
 </section>

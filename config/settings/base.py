@@ -268,6 +268,7 @@ LLM_BASE_URL = env(
 LLM_API_KEY = env("LLM_API_KEY", default="") or GEMINI_API_KEY or OPENROUTER_API_KEY
 LLM_HTTP_REFERER = env("LLM_HTTP_REFERER", default="http://127.0.0.1:8000")
 LLM_APP_TITLE = env("LLM_APP_TITLE", default="DreamLens")
+LLM_REASONING = env.bool("LLM_REASONING", default=True)
 
 # Local OpenAI-compatible fallback (Ollama / LM Studio / vLLM)
 LOCAL_LLM_ENABLED = env.bool("LOCAL_LLM_ENABLED", default=True)

@@ -173,12 +173,15 @@ REDIS_URL = _redis_url_for_this_host(REDIS_URL)  # noqa: F405
 CELERY_BROKER_URL = REDIS_URL
 CELERY_RESULT_BACKEND = REDIS_URL
 
-# Primary LLM is OpenRouter Ling 3 Flash. LAN Ollama stays as fallback.
-LLM_PROVIDER = "openrouter"
-LLM_MODEL = "inclusionai/ling-3.0-flash-fin:free"
-LLM_BASE_URL = "https://openrouter.ai/api/v1"
-LLM_REASONING = True
-LOCAL_LLM_ENABLED = True
-LOCAL_LLM_BASE_URL = "http://192.168.0.110:11434/v1"
-LOCAL_LLM_API_KEY = "local"
-LOCAL_LLM_MODEL = "llama3.2"
+# Primary LLM is Cursor (composer-2.5). LAN Ollama stays as fallback.
+LLM_PROVIDER = env("LLM_PROVIDER", default="cursor")  # noqa: F405
+LLM_MODEL = env("LLM_MODEL", default="composer-2.5")  # noqa: F405
+LLM_BASE_URL = env("LLM_BASE_URL", default="https://api.cursor.com/v1")  # noqa: F405
+CURSOR_API_KEY = env("CURSOR_API_KEY", default="")  # noqa: F405
+LLM_REASONING = env.bool("LLM_REASONING", default=False)  # noqa: F405
+LOCAL_LLM_ENABLED = env.bool("LOCAL_LLM_ENABLED", default=True)  # noqa: F405
+LOCAL_LLM_BASE_URL = env(  # noqa: F405
+    "LOCAL_LLM_BASE_URL", default="http://192.168.0.110:11434/v1"
+)
+LOCAL_LLM_API_KEY = env("LOCAL_LLM_API_KEY", default="local")  # noqa: F405
+LOCAL_LLM_MODEL = env("LOCAL_LLM_MODEL", default="llama3.2")  # noqa: F405

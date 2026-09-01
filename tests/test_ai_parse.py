@@ -165,6 +165,26 @@ def test_get_llm_client_uses_openrouter_ling_flash(settings):
     assert primary.extra_body.get("reasoning") == {"enabled": True}
 
 
+def test_get_llm_client_uses_cursor_composer(settings):
+    from services.ai_service import CascadingLLMClient, CursorLLMClient, get_llm_client
+
+    settings.LOCAL_LLM_ENABLED = False
+    settings.LLM_PROVIDER = "cursor"
+    settings.LLM_MODEL = "composer-2.5"
+    settings.LLM_BASE_URL = "https://api.cursor.com/v1"
+    settings.LLM_API_KEY = ""
+    settings.CURSOR_API_KEY = "crsr_testkey"
+    settings.OPENROUTER_API_KEY = "sk-or-should-not-win"
+    settings.GEMINI_API_KEY = "AQ.should-not-win"
+    client = get_llm_client()
+    assert isinstance(client, CascadingLLMClient)
+    primary = client.clients[0]
+    assert isinstance(primary, CursorLLMClient)
+    assert primary.label == "cursor"
+    assert primary.model == "composer-2.5"
+    assert primary.base_url == "https://api.cursor.com/v1"
+
+
 def test_cascade_skips_empty_openrouter_and_uses_local():
     from services.ai_service import CascadingLLMClient
 

@@ -143,6 +143,7 @@ def test_live_llm_unavailable_without_provider(settings):
     settings.LLM_API_KEY = ""
     settings.GEMINI_API_KEY = ""
     settings.OPENROUTER_API_KEY = ""
+    settings.CURSOR_API_KEY = ""
     settings.LOCAL_LLM_ENABLED = False
     client = get_llm_client()
     assert isinstance(client, UnavailableLLMClient)

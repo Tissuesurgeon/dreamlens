@@ -279,7 +279,78 @@ def _http_error_detail(exc: Exception) -> str:
     body = re.sub(r"AQ\.[A-Za-z0-9*]+", "AQ.[redacted]", body)
     body = re.sub(r"AIza[A-Za-z0-9_-]+", "AIza[redacted]", body)
     body = re.sub(r"sk-or-v1-[A-Za-z0-9*]+", "sk-or-[redacted]", body)
+    body = re.sub(r"crsr_[A-Za-z0-9]+", "crsr_[redacted]", body)
     return f"{reason}: {body}" if body else str(reason)
+
+
+class CursorLLMClient:
+    """Cursor models via chat/completions if present, else the text-only Agent SDK."""
+
+    def __init__(self, *, api_key: str, model: str, timeout: float = 180) -> None:
+        self.api_key = api_key
+        self.model = model or "composer-2.5"
+        self.timeout = timeout
+        self.base_url = "https://api.cursor.com/v1"
+        self.label = "cursor"
+
+    def complete(self, *, system: str, user: str, json_mode: bool = False, **kwargs: Any) -> str:
+        http = OpenAICompatibleClient(
+            api_key=self.api_key,
+            model=self.model,
+            base_url=self.base_url,
+            label="cursor",
+            timeout=self.timeout,
+        )
+        try:
+            return http.complete(system=system, user=user, json_mode=json_mode, **kwargs)
+        except RuntimeError as exc:
+            detail = str(exc)
+            if not any(token in detail for token in ("HTTP 404", "HTTP 405", "HTTP 400", "HTTP 422")):
+                raise
+            logger.info("cursor chat completions unavailable (%s); using SDK", detail[:160])
+            return self._sdk_complete(system=system, user=user, json_mode=json_mode, **kwargs)
+
+    def _sdk_complete(self, *, system: str, user: str, json_mode: bool, **kwargs: Any) -> str:
+        try:
+            from cursor_sdk import Agent, AgentOptions, LocalAgentOptions
+        except ImportError as exc:
+            raise RuntimeError("cursor-sdk is not installed") from exc
+
+        import tempfile
+
+        turns: list[str] = [system]
+        for item in kwargs.get("history") or []:
+            if not isinstance(item, dict):
+                continue
+            text = str(item.get("content") or item.get("text") or "").strip()
+            if not text:
+                continue
+            role = str(item.get("role") or "user").lower()
+            turns.append(f"{role}: {text}")
+        turns.append(user)
+        if json_mode:
+            turns.append("Respond with JSON only. No markdown.")
+        message = "\n\n".join(part for part in turns if part)
+        with tempfile.TemporaryDirectory(prefix="dl-cursor-") as cwd:
+            option_kwargs: dict[str, Any] = {
+                "model": self.model,
+                "api_key": self.api_key,
+                "tools": [],
+                "local": LocalAgentOptions(cwd=cwd),
+            }
+            try:
+                options = AgentOptions(**option_kwargs, mode="ask")
+            except TypeError:
+                options = AgentOptions(**option_kwargs)
+            result = Agent.prompt(message, options)
+        status = getattr(result, "status", "")
+        status_val = str(getattr(status, "value", status) or "").lower()
+        text = _strip_thoughts(getattr(result, "result", None) or "")
+        if status_val in {"error", "failed"}:
+            raise RuntimeError(f"cursor LLM run failed: {text[:240] or status_val}")
+        if _is_empty_completion(text):
+            raise RuntimeError("cursor LLM returned empty content")
+        return text
 
 
 class GoogleAIStudioClient:
@@ -476,6 +547,45 @@ def _google_api_key() -> str:
     return gemini or (llm if not llm.startswith("sk-") else "")
 
 
+def _cursor_api_key() -> str:
+    cursor = (getattr(settings, "CURSOR_API_KEY", "") or "").strip()
+    llm = (getattr(settings, "LLM_API_KEY", "") or "").strip()
+    if cursor.startswith("crsr_"):
+        return cursor
+    if llm.startswith("crsr_"):
+        return llm
+    return cursor
+
+
+def _is_cursor_llm() -> bool:
+    provider = (getattr(settings, "LLM_PROVIDER", "") or "").lower()
+    base = (getattr(settings, "LLM_BASE_URL", "") or "").lower()
+    return provider in {"cursor", "cursor-llm"} or "api.cursor.com" in base
+
+
+def _cursor_model() -> str:
+    model = (getattr(settings, "LLM_MODEL", "") or "").strip()
+    lowered = model.lower()
+    if (
+        not model
+        or lowered.startswith("gemini")
+        or "ling-3" in lowered
+        or lowered.startswith("llama")
+        or lowered.startswith("inclusionai/")
+    ):
+        return "composer-2.5"
+    return model
+
+
+def _cursor_llm_client() -> CursorLLMClient | None:
+    if not _is_cursor_llm():
+        return None
+    key = _cursor_api_key()
+    if not key:
+        return None
+    return CursorLLMClient(api_key=key, model=_cursor_model())
+
+
 def _openrouter_api_key() -> str:
     or_key = getattr(settings, "OPENROUTER_API_KEY", "") or ""
     llm = getattr(settings, "LLM_API_KEY", "") or ""
@@ -538,38 +648,42 @@ def _ollama_llm_client() -> OpenAICompatibleClient | None:
 
 
 def get_llm_client() -> LLMClient:
-    """OpenRouter / Google / Ollama in that order, then local fallback → mock."""
+    """Cursor / OpenRouter / Google / Ollama in that order, then local fallback → mock."""
     chain: list[LLMClient] = []
     model = settings.LLM_MODEL or "gemini-3.7-flash"
 
     ollama = _ollama_llm_client()
     if ollama is not None:
         chain.append(ollama)
-    elif _is_google_llm():
-        google_key = _google_api_key()
-        if google_key:
-            chain.append(
-                GoogleAIStudioClient(
-                    api_key=google_key,
-                    model=model,
-                    label="google",
-                )
-            )
     else:
-        or_key = _openrouter_api_key()
-        if or_key:
-            chain.append(
-                OpenAICompatibleClient(
-                    api_key=or_key,
-                    model=model,
-                    base_url=getattr(settings, "LLM_BASE_URL", None)
-                    or "https://openrouter.ai/api/v1",
-                    label="openrouter",
-                    timeout=120,
-                    extra_headers=_openrouter_headers(),
-                    extra_body=_openrouter_extra_body(model),
+        cursor = _cursor_llm_client()
+        if cursor is not None:
+            chain.append(cursor)
+        elif _is_google_llm():
+            google_key = _google_api_key()
+            if google_key:
+                chain.append(
+                    GoogleAIStudioClient(
+                        api_key=google_key,
+                        model=model,
+                        label="google",
+                    )
                 )
-            )
+        else:
+            or_key = _openrouter_api_key()
+            if or_key:
+                chain.append(
+                    OpenAICompatibleClient(
+                        api_key=or_key,
+                        model=model,
+                        base_url=getattr(settings, "LLM_BASE_URL", None)
+                        or "https://openrouter.ai/api/v1",
+                        label="openrouter",
+                        timeout=120,
+                        extra_headers=_openrouter_headers(),
+                        extra_body=_openrouter_extra_body(model),
+                    )
+                )
 
     local = _local_llm_client()
     if local is not None and ollama is None:

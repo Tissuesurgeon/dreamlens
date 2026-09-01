@@ -24,6 +24,7 @@ def _force_mock_adapter(settings):
     settings.LLM_API_KEY = ""
     settings.GEMINI_API_KEY = ""
     settings.OPENROUTER_API_KEY = ""
+    settings.CURSOR_API_KEY = ""
     reset_adapter()
     yield
     reset_adapter()

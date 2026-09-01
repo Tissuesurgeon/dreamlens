@@ -134,13 +134,14 @@ For Docker, set `USE_SQLITE=0` and your Neon `DATABASE_URL` in `.env`.
 | `DREAMDEX_VENUE_ID` | (see settings) | DreamDEX venue identifier |
 | `DREAMDEX_INDEXER_URL` | GraphQL endpoint | Live adapter indexer |
 | `DREAMDEX_RPC_URL` | Somnia RPC | On-chain reads / tx prep |
-| `LLM_API_KEY` | (empty) | Optional; OpenRouter key can live in `OPENROUTER_API_KEY` instead |
-| `OPENROUTER_API_KEY` | (empty) | Required for the primary Ling 3 Flash model |
+| `CURSOR_API_KEY` | (empty) | Cursor user API key (`crsr_…`) from Dashboard → API Keys |
+| `LLM_PROVIDER` | `cursor` | `cursor` (primary), `openrouter`, `google`, or `ollama` |
+| `LLM_MODEL` | `composer-2.5` | Cursor model id (`composer-2.5` or `auto`) |
+| `LLM_API_KEY` | (empty) | Optional; Cursor key can live in `CURSOR_API_KEY` instead |
+| `OPENROUTER_API_KEY` | (empty) | Used when `LLM_PROVIDER=openrouter` |
 | `GEMINI_API_KEY` | (empty) | Google AI Studio fallback when `LLM_PROVIDER=google` |
-| `LLM_PROVIDER` | `openrouter` | `openrouter` (primary), `google`, or `ollama` |
-| `LLM_MODEL` | `inclusionai/ling-3.0-flash-fin:free` | OpenRouter model id |
-| `LLM_REASONING` | `true` | Sends `reasoning: {enabled: true}` to OpenRouter |
-| `LOCAL_LLM_ENABLED` | `true` | Fall back to Ollama if OpenRouter fails |
+| `LLM_REASONING` | `false` | OpenRouter-only `reasoning: {enabled: true}` flag |
+| `LOCAL_LLM_ENABLED` | `true` | Fall back to Ollama if Cursor fails |
 | `LOCAL_LLM_BASE_URL` | `http://192.168.0.110:11434/v1` | OpenAI-compatible Ollama endpoint |
 | `LOCAL_LLM_MODEL` | `llama3.2` | Local model id (`ollama pull llama3.2`) |
 | `MOCK_SMART_ACCOUNT` | **`false`** | `true` = pytest only; runtime refuses mock SA / grant / broadcast |

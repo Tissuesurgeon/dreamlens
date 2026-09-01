@@ -930,26 +930,26 @@
     const backBtn = document.getElementById("modal-back");
     const confirmBtn = document.getElementById("modal-confirm-trade");
     const state = DreamLens.tradeState || {};
+    const agentReady = Boolean(window.DreamLensConfig && window.DreamLensConfig.agentCanTrade);
     if (title) {
       title.textContent = n === 1 ? "Buy " + (state.outcome || "") : n === 2 ? "Review trade" : "Trade Check";
     }
     if (nextBtn) {
-      nextBtn.hidden = n === 3;
+      nextBtn.hidden = n === 3 || (n === 2 && agentReady);
       nextBtn.textContent = n === 1 ? "Review trade" : "Continue to Trade Check";
     }
     if (backBtn) backBtn.hidden = n === 1;
     if (confirmBtn) {
-      confirmBtn.hidden = n !== 3;
+      confirmBtn.hidden = !(n === 3 || (n === 2 && agentReady));
       const amt = (document.getElementById("modal-amount") || {}).value || "5";
       const side = (DreamLens.tradeState || {}).outcome || "";
-      if (window.DreamLensConfig && window.DreamLensConfig.agentCanTrade) {
+      if (agentReady) {
         confirmBtn.textContent = "Place $" + amt + " " + side;
       } else {
         confirmBtn.textContent = "Place trade";
       }
     }
     if (n === 3) {
-      const agentReady = Boolean(window.DreamLensConfig && window.DreamLensConfig.agentCanTrade);
       const funded = agentReady || Boolean(getConnectedAddress());
       const list = document.getElementById("trade-check-list");
       if (list) {
@@ -1381,7 +1381,10 @@
         }
         const understand = document.getElementById("trade-understand");
         if (understand && !understand.checked) {
-          alert("Confirm that you understand you can lose the amount you paid.");
+          toast("Confirm that you understand you can lose the amount you paid.", "error");
+          return;
+        }
+        if (window.DreamLensConfig && window.DreamLensConfig.agentCanTrade) {
           return;
         }
         showTradeStep(3);

@@ -93,6 +93,7 @@ def test_home_has_look_at(client, sample_event):
     assert as_cents(sample_event.outcomes.get(outcome_type="YES").current_price) in body
     assert ">Home<" in body
     assert "What should I look at?" not in body
+    assert "YES means you think this happens" in body
 
 
 @pytest.mark.django_db
@@ -111,6 +112,7 @@ def test_discover_intent_filters_and_score(client, sample_event):
     assert "% chance" not in body.lower()
     assert "Put $1" in body
     assert "Explain this" in body
+    assert "See this question" in body
     assert 'id="ai-search-form"' not in body
     assert "Live market feed" in body
 
@@ -343,6 +345,9 @@ def test_landing_tells_the_product_story(client):
     assert "Intelligence on top. On-chain execution underneath." in body
     assert "Start trading" in body
     assert "yes-or-no question" in body.lower() or "yes-or-no" in body.lower()
+    assert "ticker soup" not in body.lower()
+    assert "watches the tape" not in body.lower()
+    assert "Trading account" in body
     health = client.get("/healthz")
     assert health.status_code == 200
     assert health.content == b"ok"

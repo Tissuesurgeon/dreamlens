@@ -77,7 +77,7 @@
     {% include "components/window_line.html" %}
     <span class="dl-event-card__actions">
       <button type="button" class="dl-text-link" data-explain-event="{{ event.pk }}" data-explain-question="{{ event|question_copy }}" data-explain-asset="{{ event.underlying_asset|upper }}">Explain this</button>
-      <a href="{% url 'event_detail' event.pk %}" class="dl-event-card__explore">View market</a>
+      <a href="{% url 'event_detail' event.pk %}" class="dl-event-card__explore">See this question</a>
     </span>
   </div>
   <p class="dl-event-card__advanced dl-advanced">{{ event.cumulative_quote_volume|usd_amount }} vol · {{ event.trade_count }} trade{{ event.trade_count|pluralize }}</p>

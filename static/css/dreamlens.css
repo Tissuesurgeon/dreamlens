@@ -5670,7 +5670,8 @@ body[data-view="simple"] .dl-advanced { display: none !important; }
 /* First-session wizard */
 .dl-body--start .dl-nav { display: none; }
 .dl-body--start .dl-bottom-nav { display: none; }
-.dl-body--start .dl-view-toggle { display: none; }
+.dl-body--start .dl-view-toggle,
+.dl-body--first .dl-view-toggle { display: none; }
 .dl-body--start .dl-main {
   padding-bottom: var(--dl-s7);
 }
@@ -5811,6 +5812,11 @@ body[data-view="simple"] .dl-advanced { display: none !important; }
   color: var(--dl-subtle);
   font-size: var(--dl-t-xs);
   line-height: 1.4;
+}
+
+.dl-spotlight__teach {
+  margin: var(--dl-s3) 0 0;
+  max-width: 42ch;
 }
 
 .dl-event-card__price,

@@ -83,6 +83,7 @@
             {% endif %}
           {% endfor %}
         </div>
+        <p class="dl-muted dl-spotlight__teach">YES means you think this happens. NO means you think it does not. Price is what you pay now.</p>
         {% if featured.dl_score %}
         <p class="dl-event-card__score">Score {{ featured.dl_score.score }}/100 · {{ score_disclaimer }}</p>
         {% endif %}
@@ -96,7 +97,7 @@
       {% elif not watching %}
       <div class="dl-empty">
         <h1 class="dl-empty__title">No live events right now</h1>
-        <p>DreamDEX Event Contracts appear here as soon as they start trading.</p>
+        <p>Live yes-or-no questions appear here as soon as they start trading.</p>
       </div>
       {% endif %}
 

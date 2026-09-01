@@ -32,7 +32,7 @@
           <div>
             <p class="dl-your-position__kicker">Your {{ pos.outcome.outcome_type }} position</p>
             <p class="dl-your-position__line">
-              {{ pos.amount|floatformat:2 }} tokens
+              {{ pos.amount|floatformat:2 }} {{ pos.outcome.outcome_type }}
               · now {{ pos.current_value|usd_plain }}
               {% if pos.pnl is not None %}
               · {% if pos.pnl >= 0 %}+{% endif %}{{ pos.pnl|usd_plain }}
@@ -53,10 +53,10 @@
         <div class="dl-your-position__card">
           <div>
             <p class="dl-your-position__kicker">
-              {% if pos.result == "void" %}Void — claim collateral{% else %}{{ pos.outcome.outcome_type }} won{% endif %}
+              {% if pos.result == "void" %}Void — claim your dollars back{% else %}{{ pos.outcome.outcome_type }} won{% endif %}
             </p>
             <p class="dl-your-position__line">
-              {{ pos.amount|floatformat:2 }} tokens
+              {{ pos.amount|floatformat:2 }} {{ pos.outcome.outcome_type }}
               {% if pos.claim_payout %}· claim {{ pos.claim_payout|usd_plain }}{% endif %}
             </p>
           </div>
@@ -66,7 +66,7 @@
             data-claim-position="{{ pos.pk }}"
             data-claim-wallet="{{ pos.claim_wallet }}"
             {% if pos.claim_via_agent %}data-claim-agent="1"{% endif %}
-          >{% if pos.claim_via_agent %}DreamAgent claim{% else %}Claim{% endif %}{% if pos.claim_payout %} {{ pos.claim_payout|usd_plain }}{% endif %}</button>
+          >{% if pos.claim_via_agent %}Claim winnings{% else %}Claim{% endif %}{% if pos.claim_payout %} {{ pos.claim_payout|usd_plain }}{% endif %}</button>
         </div>
         {% elif pos.result == "won" or pos.result == "void" %}
         <div class="dl-your-position__card">
@@ -74,7 +74,7 @@
             <p class="dl-your-position__kicker">
               {% if pos.result == "void" %}Voided{% else %}{{ pos.outcome.outcome_type }} won{% endif %}
             </p>
-            <p class="dl-your-position__line">Nothing left to claim on-chain for this position.</p>
+            <p class="dl-your-position__line">Nothing left to claim for this position.</p>
           </div>
         </div>
         {% endif %}

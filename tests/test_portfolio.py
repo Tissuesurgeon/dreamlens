@@ -628,7 +628,7 @@ def test_agent_claim_refuses_grant_without_redeem(
     assert "activate" in detail
     page = client.get("/portfolio/")
     assert b"Re-sign grant" in page.content
-    assert b"cannot claim on Shannon" in page.content
+    assert b"Sign again to claim" in page.content
 
 
 @pytest.mark.django_db

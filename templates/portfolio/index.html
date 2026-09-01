@@ -90,7 +90,7 @@
     <div class="dl-section-head dl-section-head--table">
       <div>
         <h2 id="agent-claim-heading" class="dl-section__title">DreamAgent claims</h2>
-        <p class="dl-section__subtitle">Smart Account wins. DreamAgent redeems them here — no MetaMask.</p>
+        <p class="dl-section__subtitle">Wins in your trading account. Claim them here — no MetaMask popup.</p>
       </div>
       {% if agent_claimable %}
       <button type="button" class="dl-btn dl-btn--primary dl-btn--sm" data-claim-agent-all>
@@ -100,8 +100,8 @@
     </div>
     {% if grant_health.needs_resign %}
     <article class="dl-agent-callout" role="status">
-      <h3 class="dl-agent-callout__title">This grant cannot claim on Shannon</h3>
-      <p class="dl-agent-callout__copy">Re-sign DelegationManager at Activate so redeem is allowed — then claim here or send /claim in Telegram.</p>
+      <h3 class="dl-agent-callout__title">Sign again to claim</h3>
+      <p class="dl-agent-callout__copy">Your last permission cannot claim winnings yet. Sign again on Activate, then claim here or send /claim in Telegram.</p>
       {% if grant_health.reasons %}
       <p class="dl-muted">{{ grant_health.reasons.0 }}</p>
       {% endif %}
@@ -127,7 +127,7 @@
       {% endfor %}
     </div>
     {% else %}
-    <p class="dl-muted">No Smart Account wins waiting. When a Telegram or copy trade settles, claim it here or send /claim in the bot.</p>
+    <p class="dl-muted">No winnings waiting. When a trade settles, claim it here or send /claim in the bot.</p>
     {% endif %}
   </section>
   {% endif %}
@@ -140,7 +140,7 @@
       <span class="dl-pf-ghost__no">NO</span>
     </div>
     <p class="dl-empty__title">No positions yet</p>
-    <p>Open an event, take a side, and it will show up here with live value. Fills from your connected wallet and Smart Account are indexed automatically.</p>
+    <p>Open an event, take a side, and it will show up here with live value. Trades from this wallet and your trading account appear automatically.</p>
     <a href="{% url 'discover' %}" class="dl-btn dl-btn--primary">Discover events</a>
   </div>
   {% else %}
@@ -202,7 +202,7 @@
       <h2 class="dl-section__title">Settling</h2>
       <p class="dl-section__count">{{ settling_positions|length }}</p>
     </div>
-    <p class="dl-section__subtitle">This window has ended. DreamDEX posts the winner on-chain; then you can claim collateral.</p>
+    <p class="dl-section__subtitle">This window has ended. When the winner is posted you can claim your dollars back.</p>
     <div class="dl-event-rows">
       {% for pos in settling_positions %}
       <a href="{% url 'event_detail' pos.event.pk %}" class="dl-event-row dl-event-row--settling">
@@ -352,7 +352,7 @@
       </div>
       <dl class="dl-agent-dl">
         <div>
-          <dt>Agent collateral</dt>
+          <dt>Agent dollars</dt>
           <dd>{% if agent_balance and agent_balance.collateral %}{{ agent_balance.collateral }}{% elif agent_performance %}{{ agent_performance.balance }}{% else %}—{% endif %}</dd>
         </div>
         <div>
@@ -382,7 +382,7 @@
       </div>
       {% else %}
       <h2 id="portfolio-agent-heading" class="dl-agent-status-card__name">Dream Agent</h2>
-      <p class="dl-muted">No Dream Agent on this wallet yet. Create a Smart Account to copy trades autonomously.</p>
+      <p class="dl-muted">No Dream Agent on this wallet yet. Finish setup so DreamLens can copy trades for you.</p>
       <a href="{% url 'dream_agent_activate' %}" class="dl-btn dl-btn--primary dl-btn--sm">Activate Dream Agent</a>
       {% endif %}
     </section>
@@ -392,7 +392,7 @@
         <div>
           <h2 id="telegram-heading" class="dl-agent-status-card__name">Telegram</h2>
           <p class="dl-agent-status-card__addr">
-            Remote control for DreamAgent. Trades and claims use your Smart Account — not MetaMask.
+            Trade from your phone. Same trading account as the web — Telegram is not a wallet.
             {% if telegram_link.bot_username %}
             <span class="dl-mono">@{{ telegram_link.bot_username }}</span>
             {% endif %}

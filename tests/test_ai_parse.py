@@ -122,3 +122,24 @@ def test_gemini_model_does_not_send_google_key_to_openrouter(settings):
     assert isinstance(primary, GoogleAIStudioClient)
     assert primary.api_key.startswith("AQ.")
     assert primary.label == "google"
+
+
+def test_get_llm_client_uses_lan_ollama_when_provider_is_ollama(settings):
+    from services.ai_service import CascadingLLMClient, OpenAICompatibleClient, get_llm_client
+
+    settings.LOCAL_LLM_ENABLED = True
+    settings.LLM_PROVIDER = "ollama"
+    settings.LLM_MODEL = "llama3.2"
+    settings.LLM_BASE_URL = "http://192.168.0.110:11434/v1"
+    settings.LLM_API_KEY = "local"
+    settings.LOCAL_LLM_BASE_URL = "http://192.168.0.110:11434/v1"
+    settings.LOCAL_LLM_MODEL = "llama3.2"
+    settings.LOCAL_LLM_API_KEY = "local"
+    settings.GEMINI_API_KEY = "AQ.should-not-win"
+    client = get_llm_client()
+    assert isinstance(client, CascadingLLMClient)
+    primary = client.clients[0]
+    assert isinstance(primary, OpenAICompatibleClient)
+    assert primary.label == "ollama"
+    assert primary.model == "llama3.2"
+    assert "192.168.0.110:11434" in (primary.base_url or "")

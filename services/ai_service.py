@@ -472,12 +472,40 @@ def _openrouter_headers() -> dict[str, str]:
     return headers
 
 
+def _ollama_llm_client() -> OpenAICompatibleClient | None:
+    provider = (getattr(settings, "LLM_PROVIDER", "") or "").lower()
+    if provider not in {"ollama", "local"}:
+        return None
+    base = (
+        getattr(settings, "LOCAL_LLM_BASE_URL", "")
+        or getattr(settings, "LLM_BASE_URL", "")
+        or "http://192.168.0.110:11434/v1"
+    )
+    model = (
+        getattr(settings, "LOCAL_LLM_MODEL", "")
+        or getattr(settings, "LLM_MODEL", "")
+        or "llama3.2"
+    )
+    return OpenAICompatibleClient(
+        api_key=getattr(settings, "LOCAL_LLM_API_KEY", "")
+        or getattr(settings, "LLM_API_KEY", "")
+        or "local",
+        model=model,
+        base_url=base,
+        label="ollama",
+        timeout=120,
+    )
+
+
 def get_llm_client() -> LLMClient:
-    """Primary cloud LLM → local Ollama/LM Studio → mock."""
+    """Ollama (when selected) → cloud LLM → local fallback → mock."""
     chain: list[LLMClient] = []
     model = settings.LLM_MODEL or "gemini-3.7-flash"
 
-    if _is_google_llm():
+    ollama = _ollama_llm_client()
+    if ollama is not None:
+        chain.append(ollama)
+    elif _is_google_llm():
         google_key = _google_api_key()
         if google_key:
             chain.append(
@@ -502,7 +530,7 @@ def get_llm_client() -> LLMClient:
             )
 
     local = _local_llm_client()
-    if local is not None:
+    if local is not None and ollama is None:
         chain.append(local)
 
     if not chain:

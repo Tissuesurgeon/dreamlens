@@ -172,3 +172,13 @@ def _redis_url_for_this_host(url: str) -> str:
 REDIS_URL = _redis_url_for_this_host(REDIS_URL)  # noqa: F405
 CELERY_BROKER_URL = REDIS_URL
 CELERY_RESULT_BACKEND = REDIS_URL
+
+# This machine's LLM is the LAN Ollama — not Google / OpenRouter.
+LLM_PROVIDER = "ollama"
+LLM_MODEL = "llama3.2"
+LLM_BASE_URL = "http://192.168.0.110:11434/v1"
+LLM_API_KEY = "local"
+LOCAL_LLM_ENABLED = True
+LOCAL_LLM_BASE_URL = "http://192.168.0.110:11434/v1"
+LOCAL_LLM_API_KEY = "local"
+LOCAL_LLM_MODEL = "llama3.2"

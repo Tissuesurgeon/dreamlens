@@ -136,10 +136,10 @@ For Docker, set `USE_SQLITE=0` and your Neon `DATABASE_URL` in `.env`.
 | `DREAMDEX_RPC_URL` | Somnia RPC | On-chain reads / tx prep |
 | `LLM_API_KEY` | (empty) | Primary OpenAI-compatible API key |
 | `GEMINI_API_KEY` | (empty) | Google AI Studio key; used when `LLM_API_KEY` is empty |
-| `LLM_PROVIDER` | `google` | Primary provider label (`google` or `openrouter`) |
-| `LLM_MODEL` | `gemini-3.7-flash` | Google AI Studio Gemini 3.7 Flash |
-| `LOCAL_LLM_ENABLED` | `true` | Fall back to localhost LLM (Ollama) when primary is missing/fails |
-| `LOCAL_LLM_BASE_URL` | `http://127.0.0.1:11434/v1` | OpenAI-compatible local endpoint |
+| `LLM_PROVIDER` | `ollama` (local) / `google` (cloud) | `ollama` uses the LAN host; `google` or `openrouter` for cloud |
+| `LLM_MODEL` | `llama3.2` (local) | Ollama model id, or Gemini when provider is `google` |
+| `LOCAL_LLM_ENABLED` | `true` | Use / fall back to Ollama |
+| `LOCAL_LLM_BASE_URL` | `http://192.168.0.110:11434/v1` | OpenAI-compatible Ollama endpoint |
 | `LOCAL_LLM_MODEL` | `llama3.2` | Local model id (`ollama pull llama3.2`) |
 | `MOCK_SMART_ACCOUNT` | **`false`** | `true` = pytest only; runtime refuses mock SA / grant / broadcast |
 | `METAMASK_DELEGATION_MANAGER` | (from deploy) | Delegation Manager on Shannon |

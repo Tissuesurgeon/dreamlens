@@ -254,6 +254,17 @@ def test_web_agent_trade_api(client, user, running_agent, sample_event, settings
     assert state["step"] == "done"
     assert state["incomplete"] is False
     assert state["has_first_trade"] is True
+    assert state["title"] == "You bought YES."
+    from services.event_copy import event_question as eq
+
+    assert eq(sample_event) in state["why"]
+    done = client.get("/start/")
+    assert done.status_code == 200
+    done_body = done.content.decode()
+    assert "You bought YES." in done_body
+    assert done_body.count("<h2>Claim</h2>") == 1
+    assert done_body.count("<h2>Close</h2>") == 1
+    assert "When the event ends you claim winnings" not in done_body
 
 
 def test_grant_typed_data_is_delegation_manager_payload():

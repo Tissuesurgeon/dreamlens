@@ -11,6 +11,9 @@ from django.urls import reverse
 from apps.dreamcopy.models import CopyExecution
 from apps.events.models import EventContract
 from services.event_copy import (
+    CLAIM_JOB,
+    CLAIM_VS_CLOSE,
+    CLOSE_JOB,
     SCORE_DISCLAIMER,
     as_cents,
     event_question,
@@ -367,6 +370,72 @@ def test_start_wizard_connect_step(client, sample_event):
     assert "EIP-712" not in body
     assert "session key" not in body.lower()
     assert 'href="/start/"' in client.get("/").content.decode()
+
+
+@pytest.mark.django_db
+def test_start_wizard_done_names_the_ticket_and_splits_claim_vs_close(
+    client, user, wallet, sample_event, settings
+):
+    settings.MOCK_SMART_ACCOUNT = True
+    from apps.trading.models import Trade
+    from services import smart_account_service
+    from services.onboarding_service import first_session_state
+
+    sa = smart_account_service.create_account(user, owner_address=wallet.address)
+    smart_account_service.mark_funded(sa, amount=Decimal("50"))
+    smart_account_service.grant_agent(
+        user,
+        max_trade_amount=Decimal("10"),
+        max_daily_volume=Decimal("50"),
+        expires_in_days=30,
+        min_copy_score=50,
+        signed_delegation={
+            "delegate": "0xSession00000000000000000000000000000001",
+            "delegator": sa.address,
+            "authority": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "caveats": [],
+            "salt": "0x1",
+            "signature": "0xmockdeadbeef",
+            "mock": True,
+        },
+        activate=True,
+    )
+    yes = sample_event.outcomes.get(outcome_type="YES")
+    Trade.objects.create(
+        user=user,
+        event=sample_event,
+        outcome=yes,
+        side=Trade.Side.BUY,
+        amount=Decimal("1"),
+        entry_price=Decimal("0.41"),
+        transaction_hash="0x" + "ef" * 32,
+        status=Trade.Status.CONFIRMED,
+        metadata_json={"smart_account": sa.address, "source": "web", "wallet": sa.address},
+    )
+    state = first_session_state(user)
+    assert state["step"] == "done"
+    assert state["title"] == "You bought YES."
+    assert event_question(sample_event) in state["why"]
+    assert "$0.41" in state["why"]
+    assert "You're in" not in state["title"]
+    assert "This trade is open" not in state["why"]
+    assert state["why"].count("Claim") == 0
+
+    client.force_login(user)
+    body = client.get("/start/").content.decode()
+    assert "You bought YES." in body
+    assert event_question(sample_event) in body
+    assert CLAIM_JOB in body
+    assert CLOSE_JOB in body
+    assert CLAIM_VS_CLOSE not in body
+    assert body.count(CLAIM_JOB) == 1
+    assert body.count(CLOSE_JOB) == 1
+    assert body.count("You're in") == 0
+    assert "This trade is open" not in body
+    assert "When the event ends you claim winnings" not in body
+    assert "chance of winning" not in body.lower()
+    assert "See your trade" in body
+    assert "On the book" in body
 
 
 @pytest.mark.django_db

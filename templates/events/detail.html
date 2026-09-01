@@ -38,7 +38,7 @@
               · {% if pos.pnl >= 0 %}+{% endif %}{{ pos.pnl|usd_plain }}
               {% endif %}
             </p>
-            <p class="dl-muted">This trade is open. When the event ends you claim winnings; Close is selling early.</p>
+            <p class="dl-muted">{% claim_vs_close %}</p>
           </div>
           {% if pos.closeable %}
           <button

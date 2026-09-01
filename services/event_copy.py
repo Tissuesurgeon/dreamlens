@@ -22,8 +22,17 @@ SIDE_BEGINNER = (
     "YES means you think this happens. NO means you think it does not. "
     "Price is what you pay now."
 )
+CLAIM_JOB = (
+    "After this window settles. If your side pays $1.00 — or the event is voided at $0.50 — "
+    "Claim is how those dollars land in this trading account."
+)
+CLOSE_JOB = (
+    "While the clock is still running. Close sells this ticket at the live book price. "
+    "That is an early exit, not a settlement payout."
+)
 CLAIM_VS_CLOSE = (
-    "This trade is open. When the event ends you claim winnings; Close is selling early."
+    "This ticket is still live. Claim waits until the window settles. "
+    "Close sells it now at the book — not a payout."
 )
 SETTLED_CLAIM_HINT = "Claim is how you get dollars back after the event settles."
 PAY_LABEL = "You pay"

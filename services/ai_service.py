@@ -234,10 +234,12 @@ class OpenAICompatibleClient:
                 body = json.loads(resp.read().decode())
             choices = body.get("choices", [])
             if not choices:
-                return "{}"
+                raise RuntimeError(f"{self.label} LLM returned no choices")
             message = choices[0].get("message") or {}
-            content = message.get("content") or ""
-            return _strip_thoughts(content or "{}")
+            content = _strip_thoughts(message.get("content") or "")
+            if _is_empty_completion(content):
+                raise RuntimeError(f"{self.label} LLM returned empty content")
+            return content
 
         try:
             return _request(json_mode)
@@ -257,8 +259,12 @@ class OpenAICompatibleClient:
 
 def _strip_thoughts(text: str) -> str:
     cleaned = re.sub(r"<thought>.*?</thought>", "", text or "", flags=re.DOTALL | re.I)
-    cleaned = cleaned.strip()
-    return cleaned or (text or "{}")
+    return cleaned.strip()
+
+
+def _is_empty_completion(text: str) -> bool:
+    blob = (text or "").strip()
+    return blob in {"", "{}", "null", "[]"}
 
 
 def _http_error_detail(exc: Exception) -> str:
@@ -415,9 +421,14 @@ class CascadingLLMClient:
         for client in self.clients:
             label = getattr(client, "label", client.__class__.__name__)
             try:
-                return client.complete(system=system, user=user, json_mode=json_mode, **kwargs)
+                raw = client.complete(system=system, user=user, json_mode=json_mode, **kwargs)
             except Exception as exc:  # noqa: BLE001 — cascade to next provider
                 logger.warning("LLM provider %s failed: %s", label, exc)
+                continue
+            if _is_empty_completion(raw):
+                logger.warning("LLM provider %s returned empty content; trying next", label)
+                continue
+            return raw
         if getattr(settings, "MOCK_DREAMDEX", False):
             return MockLLMClient().complete(system=system, user=user, json_mode=json_mode, **kwargs)
         return UnavailableLLMClient().complete(system=system, user=user, json_mode=json_mode, **kwargs)
@@ -431,7 +442,7 @@ def _local_llm_client() -> OpenAICompatibleClient | None:
         model=settings.LOCAL_LLM_MODEL or "llama3.2",
         base_url=settings.LOCAL_LLM_BASE_URL or "http://127.0.0.1:11434/v1",
         label="local",
-        timeout=60,
+        timeout=120,
     )
 
 

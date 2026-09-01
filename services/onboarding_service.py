@@ -7,7 +7,7 @@ from typing import Any
 from apps.agents.models import SmartAccount
 from apps.trading.models import Trade
 from services.dream_agent_service import get_tradable_agent
-from services.event_copy import SIDE_BEGINNER
+from services.event_copy import SIDE_BEGINNER, event_question, format_collateral
 from services.smart_account_service import get_account
 
 # Official Shannon faucets (testnet only — no real monetary value).
@@ -50,37 +50,42 @@ STEP_COPY = {
         "cta": "Choose YES or NO",
     },
     STEP_DONE: {
-        "title": "You’re in. This trade is open.",
-        "why": "When the event ends you claim winnings. Close is selling early — not the same as claim.",
+        "title": "Your first ticket is live.",
+        "why": "It's on the book until this window ends — or you sell it.",
         "cta": "See your trade",
     },
 }
 
 
-def _has_smart_account_trade(user, sa: SmartAccount | None) -> bool:
+def _trade_on_account(trade: Trade, addr: str) -> bool:
+    meta = trade.metadata_json or {}
+    wallet = str(meta.get("wallet") or meta.get("wallet_address") or "").lower()
+    if wallet == addr:
+        return True
+    if str(meta.get("smart_account") or "").lower() == addr:
+        return True
+    return False
+
+
+def _first_sa_trade(user, sa: SmartAccount | None) -> Trade | None:
     if sa is None:
-        return False
+        return None
     addr = (sa.address or "").strip().lower()
     if not addr:
-        return False
+        return None
     confirmed = (
         Trade.objects.filter(
             user=user,
             status__in=(Trade.Status.CONFIRMED, Trade.Status.SUBMITTED),
         )
         .exclude(transaction_hash="")
+        .select_related("event", "outcome")
+        .order_by("opened_at")
     )
-    for trade in confirmed.only("metadata_json")[:40]:
-        meta = trade.metadata_json or {}
-        wallet = str(meta.get("wallet") or meta.get("wallet_address") or "").lower()
-        if wallet == addr:
-            return True
-        if str(meta.get("smart_account") or "").lower() == addr:
-            return True
-        if str(meta.get("source") or "").lower() in {"telegram", "web", "claim"}:
-            if wallet == addr:
-                return True
-    return False
+    for trade in confirmed[:40]:
+        if _trade_on_account(trade, addr):
+            return trade
+    return None
 
 
 def first_session_state(user) -> dict[str, Any]:
@@ -89,7 +94,8 @@ def first_session_state(user) -> dict[str, Any]:
     sa = get_account(user) if authenticated else None
     funded = bool(sa and sa.status == SmartAccount.Status.FUNDED)
     can_trade = bool(authenticated and get_tradable_agent(user))
-    has_first_trade = _has_smart_account_trade(user, sa) if authenticated else False
+    first_trade = _first_sa_trade(user, sa) if authenticated else None
+    has_first_trade = first_trade is not None
 
     if not authenticated:
         step = STEP_CONNECT
@@ -104,7 +110,15 @@ def first_session_state(user) -> dict[str, Any]:
     else:
         step = STEP_DONE
 
-    copy = STEP_COPY[step]
+    copy = dict(STEP_COPY[step])
+    if step == STEP_DONE and first_trade is not None:
+        side = first_trade.outcome.outcome_type if first_trade.outcome_id else "YES"
+        paid = (first_trade.amount or 0) * (first_trade.entry_price or 0)
+        copy["title"] = f"You bought {side}."
+        copy["why"] = (
+            f"{event_question(first_trade.event)} · {format_collateral(paid)} "
+            f"at {format_collateral(first_trade.entry_price)}."
+        )
     # Quiet the app desk only for signed-in users who have not finished the first trade.
     incomplete = authenticated and step != STEP_DONE
     return {
@@ -118,6 +132,11 @@ def first_session_state(user) -> dict[str, Any]:
         "funded": funded,
         "can_trade": can_trade,
         "has_first_trade": has_first_trade,
+        "first_trade_side": (
+            first_trade.outcome.outcome_type
+            if first_trade is not None and first_trade.outcome_id
+            else ""
+        ),
         "title": copy["title"],
         "why": copy["why"],
         "cta": copy["cta"],

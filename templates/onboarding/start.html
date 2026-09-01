@@ -16,7 +16,7 @@
   {% endif %}
 
   <header class="dl-start__head">
-    <p class="dl-start__kicker">{% if first_session.step == "done" %}Ready{% else %}Step {{ first_session.step_index }} of 5{% endif %}</p>
+    <p class="dl-start__kicker">{% if first_session.step == "done" %}On the book{% else %}Step {{ first_session.step_index }} of 5{% endif %}</p>
     <h1 class="dl-start__title">{{ first_session.title }}</h1>
     <p class="dl-start__why">{{ first_session.why }}</p>
   </header>
@@ -154,11 +154,20 @@
 
   {% else %}
   <div class="dl-start__panel">
-    <p class="dl-start__success">{{ first_session.why }}</p>
+    <div class="dl-start__jobs" role="group" aria-label="Claim versus Close">
+      <article class="dl-start__job dl-start__job--claim">
+        <h2>Claim</h2>
+        <p>{% claim_job %}</p>
+      </article>
+      <article class="dl-start__job dl-start__job--close">
+        <h2>Close</h2>
+        <p>{% close_job %}</p>
+      </article>
+    </div>
     <a href="{% url 'portfolio' %}" class="dl-btn dl-btn--primary dl-btn--block dl-start__cta">See your trade</a>
     <a href="{% url 'home' %}" class="dl-btn dl-btn--ghost dl-btn--block">Go to Home</a>
     {% if telegram_bot_url %}
-    <p class="dl-muted dl-start__hint">You can send the same kind of trade from <a href="{{ telegram_bot_url }}">the DreamLens bot</a>. Telegram is an interface, not a wallet.</p>
+    <p class="dl-muted dl-start__hint">Same ticket from <a href="{{ telegram_bot_url }}">the DreamLens bot</a>. Telegram is an interface, not a wallet.</p>
     {% endif %}
   </div>
   {% endif %}

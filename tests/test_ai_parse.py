@@ -163,3 +163,22 @@ def test_get_llm_client_uses_openrouter_ling_flash(settings):
     assert primary.label == "openrouter"
     assert primary.model == "inclusionai/ling-3.0-flash-fin:free"
     assert primary.extra_body.get("reasoning") == {"enabled": True}
+
+
+def test_cascade_skips_empty_openrouter_and_uses_local():
+    from services.ai_service import CascadingLLMClient
+
+    class EmptyPrimary:
+        label = "openrouter"
+
+        def complete(self, **kwargs):
+            return "{}"
+
+    class LocalOk:
+        label = "local"
+
+        def complete(self, **kwargs):
+            return '{"ok": true}'
+
+    client = CascadingLLMClient([EmptyPrimary(), LocalOk()])
+    assert client.complete(system="s", user="u") == '{"ok": true}'

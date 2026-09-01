@@ -3,6 +3,9 @@ from decimal import Decimal, ROUND_HALF_UP
 from django import template
 
 from services.event_copy import (
+    CLAIM_JOB,
+    CLAIM_VS_CLOSE,
+    CLOSE_JOB,
     SCORE_DISCLAIMER,
     as_cents as _as_cents,
     collateral_ticker,
@@ -94,6 +97,21 @@ def usd_plain(value):
 @register.simple_tag
 def score_disclaimer():
     return SCORE_DISCLAIMER
+
+
+@register.simple_tag
+def claim_vs_close():
+    return CLAIM_VS_CLOSE
+
+
+@register.simple_tag
+def claim_job():
+    return CLAIM_JOB
+
+
+@register.simple_tag
+def close_job():
+    return CLOSE_JOB
 
 
 @register.simple_tag

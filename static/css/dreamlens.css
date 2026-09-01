@@ -5842,6 +5842,37 @@ body[data-view="simple"] .dl-advanced { display: none !important; }
   color: var(--dl-muted);
   line-height: 1.55;
 }
+.dl-start__jobs {
+  display: grid;
+  gap: var(--dl-s3);
+}
+.dl-start__job {
+  margin: 0;
+  padding: var(--dl-s4);
+  border-radius: var(--dl-radius);
+  background: var(--dl-surface-2);
+  border: 1px solid var(--dl-line);
+}
+.dl-start__job h2 {
+  margin: 0 0 var(--dl-s2);
+  font-size: var(--dl-t-sm);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.dl-start__job p {
+  margin: 0;
+  color: var(--dl-muted);
+  font-size: var(--dl-t-sm);
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+.dl-start__job--claim {
+  border-color: color-mix(in oklch, var(--dl-yes) 42%, var(--dl-line));
+}
+.dl-start__job--close {
+  border-color: color-mix(in oklch, var(--dl-warn) 42%, var(--dl-line));
+}
 .dl-start__advanced { color: var(--dl-subtle); font-size: var(--dl-t-sm); }
 .dl-start__advanced summary { cursor: pointer; }
 

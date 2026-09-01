@@ -2386,7 +2386,7 @@
         if (collEl) {
           collEl.textContent =
             data.collateral_balance != null
-              ? formatAmount(data.collateral_balance, 2)
+              ? "$" + formatAmount(data.collateral_balance, 2)
               : "—";
         }
         if (collSym && data.collateral_symbol) {

@@ -1618,6 +1618,249 @@ body.dl-body {
 
 .dl-wallet-balance .dl-ta-kpis { margin-bottom: 0; }
 
+.dl-pf-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--dl-s4);
+}
+.dl-pf-head__tally {
+  margin: 0;
+  color: var(--dl-subtle);
+  font-size: var(--dl-t-sm);
+  font-weight: 650;
+  text-align: right;
+}
+
+.dl-pf-money__grid {
+  display: grid;
+  gap: var(--dl-s5);
+  padding: var(--dl-s5);
+  border: 1px solid var(--dl-line);
+  border-radius: var(--dl-radius-lg);
+  background: var(--dl-surface);
+}
+.dl-pf-money__lead,
+.dl-pf-money__today {
+  display: grid;
+  gap: var(--dl-s1);
+  min-width: 0;
+}
+@media (min-width: 640px) {
+  .dl-pf-money__grid {
+    grid-template-columns: 1fr 1fr;
+    align-items: end;
+  }
+  .dl-pf-money__facts {
+    grid-column: 1 / -1;
+  }
+}
+.dl-pf-money__label {
+  color: var(--dl-muted);
+  font-size: var(--dl-t-sm);
+  font-weight: 650;
+}
+.dl-pf-money__avail {
+  font-family: var(--dl-font-mono);
+  font-size: var(--dl-t-3xl);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+  text-wrap: balance;
+}
+.dl-pf-money__avail-hint {
+  color: var(--dl-subtle);
+  font-size: var(--dl-t-xs);
+  font-weight: 650;
+}
+.dl-pf-money__result {
+  font-family: var(--dl-font-mono);
+  font-size: var(--dl-t-2xl);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+.dl-pf-money__result.is-pos { color: var(--dl-yes); }
+.dl-pf-money__result.is-neg { color: var(--dl-no); }
+.dl-pf-money__today-hint {
+  color: var(--dl-subtle);
+  font-size: var(--dl-t-xs);
+  max-width: 28ch;
+}
+.dl-pf-money__facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--dl-s4);
+  margin: 0;
+  padding-top: var(--dl-s4);
+  border-top: 1px solid var(--dl-line);
+}
+.dl-pf-money__facts dt {
+  color: var(--dl-muted);
+  font-size: var(--dl-t-xs);
+  font-weight: 650;
+}
+.dl-pf-money__facts dd {
+  margin: var(--dl-s1) 0 0;
+  font-family: var(--dl-font-mono);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.dl-pf-money__facts dd.is-pos { color: var(--dl-yes); }
+.dl-pf-money__facts dd.is-neg { color: var(--dl-no); }
+
+.dl-pf-tickets {
+  display: grid;
+  gap: var(--dl-s3);
+}
+.dl-pf-ticket {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: var(--dl-s4);
+  align-items: stretch;
+  padding: 0;
+  border: 1px solid var(--dl-line);
+  border-radius: var(--dl-radius-lg);
+  background: var(--dl-surface);
+  overflow: hidden;
+  transition: border-color var(--dl-fast) var(--dl-ease);
+}
+.dl-pf-ticket:hover { border-color: var(--dl-line-strong); }
+.dl-pf-ticket--yes { border-color: var(--dl-yes-line); }
+.dl-pf-ticket--no { border-color: var(--dl-no-line); }
+.dl-pf-ticket__side {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 4.25rem;
+  padding: var(--dl-s4) var(--dl-s3);
+  font-size: var(--dl-t-sm);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+.dl-pf-ticket--yes .dl-pf-ticket__side {
+  background: var(--dl-yes-soft);
+  color: var(--dl-yes);
+}
+.dl-pf-ticket--no .dl-pf-ticket__side {
+  background: var(--dl-no-soft);
+  color: var(--dl-no);
+}
+.dl-pf-ticket__main {
+  min-width: 0;
+  padding: var(--dl-s4) 0;
+}
+.dl-pf-ticket__q {
+  display: block;
+  color: inherit;
+  font-size: var(--dl-t-md);
+  font-weight: 750;
+  line-height: 1.3;
+  text-decoration: none;
+  text-wrap: pretty;
+}
+.dl-pf-ticket__q:hover { color: var(--dl-primary); }
+.dl-pf-ticket__window {
+  margin: var(--dl-s2) 0 0;
+  color: var(--dl-subtle);
+  font-size: var(--dl-t-sm);
+}
+.dl-pf-ticket__math {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--dl-s3);
+  margin: var(--dl-s4) 0 0;
+}
+.dl-pf-ticket__math dt {
+  color: var(--dl-muted);
+  font-size: var(--dl-t-xs);
+  font-weight: 650;
+}
+.dl-pf-ticket__math dd {
+  margin: 0.15rem 0 0;
+  font-family: var(--dl-font-mono);
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+.dl-pf-ticket__act {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--dl-s3);
+  padding: var(--dl-s4);
+}
+.dl-pf-ticket__act .dl-btn { min-height: 44px; }
+.dl-pf-ticket__pnl {
+  font-family: var(--dl-font-mono);
+  font-size: var(--dl-t-lg);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.dl-pf-ticket__pnl.is-pos { color: var(--dl-yes); }
+.dl-pf-ticket__pnl.is-neg { color: var(--dl-no); }
+
+.dl-agent-claim-box.is-ready {
+  border-color: var(--dl-yes-line);
+  background: var(--dl-yes-soft);
+}
+.dl-pf-empty { margin-bottom: var(--dl-s6); }
+.dl-pf-ghost {
+  display: flex;
+  width: min(16rem, 100%);
+  margin: 0 auto var(--dl-s4);
+  border-radius: var(--dl-radius);
+  overflow: hidden;
+  min-height: 3.25rem;
+}
+.dl-pf-ghost__yes,
+.dl-pf-ghost__no {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--dl-t-sm);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+.dl-pf-ghost__yes { background: var(--dl-yes-soft); color: var(--dl-yes); }
+.dl-pf-ghost__no { background: var(--dl-no-soft); color: var(--dl-no); }
+.dl-pf-follow-empty {
+  margin: 0;
+  color: var(--dl-muted);
+  font-size: var(--dl-t-sm);
+  max-width: 52ch;
+}
+.dl-pf-follow-empty .dl-text-link {
+  color: var(--dl-primary);
+  font-weight: 650;
+}
+
+@media (max-width: 639px) {
+  .dl-pf-ticket {
+    grid-template-columns: 1fr;
+  }
+  .dl-pf-ticket__side {
+    min-height: 44px;
+    justify-content: flex-start;
+    padding: var(--dl-s3) var(--dl-s4);
+  }
+  .dl-pf-ticket__main { padding: 0 var(--dl-s4) var(--dl-s3); }
+  .dl-pf-ticket__act {
+    flex-direction: row;
+    align-items: center;
+    padding: 0 var(--dl-s4) var(--dl-s4);
+  }
+  .dl-pf-ticket__math { grid-template-columns: 1fr 1fr 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dl-pf-ticket { transition: none; }
+}
+
 .dl-agent-limits__line {
   margin: 0;
   color: var(--dl-muted);

@@ -321,6 +321,7 @@ def test_portfolio_level_one_words(client):
     assert "Today's result" in body
     assert "liquidation" not in body.lower()
     assert "Unrealized" not in body
+    assert "dl-pf-money" in body
 
 
 @pytest.mark.django_db

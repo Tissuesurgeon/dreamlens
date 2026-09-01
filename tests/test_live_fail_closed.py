@@ -154,3 +154,9 @@ def test_simulate_copy_alert_requires_force(settings):
     settings.DEBUG = True
     with pytest.raises(CommandError, match="disabled"):
         call_command("simulate_copy_alert")
+
+
+@pytest.mark.django_db
+def test_lock_supabase_data_api_refuses_sqlite():
+    with pytest.raises(CommandError, match="PostgreSQL"):
+        call_command("lock_supabase_data_api")

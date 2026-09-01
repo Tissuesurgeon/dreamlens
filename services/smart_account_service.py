@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from django.conf import settings
@@ -369,6 +369,46 @@ def get_balance(smart_account: SmartAccount) -> dict[str, Any]:
         logger.warning("get_balance failed: %s", exc)
         raise SmartAccountError(f"Could not read on-chain balance: {exc}") from exc
     raise SmartAccountError("Balance adapter unavailable")
+
+
+def _as_decimal(value) -> Decimal | None:
+    if value is None or value == "":
+        return None
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+
+
+def resolve_collateral(
+    smart_account: SmartAccount | None,
+    *,
+    snapshot: dict[str, Any] | None = None,
+    fallback: Decimal | None = None,
+) -> Decimal:
+    """Spendable Event Contract collateral on the Smart Account.
+
+    Prefer a live RPC snapshot. Fall back to last recorded deposit, then
+    ``fallback`` (usually ``initial_capital``). Do not treat a real 0 as missing.
+    """
+    if snapshot:
+        live = _as_decimal(snapshot.get("collateral"))
+        if live is not None and "error" not in snapshot:
+            return live
+    if smart_account is not None:
+        try:
+            live_snap = get_balance(smart_account)
+            live = _as_decimal((live_snap or {}).get("collateral"))
+            if live is not None:
+                return live
+        except SmartAccountError:
+            logger.debug("resolve_collateral: live read failed", exc_info=True)
+        meta = smart_account.metadata_json or {}
+        for key in ("balance", "last_deposit"):
+            stored = _as_decimal(meta.get(key))
+            if stored is not None:
+                return stored
+    return fallback if fallback is not None else Decimal("0")
 
 
 def grant_payload_for_ui(user, *, owner_address: str = "") -> dict[str, Any]:

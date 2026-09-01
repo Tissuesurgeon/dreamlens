@@ -1839,6 +1839,19 @@ body.dl-body {
   font-weight: 650;
 }
 
+.dl-lookback {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--dl-s2);
+  margin: 0 0 var(--dl-s4);
+}
+.dl-lookback .dl-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  text-decoration: none;
+}
+
 @media (max-width: 639px) {
   .dl-pf-ticket {
     grid-template-columns: 1fr;

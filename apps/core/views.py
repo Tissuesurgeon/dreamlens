@@ -516,6 +516,10 @@ def portfolio(request):
                 "agent_balance": None,
                 "telegram_link": None,
                 "recent_trades": [],
+                "closed_lookback": "7d",
+                "closed_lookbacks": (),
+                "closed_total": 0,
+                "recent_trades_total": 0,
                 "copy_relationships": [],
                 "pending_copy_count": 0,
                 "agent_can_auto_copy": False,
@@ -526,9 +530,13 @@ def portfolio(request):
     from apps.agents.models import DreamAgent
     from services import dream_agent_service, smart_account_service
     from services.portfolio_service import (
+        CLOSED_LOOKBACKS,
         annotate_positions,
+        closed_lookback_cutoff,
         get_wallet_balances_for_user,
+        in_closed_lookback,
         list_recent_trades,
+        parse_closed_lookback,
         refresh_portfolio,
     )
     from services.telegram_link_service import get_link, serialize_link
@@ -543,7 +551,6 @@ def portfolio(request):
         .order_by("-updated_at")
         .first()
     )
-    agent_performance = dream_agent_service.agent_performance(agent) if agent else None
     agent_balance = None
     if smart_account:
         try:
@@ -551,6 +558,11 @@ def portfolio(request):
         except Exception:
             logger.warning("portfolio agent balance unavailable", exc_info=True)
             agent_balance = None
+    agent_performance = (
+        dream_agent_service.agent_performance(agent, balance=agent_balance)
+        if agent
+        else None
+    )
 
     positions = annotate_positions(
         request.user,
@@ -568,10 +580,22 @@ def portfolio(request):
     agent_claimable = [
         p for p in settled_positions if p.claimable and getattr(p, "claim_via_agent", False)
     ]
-    closed_positions = [
+    all_closed = [
         p for p in settled_positions if not (p.claimable and getattr(p, "claim_via_agent", False))
     ]
-    recent_trades = list_recent_trades(request.user)
+    all_recent_trades = list_recent_trades(request.user)
+    closed_lookback = parse_closed_lookback(request.GET.get("closed"))
+    cutoff = closed_lookback_cutoff(closed_lookback)
+    closed_positions = [
+        p
+        for p in all_closed
+        if in_closed_lookback(getattr(p, "settled_at", None) or p.opened_at, cutoff)
+    ]
+    recent_trades = [
+        t
+        for t in all_recent_trades
+        if in_closed_lookback(t.opened_at, cutoff)
+    ]
 
     total_pnl = sum((p.pnl or Decimal("0")) for p in positions)
     event_ids = {p.event_id for p in positions}
@@ -634,6 +658,10 @@ def portfolio(request):
             "settling_positions": settling_positions,
             "settled_positions": settled_positions,
             "closed_positions": closed_positions,
+            "closed_lookback": closed_lookback,
+            "closed_lookbacks": CLOSED_LOOKBACKS,
+            "closed_total": len(all_closed),
+            "recent_trades_total": len(all_recent_trades),
             "agent_claimable": agent_claimable,
             "recent_trades": recent_trades,
             "has_positions": bool(
@@ -823,8 +851,6 @@ def dream_agent(request):
             .order_by("-updated_at")
             .first()
         )
-        if agent:
-            performance = dream_agent_service.agent_performance(agent)
         try:
             agent_claimable = list_agent_claimable(request.user)
             for pos in agent_claimable:
@@ -837,7 +863,10 @@ def dream_agent(request):
         try:
             agent_balance = smart_account_service.get_balance(sa)
         except Exception:
+            logger.warning("agent page balance unavailable", exc_info=True)
             agent_balance = None
+    if agent:
+        performance = dream_agent_service.agent_performance(agent, balance=agent_balance)
     executions = []
     following_count = 0
     if request.user.is_authenticated:

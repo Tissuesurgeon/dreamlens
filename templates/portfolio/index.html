@@ -222,12 +222,28 @@
   </section>
   {% endif %}
 
-  {% if closed_positions %}
-  <section class="dl-section">
+  {% if closed_total %}
+  <section class="dl-section" id="closed-trades">
     <div class="dl-section-head dl-section-head--table">
       <h2 class="dl-section__title">Closed</h2>
-      <p class="dl-section__count">{{ closed_positions|length }}</p>
+      <p class="dl-section__count">
+        {% if closed_lookback != "all" and closed_positions|length != closed_total %}
+        {{ closed_positions|length }} of {{ closed_total }}
+        {% else %}
+        {{ closed_positions|length }}
+        {% endif %}
+      </p>
     </div>
+    <div class="dl-lookback" role="navigation" aria-label="How far back to show closed trades">
+      {% for key, label in closed_lookbacks %}
+      <a
+        href="?closed={{ key }}#closed-trades"
+        class="dl-chip{% if closed_lookback == key %} is-active{% endif %}"
+        {% if closed_lookback == key %}aria-current="page"{% endif %}
+      >{{ label }}</a>
+      {% endfor %}
+    </div>
+    {% if closed_positions %}
     <div class="dl-event-rows">
       {% for pos in closed_positions %}
       <div class="dl-event-row dl-event-row--settled">
@@ -258,6 +274,9 @@
       </div>
       {% endfor %}
     </div>
+    {% else %}
+    <p class="dl-muted">No closed trades in this window. Try a longer duration.</p>
+    {% endif %}
   </section>
   {% endif %}
   {% endif %}
@@ -353,7 +372,7 @@
       <dl class="dl-agent-dl">
         <div>
           <dt>Agent dollars</dt>
-          <dd>{% if agent_balance and agent_balance.collateral %}{{ agent_balance.collateral }}{% elif agent_performance %}{{ agent_performance.balance }}{% else %}—{% endif %}</dd>
+          <dd>{% if agent_balance and agent_balance.collateral is not None %}{{ agent_balance.collateral|usd_plain }}{% elif agent_performance and agent_performance.balance is not None %}{{ agent_performance.balance|usd_plain }}{% else %}—{% endif %}</dd>
         </div>
         <div>
           <dt>Agent gas</dt>
@@ -475,12 +494,30 @@
   </div>
   {% endif %}
 
-  {% if has_positions and recent_trades %}
-  <section class="dl-section">
+  {% if has_positions and recent_trades_total %}
+  <section class="dl-section" id="past-trades">
     <div class="dl-section-head dl-section-head--table">
       <h2 class="dl-section__title">Trades</h2>
-      <p class="dl-section__count">{{ recent_trades|length }}</p>
+      <p class="dl-section__count">
+        {% if closed_lookback != "all" and recent_trades|length != recent_trades_total %}
+        {{ recent_trades|length }} of {{ recent_trades_total }}
+        {% else %}
+        {{ recent_trades|length }}
+        {% endif %}
+      </p>
     </div>
+    {% if closed_lookbacks %}
+    <div class="dl-lookback" role="navigation" aria-label="How far back to show trades">
+      {% for key, label in closed_lookbacks %}
+      <a
+        href="?closed={{ key }}#past-trades"
+        class="dl-chip{% if closed_lookback == key %} is-active{% endif %}"
+        {% if closed_lookback == key %}aria-current="page"{% endif %}
+      >{{ label }}</a>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% if recent_trades %}
     <div class="dl-table-wrap">
       <table class="dl-data-table">
         <thead>
@@ -519,6 +556,9 @@
         </tbody>
       </table>
     </div>
+    {% else %}
+    <p class="dl-muted">No trades in this window. Try a longer duration.</p>
+    {% endif %}
   </section>
   {% endif %}
 </div>

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import timedelta
 from decimal import Decimal
 
 from django.core.cache import cache
@@ -394,6 +395,40 @@ def list_positions(user, *, status: str | None = None) -> list[Position]:
     if status:
         qs = qs.filter(status=status.upper())
     return list(qs.order_by("-opened_at"))
+
+
+CLOSED_LOOKBACKS = (
+    ("1d", "Today"),
+    ("7d", "7 days"),
+    ("30d", "30 days"),
+    ("all", "All"),
+)
+DEFAULT_CLOSED_LOOKBACK = "7d"
+
+
+def parse_closed_lookback(raw: str | None) -> str:
+    key = (raw or DEFAULT_CLOSED_LOOKBACK).strip().lower()
+    if key in {item[0] for item in CLOSED_LOOKBACKS}:
+        return key
+    return DEFAULT_CLOSED_LOOKBACK
+
+
+def closed_lookback_cutoff(key: str):
+    """Inclusive lower bound for Closed / Trades. None means no limit."""
+    now = timezone.now()
+    if key == "1d":
+        return now.replace(hour=0, minute=0, second=0, microsecond=0)
+    if key == "7d":
+        return now - timedelta(days=7)
+    if key == "30d":
+        return now - timedelta(days=30)
+    return None
+
+
+def in_closed_lookback(when, cutoff) -> bool:
+    if cutoff is None:
+        return True
+    return bool(when and when >= cutoff)
 
 
 def list_recent_trades(user, *, limit: int = 50) -> list[Trade]:

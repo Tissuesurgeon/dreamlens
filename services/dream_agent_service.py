@@ -633,7 +633,9 @@ def execute_agent_manual_trade(
         raise DreamAgentError(str(exc)) from exc
 
 
-def agent_performance(agent: DreamAgent) -> dict[str, Any]:
+def agent_performance(
+    agent: DreamAgent, *, balance: dict[str, Any] | None = None
+) -> dict[str, Any]:
     evals = AgentEvaluation.objects.filter(agent=agent)
     stats = evals.aggregate(
         evaluated=Count("id"),
@@ -654,9 +656,14 @@ def agent_performance(agent: DreamAgent) -> dict[str, Any]:
                 wins += 1
     win_rate = (Decimal(wins) / Decimal(copied) * 100) if copied else Decimal("0")
 
-    meta_bal = (agent.smart_account.metadata_json or {}).get("balance")
-    current = Decimal(str(meta_bal or agent.initial_capital or 0))
+    from services.smart_account_service import resolve_collateral
+
     initial = agent.initial_capital or Decimal("0")
+    current = resolve_collateral(
+        agent.smart_account,
+        snapshot=balance,
+        fallback=initial,
+    )
     pnl = current - initial if initial else Decimal("0")
     roi = (pnl / initial * 100) if initial else Decimal("0")
 

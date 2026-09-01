@@ -3157,6 +3157,7 @@
     initPortfolioBalances();
     initTelegramLink();
     initDreamAgent();
+    initAgentBalance();
     initClaimPositions();
     initStartConnect();
   });
@@ -3186,6 +3187,24 @@
     el.textContent = msg;
     root.appendChild(el);
     setTimeout(function () { el.remove(); }, 4000);
+  }
+
+  function initAgentBalance() {
+    const el = document.getElementById("agent-available");
+    if (!el) return;
+    csrfFetch("/api/smart-account/")
+      .then(function (res) {
+        return res.json().then(function (data) {
+          return { ok: res.ok, data: data };
+        });
+      })
+      .then(function (result) {
+        if (!result.ok) return;
+        const bal = result.data.balance || {};
+        if (bal.error || bal.collateral == null || bal.collateral === "") return;
+        el.textContent = formatUsd(bal.collateral);
+      })
+      .catch(function () {});
   }
 
   function initDreamAgent() {

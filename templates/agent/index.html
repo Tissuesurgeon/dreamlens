@@ -151,7 +151,9 @@
     <div class="dl-ta-kpis" role="group" aria-label="Agent metrics">
       <div class="dl-ta-kpi">
         <span class="dl-ta-kpi__label">Available</span>
-        <span class="dl-ta-kpi__value">{{ performance.balance|default:"0"|usd_plain }}</span>
+        <span class="dl-ta-kpi__value" id="agent-available" data-agent-available>
+          {% if agent_balance and agent_balance.collateral is not None %}{{ agent_balance.collateral|usd_plain }}{% elif performance.balance is not None %}{{ performance.balance|usd_plain }}{% else %}—{% endif %}
+        </span>
       </div>
       <div class="dl-ta-kpi">
         <span class="dl-ta-kpi__label">Today's result</span>

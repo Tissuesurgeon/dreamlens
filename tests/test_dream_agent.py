@@ -464,6 +464,36 @@ def test_agent_dashboard_shows_kpis_when_running(client, user, running_agent):
     assert b"data-agent-revoke" in res.content
     assert b"copies traders you follow" in res.content
     assert running_agent.smart_account.address[-4:].encode() in res.content
+    assert b"$50.00" in res.content
+    assert b'id="agent-available"' in res.content
+
+
+@pytest.mark.django_db
+def test_agent_dashboard_uses_live_smart_account_balance(client, user, running_agent):
+    live = {
+        "address": running_agent.smart_account.address,
+        "collateral": "37.25",
+        "native": "1.2",
+        "native_symbol": "STT",
+        "collateral_symbol": "USDC",
+        "mock": False,
+    }
+    with patch("services.smart_account_service.get_balance", return_value=live):
+        client.force_login(user)
+        res = client.get("/agent/")
+    assert res.status_code == 200
+    body = res.content.decode()
+    start = body.index('id="agent-available"')
+    assert "$37.25" in body[start : start + 240]
+
+
+@pytest.mark.django_db
+def test_agent_performance_prefers_live_balance_over_initial_capital(running_agent):
+    perf = dream_agent_service.agent_performance(
+        running_agent,
+        balance={"collateral": "12.50"},
+    )
+    assert perf["balance"] == "12.50"
 
 
 @pytest.mark.django_db
@@ -488,7 +518,8 @@ def test_portfolio_shows_running_agent(client, user, running_agent):
     assert running_agent.smart_account.address[-4:].encode() in res.content
     assert b"Agent details" in res.content
     assert b"Agent gas" in res.content
-    assert b"dl-ta-kpis" in res.content
+    assert b"Agent dollars" in res.content
+    assert b"$50.00" in res.content
     assert b"telegram-link-card" in res.content
 
 

@@ -751,3 +751,51 @@ def test_portfolio_page_after_smart_account_web_trade(
     assert "Available" in body
     assert "Hybrid" not in body
     assert "EIP-712" not in body
+
+
+@pytest.mark.django_db
+def test_portfolio_closed_defaults_to_seven_days(
+    client, user, sample_event, expired_event
+):
+    now = timezone.now()
+    yes = sample_event.outcomes.get(outcome_type="YES")
+    old_yes = expired_event.outcomes.get(outcome_type="YES")
+    expired_event.status = "RESOLVED"
+    expired_event.winning_outcome = "NO"
+    expired_event.save(update_fields=["status", "winning_outcome"])
+    recent = Position.objects.create(
+        user=user,
+        event=sample_event,
+        outcome=yes,
+        amount=Decimal("3"),
+        entry_price=Decimal("0.40"),
+        status=Position.Status.CLOSED,
+        pnl=Decimal("1"),
+    )
+    Position.objects.filter(pk=recent.pk).update(
+        opened_at=now - timedelta(days=2),
+        settled_at=now - timedelta(days=2),
+    )
+    old = Position.objects.create(
+        user=user,
+        event=expired_event,
+        outcome=old_yes,
+        amount=Decimal("99"),
+        entry_price=Decimal("0.50"),
+        status=Position.Status.CLOSED,
+        pnl=Decimal("-2"),
+    )
+    Position.objects.filter(pk=old.pk).update(
+        opened_at=now - timedelta(days=40),
+        settled_at=now - timedelta(days=40),
+    )
+    client.force_login(user)
+    default = client.get("/portfolio/").content.decode()
+    assert "How far back to show closed trades" in default
+    assert "7 days" in default
+    assert "99.00" not in default
+    assert "3.00" in default
+    assert "1 of 2" in default
+    all_page = client.get("/portfolio/?closed=all").content.decode()
+    assert "99.00" in all_page
+    assert "3.00" in all_page

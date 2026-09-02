@@ -1893,6 +1893,60 @@ body.dl-body {
 }
 .dl-portfolio-page .dl-agent-actions { margin-top: var(--dl-s4); }
 .dl-portfolio-page .dl-ta-panel > .dl-muted { margin: var(--dl-s2) 0 var(--dl-s4); }
+
+.dl-owner-withdraw {
+  margin: var(--dl-s4) var(--dl-s5) 0;
+  padding-top: var(--dl-s4);
+  border-top: 1px solid var(--dl-line);
+}
+.dl-pf-money .dl-owner-withdraw {
+  margin-left: 0;
+  margin-right: 0;
+  padding-left: var(--dl-s5);
+  padding-right: var(--dl-s5);
+  padding-bottom: var(--dl-s5);
+}
+.dl-agent-hero .dl-owner-withdraw,
+.dl-agent-deposit .dl-owner-withdraw {
+  margin: var(--dl-s4) 0 0;
+  padding-top: var(--dl-s4);
+}
+.dl-owner-withdraw__copy {
+  margin: 0 0 var(--dl-s3);
+  color: var(--dl-muted);
+  font-size: var(--dl-t-sm);
+  max-width: 42rem;
+}
+.dl-owner-withdraw__row { margin-bottom: 0; }
+.dl-owner-withdraw__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--dl-s2);
+  align-items: center;
+}
+.dl-owner-withdraw__controls .dl-input {
+  width: 8.5rem;
+  min-width: 0;
+}
+
+.dl-desk-note {
+  margin: 0.35rem 0 0;
+  color: var(--dl-subtle);
+  font-size: var(--dl-t-xs);
+  max-width: 36ch;
+}
+.dl-split-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--dl-s3);
+  margin-top: var(--dl-s3);
+  font-size: var(--dl-t-sm);
+}
+.dl-split-meta__yes { color: var(--dl-yes); }
+.dl-split-meta__no { color: var(--dl-no); }
+.dl-vol-empty { margin: 0; }
+
+.dl-fill-table td .dl-mono { font-size: var(--dl-t-xs); }
 .dl-telegram-card #telegram-unlink { margin-top: var(--dl-s3); }
 .dl-telegram-card .dl-input { min-width: 9rem; flex: 1; }
 .dl-telegram-card .dl-text-link {

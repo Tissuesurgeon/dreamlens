@@ -16,8 +16,9 @@
       <div>
         <h1 class="dl-ta-identity__title">{{ trader.display_name|default:trader.wallet_address|short_address }}</h1>
         <p class="dl-ta-identity__meta">
-          {{ win_pct|floatformat:0 }}% profitable trades
-          · {{ analytics.indexed_count|default:trader.total_trades }} trades
+          {{ analytics.volume|usd_plain }} indexed volume
+          · {{ analytics.indexed_count|default:trader.total_trades }} fills
+          · {{ analytics.unique_markets }} markets
         </p>
         <p class="dl-muted">Past performance does not guarantee future results.</p>
       </div>
@@ -40,22 +41,88 @@
     </div>
   </header>
 
-  <section class="dl-ta-panel" aria-labelledby="mix-heading">
-    <h2 id="mix-heading" class="dl-ta-panel__title">What they usually trade</h2>
-    {% if analytics.mix %}
-    <ul class="dl-mix-list">
-      {% for row in analytics.mix %}
-      <li>
-        <div class="dl-mix-list__row">
-          <span>{{ row.label }}</span>
-          <span class="dl-num">{{ row.share|pct_of }}%</span>
-        </div>
-        <div class="dl-mix-bar" aria-hidden="true"><span style="width: {{ row.share|pct_of }}%"></span></div>
-      </li>
-      {% endfor %}
-    </ul>
+  <div class="dl-ta-kpis" role="group" aria-label="Trader activity">
+    <div class="dl-ta-kpi">
+      <span class="dl-ta-kpi__label">Volume</span>
+      <span class="dl-ta-kpi__value">{{ analytics.volume|usd_plain }}</span>
+    </div>
+    <div class="dl-ta-kpi">
+      <span class="dl-ta-kpi__label">Fills</span>
+      <span class="dl-ta-kpi__value">{{ analytics.indexed_count|default:0 }}</span>
+    </div>
+    <div class="dl-ta-kpi">
+      <span class="dl-ta-kpi__label">Avg fill</span>
+      <span class="dl-ta-kpi__value">{{ analytics.avg_fill|usd_plain }}</span>
+    </div>
+    <div class="dl-ta-kpi">
+      <span class="dl-ta-kpi__label">Markets</span>
+      <span class="dl-ta-kpi__value">{{ analytics.unique_markets|default:0 }}</span>
+    </div>
+    <div class="dl-ta-kpi">
+      <span class="dl-ta-kpi__label">Score</span>
+      <span class="dl-ta-kpi__value">{{ analytics.score_100|floatformat:0 }}</span>
+      <p class="dl-desk-note">{% score_disclaimer %}</p>
+    </div>
+  </div>
+
+  <div class="dl-ta-grid">
+    <section class="dl-ta-panel" aria-labelledby="side-heading">
+      <h2 id="side-heading" class="dl-ta-panel__title">YES / NO split</h2>
+      {% if analytics.yes_count or analytics.no_count %}
+      <div class="dl-split-bar" aria-hidden="true">
+        <span class="dl-split-bar__yes" style="width: {{ analytics.yes_share|pct_of }}%"></span>
+        <span class="dl-split-bar__no" style="width: {{ analytics.no_share|pct_of }}%"></span>
+      </div>
+      <div class="dl-split-meta">
+        <span class="dl-split-meta__yes">YES {{ analytics.yes_count }} · {{ analytics.yes_volume|usd_plain }}</span>
+        <span class="dl-split-meta__no">NO {{ analytics.no_count }} · {{ analytics.no_volume|usd_plain }}</span>
+      </div>
+      {% else %}
+      <p class="dl-muted">No YES or NO fills indexed yet.</p>
+      {% endif %}
+    </section>
+
+    <section class="dl-ta-panel" aria-labelledby="mix-heading">
+      <h2 id="mix-heading" class="dl-ta-panel__title">What they usually trade</h2>
+      {% if analytics.mix %}
+      <ul class="dl-mix-list">
+        {% for row in analytics.mix %}
+        <li>
+          <div class="dl-mix-list__row">
+            <span>{{ row.label }}</span>
+            <span class="dl-num">{{ row.share|pct_of }}%</span>
+          </div>
+          <div class="dl-mix-bar" aria-hidden="true"><span style="width: {{ row.share|pct_of }}%"></span></div>
+        </li>
+        {% endfor %}
+      </ul>
+      {% elif analytics.assets %}
+      <ul class="dl-mix-list">
+        {% for row in analytics.assets %}
+        <li>
+          <div class="dl-mix-list__row">
+            <span>{{ row.asset }}</span>
+            <span class="dl-num">{{ row.share|pct_of }}% · {{ row.count }} fills</span>
+          </div>
+          <div class="dl-mix-bar" aria-hidden="true"><span style="width: {{ row.share|pct_of }}%"></span></div>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="dl-muted">Not enough trades to show a mix yet.</p>
+      {% endif %}
+    </section>
+  </div>
+
+  <section class="dl-ta-panel dl-ta-panel--chart" aria-labelledby="volume-heading">
+    <h2 id="volume-heading" class="dl-ta-panel__title">Fill volume by day</h2>
+    {% if analytics.chart.labels %}
+    {{ analytics.chart|json_script:"trader-volume-chart" }}
+    <div class="dl-ta-chart-wrap">
+      <canvas id="trader-volume-canvas" aria-label="Fill volume by day"></canvas>
+    </div>
     {% else %}
-    <p class="dl-muted">Not enough trades to show a mix yet.</p>
+    <p class="dl-muted dl-vol-empty">No daily fill volume yet.</p>
     {% endif %}
   </section>
 
@@ -71,18 +138,45 @@
   </section>
 
   <section class="dl-ta-panel" aria-labelledby="fills-heading">
-    <h2 id="fills-heading" class="dl-ta-panel__title">Recent trades</h2>
+    <h2 id="fills-heading" class="dl-ta-panel__title">On-chain fills</h2>
     {% if fills %}
-    <div class="dl-event-rows">
-      {% for fill in fills|slice:":8" %}
-      <a href="{% url 'event_detail' fill.event.pk %}" class="dl-event-row">
-        <span class="dl-event-row__side dl-event-row__side--{{ fill.outcome.outcome_type|lower }}">{{ fill.outcome.outcome_type }}</span>
-        <span class="dl-event-row__body">
-          <span class="dl-event-row__title">{{ fill.event|question_copy }}</span>
-          <span class="dl-event-row__line">{{ fill.outcome.outcome_type }} · {{ fill.entry_price|as_cents }}</span>
-        </span>
-      </a>
-      {% endfor %}
+    <div class="dl-table-wrap">
+      <table class="dl-data-table dl-fill-table">
+        <thead>
+          <tr>
+            <th scope="col">When</th>
+            <th scope="col">Market</th>
+            <th scope="col">Side</th>
+            <th scope="col" class="dl-num">Size</th>
+            <th scope="col" class="dl-num">Entry</th>
+            <th scope="col">Tx</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for fill in fills|slice:":40" %}
+          <tr>
+            <td class="dl-muted">{{ fill.opened_at|timesince }} ago</td>
+            <td>
+              <a href="{% url 'event_detail' fill.event.pk %}">{{ fill.event|question_copy }}</a>
+            </td>
+            <td>
+              <span class="dl-badge dl-badge--{% if fill.outcome.outcome_type == 'YES' %}yes{% else %}no{% endif %}">{{ fill.outcome.outcome_type }}</span>
+            </td>
+            <td class="dl-num">{{ fill.amount|floatformat:2 }}</td>
+            <td class="dl-num">{{ fill.entry_price|as_usd }}</td>
+            <td>
+              {% if fill.transaction_hash and dreamlens_network.explorerUrl %}
+              <a class="dl-mono" href="{{ dreamlens_network.explorerUrl }}/tx/{{ fill.transaction_hash }}" target="_blank" rel="noopener noreferrer">{{ fill.transaction_hash|truncatechars:10 }}</a>
+              {% elif fill.transaction_hash %}
+              <span class="dl-mono">{{ fill.transaction_hash }}</span>
+              {% else %}
+              —
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
     {% else %}
     <p class="dl-muted">No indexed trades yet.</p>

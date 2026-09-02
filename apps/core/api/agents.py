@@ -136,6 +136,54 @@ class SmartAccountDepositView(APIView):
         )
 
 
+class SmartAccountWithdrawView(APIView):
+    """Owner withdraws SA USDC to the MetaMask that owns the account."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        amount = request.query_params.get("amount")
+        try:
+            payload = smart_account_service.prepare_owner_withdraw(
+                request.user,
+                amount,
+            )
+        except SmartAccountError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(payload)
+
+    def post(self, request):
+        amount = request.data.get("amount")
+        tx_hash = request.data.get("tx_hash") or ""
+        signature = request.data.get("signature") or ""
+        if tx_hash:
+            try:
+                payload = smart_account_service.confirm_owner_withdraw(
+                    request.user,
+                    tx_hash=tx_hash,
+                    amount=amount,
+                )
+            except SmartAccountError as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(payload)
+        if not signature:
+            return Response(
+                {"detail": "signature or tx_hash required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            payload = smart_account_service.prepare_owner_withdraw(
+                request.user,
+                amount,
+                signature=signature,
+                salt=request.data.get("salt"),
+                expires_at=request.data.get("expires_at"),
+            )
+        except SmartAccountError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(payload)
+
+
 class DreamAgentGrantView(APIView):
     permission_classes = [IsAuthenticated]
 

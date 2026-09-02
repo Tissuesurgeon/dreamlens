@@ -98,7 +98,7 @@ def test_trader_detail_page_opens(client, sample_event):
     assert event_question(sample_event).encode() in res.content
     assert b"What they usually trade" in res.content
     assert b"How DreamLens sees them" in res.content
-    assert b"Recent trades" in res.content
+    assert b"On-chain fills" in res.content
     assert b"Smart Copy" in res.content
 
 

@@ -88,6 +88,9 @@
       <li><strong>Grant</strong> a bounded trade permission — no withdraw</li>
     </ol>
     <a href="{% url 'dream_agent_activate' %}" class="dl-btn dl-btn--primary">Activate Dream Agent</a>
+    {% if smart_account %}
+    {% include "components/owner_withdraw.html" with withdraw_account=smart_account withdraw_available=agent_balance.collateral %}
+    {% endif %}
   </div>
   {% else %}
   {% with sa_addr=smart_account.address|default:agent.smart_account.address %}
@@ -172,6 +175,10 @@
         <span class="dl-ta-kpi__value">{{ performance.trades_skipped|default:0 }}</span>
       </div>
     </div>
+
+    {% if smart_account %}
+    {% include "components/owner_withdraw.html" with withdraw_account=smart_account withdraw_available=agent_balance.collateral %}
+    {% endif %}
 
     {% if grant_health.needs_resign %}
     <article class="dl-agent-callout" role="status">

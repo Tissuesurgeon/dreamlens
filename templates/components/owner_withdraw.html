@@ -1,0 +1,21 @@
+{% if withdraw_account %}
+<div class="dl-owner-withdraw" id="sa-withdraw-box">
+  <p class="dl-owner-withdraw__copy">Sends trading dollars from this account to the MetaMask that owns it.</p>
+  <div class="dl-form-row dl-owner-withdraw__row">
+    <label for="sa-withdraw-amount">Withdraw to MetaMask ($)</label>
+    <div class="dl-owner-withdraw__controls">
+      <input
+        id="sa-withdraw-amount"
+        type="number"
+        min="0"
+        step="0.01"
+        class="dl-input"
+        inputmode="decimal"
+        placeholder="0.00"
+        {% if withdraw_available %}value="{{ withdraw_available }}"{% endif %}
+      >
+      <button type="button" class="dl-btn dl-btn--ghost dl-btn--sm" id="sa-withdraw">Withdraw to MetaMask</button>
+    </div>
+  </div>
+</div>
+{% endif %}

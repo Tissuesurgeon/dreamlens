@@ -224,12 +224,15 @@ def build_trader_analytics(trader: TraderProfile, *, history_limit: int = 250) -
     last_fill_at = trades[0].opened_at if trades else trader.last_active_at
     roi = trader.roi or Decimal("0")
     has_roi = bool(trader.realized_pnl) or roi != 0
+    volume = trader.total_volume or total_notional
+    max_day = max(daily.values()) if daily else Decimal("0")
 
     return {
         "fills": trades[:80],
         "fill_sample": fill_count,
         "indexed_count": indexed_count,
         "unique_markets": len(event_ids),
+        "volume": volume,
         "avg_fill": avg_fill,
         "yes_count": yes_count,
         "no_count": no_count,
@@ -245,6 +248,14 @@ def build_trader_analytics(trader: TraderProfile, *, history_limit: int = 250) -
         "chart": {
             "labels": days,
             "volumes": [float(daily[d]) for d in days],
+            "rows": [
+                {
+                    "label": day,
+                    "volume": daily[day],
+                    "pct": float(daily[day] / max_day * 100) if max_day else 0,
+                }
+                for day in days
+            ],
         },
     }
 

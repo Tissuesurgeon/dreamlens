@@ -477,6 +477,90 @@ def test_claim_js_uses_sdk_gas_ceiling():
     assert "data-claim-agent" in js
     assert "toast(err.message" in js
     assert "/api/agent/trade/" in js
+    assert "/api/smart-account/withdraw/" in js
     assert "DreamLens is placing this trade" in js
     assert "Creating your trading account" in js
     assert "order: data.unsigned_tx" not in js
+
+
+@pytest.mark.django_db
+def test_trader_detail_is_an_activity_desk(client, sample_event):
+    from django.core.cache import cache
+
+    from apps.dreamcopy.models import TraderProfile, TraderTrade
+
+    cache.clear()
+    trader = TraderProfile.objects.create(
+        wallet_address="0x6730d3a2a217108ab53ccfe60ffdad05d3c124e5",
+        display_name="DeskTrader",
+        total_trades=12,
+        total_volume=Decimal("40"),
+        trader_score=Decimal("0.72"),
+        win_rate=Decimal("0.00"),
+    )
+    yes = sample_event.outcomes.get(outcome_type="YES")
+    tx = "0x" + "ab" * 32
+    TraderTrade.objects.create(
+        trader=trader,
+        event=sample_event,
+        outcome=yes,
+        entry_price=Decimal("0.41"),
+        amount=Decimal("5"),
+        opened_at=sample_event.expiry_time,
+        transaction_hash=tx,
+        external_trade_id="desk-fill-1",
+    )
+    res = client.get(reverse("trader_detail", args=[trader.pk]))
+    assert res.status_code == 200
+    body = res.content.decode()
+    assert SCORE_DISCLAIMER in body
+    assert "chance of winning" not in body.lower()
+    assert "% profitable trades" not in body
+    assert "Fill volume by day" in body
+    assert "On-chain fills" in body
+    assert "YES / NO split" in body
+    assert "$0.41" in body
+    assert "41¢" not in body
+    assert tx[:10] in body
+    assert f"/tx/{tx}" in body
+    assert "dl-ta-kpis" in body
+    assert "How DreamLens sees them" in body
+
+
+@pytest.mark.django_db
+def test_portfolio_desk_and_owner_withdraw(client, user, wallet, sample_event, settings):
+    settings.MOCK_SMART_ACCOUNT = True
+    from apps.trading.models import Trade
+    from services import smart_account_service
+
+    sa = smart_account_service.create_account(user, owner_address=wallet.address)
+    smart_account_service.mark_funded(sa, amount=Decimal("50"))
+    yes = sample_event.outcomes.get(outcome_type="YES")
+    Trade.objects.create(
+        user=user,
+        event=sample_event,
+        outcome=yes,
+        side=Trade.Side.BUY,
+        amount=Decimal("2"),
+        entry_price=Decimal("0.41"),
+        transaction_hash="0x" + "ef" * 32,
+        status=Trade.Status.CONFIRMED,
+    )
+    client.force_login(user)
+    res = client.get("/portfolio/")
+    assert res.status_code == 200
+    body = res.content.decode()
+    assert "Wins in this book" in body
+    assert "On-chain activity" in body
+    assert "Withdraw to MetaMask" in body
+    assert "Sends trading dollars from this account to the MetaMask that owns it." in body
+    assert CLAIM_VS_CLOSE in body
+    assert "chance of winning" not in body.lower()
+    assert "$0.41" in body
+    assert "41¢" not in body
+    agent = client.get("/agent/")
+    assert agent.status_code == 200
+    agent_body = agent.content.decode()
+    assert "Withdrawal: Never" in agent_body
+    assert "Withdraw your funds" in agent_body
+    assert "Withdraw to MetaMask" in agent_body

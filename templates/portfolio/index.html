@@ -28,6 +28,36 @@
     {% endif %}
   </header>
 
+  {% if is_authenticated %}
+  <div class="dl-ta-kpis" role="group" aria-label="This book">
+    <div class="dl-ta-kpi">
+      <span class="dl-ta-kpi__label">Open</span>
+      <span class="dl-ta-kpi__value">{{ open_positions|length }}</span>
+    </div>
+    <div class="dl-ta-kpi">
+      <span class="dl-ta-kpi__label">Settling</span>
+      <span class="dl-ta-kpi__value">{{ settling_positions|length }}</span>
+    </div>
+    <div class="dl-ta-kpi">
+      <span class="dl-ta-kpi__label">Won</span>
+      <span class="dl-ta-kpi__value">{{ won_count|default:0 }}</span>
+    </div>
+    <div class="dl-ta-kpi">
+      <span class="dl-ta-kpi__label">Lost</span>
+      <span class="dl-ta-kpi__value">{{ lost_count|default:0 }}</span>
+    </div>
+    <div class="dl-ta-kpi">
+      <span class="dl-ta-kpi__label">Trades</span>
+      <span class="dl-ta-kpi__value">{{ book.trade_count|default:0 }}</span>
+    </div>
+    <div class="dl-ta-kpi">
+      <span class="dl-ta-kpi__label">Wins in this book</span>
+      <span class="dl-ta-kpi__value">{% if book.trade_count %}{{ book.win_rate|pct_of }}%{% else %}—{% endif %}</span>
+      <p class="dl-desk-note">Confirmed trades on this wallet — not a prediction.</p>
+    </div>
+  </div>
+  {% endif %}
+
   <section class="dl-wallet-balance dl-pf-money" id="portfolio-wallet-balance" data-authenticated="{% if is_authenticated %}1{% else %}0{% endif %}" aria-labelledby="wallet-balance-heading">
     <div class="dl-wallet-balance__head">
       <h2 id="wallet-balance-heading" class="dl-section__title">Your money</h2>
@@ -82,6 +112,10 @@
       {% endif %}
       <span id="bal-status">{% if wallet_balances and wallet_balances.error %}{{ wallet_balances.error }}{% endif %}</span>
     </p>
+
+    {% if is_authenticated and smart_account %}
+    {% include "components/owner_withdraw.html" with withdraw_account=smart_account withdraw_available=agent_balance.collateral %}
+    {% endif %}
   </section>
 
   {% if is_authenticated %}
@@ -150,6 +184,7 @@
       <h2 id="open-heading" class="dl-section__title">Open positions</h2>
       <p class="dl-section__count">{{ open_positions|length }} open</p>
     </div>
+    <p class="dl-section__subtitle">{% claim_vs_close %}</p>
     {% if open_positions %}
     <div class="dl-pf-tickets">
       {% for pos in open_positions %}
@@ -494,10 +529,10 @@
   </div>
   {% endif %}
 
-  {% if has_positions and recent_trades_total %}
+  {% if is_authenticated %}
   <section class="dl-section" id="past-trades">
     <div class="dl-section-head dl-section-head--table">
-      <h2 class="dl-section__title">Trades</h2>
+      <h2 class="dl-section__title">On-chain activity</h2>
       <p class="dl-section__count">
         {% if closed_lookback != "all" and recent_trades|length != recent_trades_total %}
         {{ recent_trades|length }} of {{ recent_trades_total }}

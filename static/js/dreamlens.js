@@ -3157,6 +3157,7 @@
     initPortfolioBalances();
     initTelegramLink();
     initDreamAgent();
+    initOwnerWithdraw();
     initAgentBalance();
     initClaimPositions();
     initStartConnect();
@@ -3187,6 +3188,87 @@
     el.textContent = msg;
     root.appendChild(el);
     setTimeout(function () { el.remove(); }, 4000);
+  }
+
+  function initOwnerWithdraw() {
+    const withdrawBtn = document.getElementById("sa-withdraw");
+    if (!withdrawBtn) return;
+
+    async function ensureOwnerWallet() {
+      let addr = getConnectedAddress();
+      if (!addr) {
+        await connectWallet();
+        addr = getConnectedAddress();
+      }
+      if (!addr) throw new Error("Connect MetaMask first");
+      return addr;
+    }
+
+    withdrawBtn.addEventListener("click", async function () {
+      withdrawBtn.disabled = true;
+      withdrawBtn.setAttribute("aria-busy", "true");
+      try {
+        const owner = await ensureOwnerWallet();
+        const { eth } = await ensureWalletForTrade();
+        const amount = document.getElementById("sa-withdraw-amount")?.value || "";
+        if (!amount || Number(amount) <= 0) {
+          throw new Error("Enter how many trading dollars to withdraw.");
+        }
+        const prepRes = await csrfFetch(
+          "/api/smart-account/withdraw/?amount=" + encodeURIComponent(amount)
+        );
+        const prep = await prepRes.json().catch(function () { return {}; });
+        if (!prepRes.ok) throw new Error(prep.detail || "Could not prepare withdraw");
+        const dest = String(prep.destination || "").toLowerCase();
+        if (dest && dest !== owner.toLowerCase()) {
+          throw new Error("Connect the MetaMask that owns this trading account.");
+        }
+        const typed = prep.typed_data;
+        if (!typed) throw new Error("Could not prepare the withdraw signature.");
+        const signTyped = {
+          types: typed.types,
+          primaryType: typed.primaryType,
+          domain: typed.domain,
+          message: typed.message,
+        };
+        toast("Sign the withdraw permission in MetaMask…", "success");
+        const signature = await eth.request({
+          method: "eth_signTypedData_v4",
+          params: [owner, JSON.stringify(signTyped)],
+        });
+        const assembleRes = await csrfFetch("/api/smart-account/withdraw/", {
+          method: "POST",
+          body: JSON.stringify({
+            amount: amount,
+            signature: signature,
+            salt: typed.message && typed.message.salt,
+            expires_at: prep.expires_at,
+          }),
+        });
+        const assembled = await assembleRes.json().catch(function () { return {}; });
+        if (!assembleRes.ok) {
+          throw new Error(assembled.detail || "Could not build the withdraw transaction.");
+        }
+        if (!assembled.unsigned_tx) {
+          throw new Error("Withdraw transaction was not prepared.");
+        }
+        toast("Confirm withdraw in MetaMask…", "success");
+        const txHash = await sendWalletTx(eth, assembled.unsigned_tx, owner);
+        const confirmRes = await csrfFetch("/api/smart-account/withdraw/", {
+          method: "POST",
+          body: JSON.stringify({ amount: amount, tx_hash: txHash }),
+        });
+        const confirmed = await confirmRes.json().catch(function () { return {}; });
+        if (!confirmRes.ok) throw new Error(confirmed.detail || "Withdraw failed");
+        toast("Trading dollars sent to MetaMask.", "success");
+        window.location.reload();
+      } catch (err) {
+        toast((err && err.message) || "Withdraw failed", "error");
+      } finally {
+        withdrawBtn.disabled = false;
+        withdrawBtn.removeAttribute("aria-busy");
+      }
+    });
   }
 
   function initAgentBalance() {

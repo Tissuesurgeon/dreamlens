@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import timedelta
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_DOWN
 from typing import Any
 
 from django.conf import settings
@@ -12,9 +12,14 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.agents.models import DreamAgent, DreamAgentPermission, SmartAccount
+from integrations.metamask import ROOT_AUTHORITY
 from integrations.metamask.delegation import (
     build_grant_typed_data,
+    build_withdraw_typed_data,
+    encode_erc20_transfer,
+    encode_redeem_delegations_calldata,
     hash_delegation_blob,
+    owner_withdraw_caveats,
     validate_signed_delegation,
 )
 from integrations.metamask.permissions import DreamAgentPermissionSpec
@@ -35,6 +40,11 @@ from integrations.metamask.transactions import (
 )
 
 logger = logging.getLogger("dreamlens.services.smart_account")
+
+WITHDRAW_EXPIRY_SECONDS = 15 * 60
+OWNER_WITHDRAW_COPY = (
+    "Sends trading dollars from this account to the MetaMask that owns it."
+)
 
 
 class SmartAccountError(Exception):
@@ -409,6 +419,190 @@ def resolve_collateral(
             if stored is not None:
                 return stored
     return fallback if fallback is not None else Decimal("0")
+
+
+def _collateral_raw(amount: Decimal) -> int:
+    decimals = int(getattr(settings, "DREAMDEX_COLLATERAL_DECIMALS", 6) or 6)
+    scaled = (amount * (Decimal(10) ** decimals)).to_integral_value(rounding=ROUND_DOWN)
+    return int(scaled)
+
+
+def verify_withdraw_tx(*, tx_hash: str, smart_account: SmartAccount) -> dict[str, Any]:
+    """Require a successful on-chain receipt before recording a withdraw."""
+    if mock_smart_account_enabled():
+        return {"status": 1, "tx_hash": tx_hash or "0xmockwithdraw", "mock": True}
+    raw = (tx_hash or "").strip()
+    if not raw.startswith("0x") or len(raw) != 66 or raw.lower().startswith("0xmock"):
+        raise SmartAccountError("A real Somnia transaction hash is required")
+    try:
+        receipt = get_transaction_receipt(raw)
+    except Exception as exc:  # noqa: BLE001
+        raise SmartAccountError(f"Could not fetch withdraw receipt: {exc}") from exc
+    status = int(receipt.get("status", 0) if isinstance(receipt, dict) else receipt.status)
+    if status != 1:
+        raise SmartAccountError("Withdraw transaction failed on-chain")
+    return {"status": status, "tx_hash": raw, "mock": False}
+
+
+def prepare_owner_withdraw(
+    user,
+    amount,
+    *,
+    signature: str | None = None,
+    salt: int | str | None = None,
+    expires_at: int | None = None,
+) -> dict[str, Any]:
+    """Build a one-shot owner withdraw Delegation. Destination is always the owner EOA."""
+    sa = get_account(user)
+    if not sa:
+        raise SmartAccountError("Create a DreamLens Smart Account first")
+    parsed = _as_decimal(amount)
+    if parsed is None or parsed <= 0:
+        raise SmartAccountError("Amount must be positive")
+
+    snapshot = get_balance(sa)
+    available = resolve_collateral(sa, snapshot=snapshot)
+    if available <= 0:
+        raise SmartAccountError("No trading dollars available to withdraw")
+    if parsed > available:
+        raise SmartAccountError(
+            f"Amount exceeds available trading dollars ({available})"
+        )
+
+    destination = normalize_address(sa.owner_address)
+    token = collateral_token_address()
+    raw_amount = _collateral_raw(parsed)
+    if raw_amount <= 0:
+        raise SmartAccountError("Amount is too small")
+
+    if expires_at is None:
+        expires_at = int(timezone.now().timestamp()) + WITHDRAW_EXPIRY_SECONDS
+    else:
+        expires_at = int(expires_at)
+    if salt is None:
+        salt_value = int(timezone.now().timestamp() * 1000)
+    elif isinstance(salt, int):
+        salt_value = salt
+    elif str(salt).startswith("0x"):
+        salt_value = int(str(salt), 16)
+    else:
+        salt_value = int(salt)
+
+    env = get_environment(chain_id=sa.chain_id)
+    if not env.delegation_manager:
+        raise SmartAccountError("Delegation manager is not configured")
+
+    typed_data = build_withdraw_typed_data(
+        chain_id=sa.chain_id,
+        delegator=sa.address,
+        delegate=destination,
+        verifying_contract=env.delegation_manager,
+        expires_at=expires_at,
+        salt=salt_value,
+        token=token,
+    )
+    payload: dict[str, Any] = {
+        "amount": str(parsed),
+        "available": str(available),
+        "destination": destination,
+        "token": token,
+        "expires_at": expires_at,
+        "salt": salt_value,
+        "typed_data": typed_data,
+        "from": destination,
+        "to": env.delegation_manager,
+        "copy": OWNER_WITHDRAW_COPY,
+        "mock": mock_smart_account_enabled(),
+    }
+
+    if not signature:
+        return payload
+
+    sig = str(signature).strip()
+    if not mock_smart_account_enabled():
+        if sig.lower().startswith("0xmock"):
+            raise SmartAccountError("Mock signatures are not accepted on live Somnia")
+        if not (sig.startswith("0x") and len(sig) >= 130):
+            raise SmartAccountError("Withdraw signature looks invalid")
+
+    signed = {
+        "delegate": destination,
+        "delegator": sa.address,
+        "authority": ROOT_AUTHORITY,
+        "caveats": owner_withdraw_caveats(expires_at=expires_at, token=token),
+        "salt": salt_value,
+        "signature": sig,
+        "typed_data": {
+            "types": typed_data["types"],
+            "primaryType": typed_data["primaryType"],
+            "domain": typed_data["domain"],
+            "message": typed_data["message"],
+        },
+    }
+    transfer_data = encode_erc20_transfer(destination, raw_amount)
+    redeem_data = encode_redeem_delegations_calldata(
+        signed_delegation=signed,
+        target=token,
+        call_data=transfer_data,
+    )
+    payload["unsigned_tx"] = {
+        "to": env.delegation_manager,
+        "from": destination,
+        "data": redeem_data,
+        "value": "0",
+        "chain_id": sa.chain_id,
+        "chainId": hex(int(sa.chain_id)),
+        "description": "Withdraw trading dollars to MetaMask",
+        "metadata": {
+            "permission": "OWNER_WITHDRAW",
+            "destination": destination,
+            "amount": str(parsed),
+        },
+    }
+    return payload
+
+
+@transaction.atomic
+def confirm_owner_withdraw(user, *, tx_hash: str, amount) -> dict[str, Any]:
+    """Record a confirmed owner withdraw after the owner sent redeemDelegations."""
+    sa = get_account(user)
+    if not sa:
+        raise SmartAccountError("Create a DreamLens Smart Account first")
+    parsed = _as_decimal(amount)
+    if parsed is None or parsed <= 0:
+        raise SmartAccountError("Amount must be positive")
+    proof = verify_withdraw_tx(tx_hash=tx_hash, smart_account=sa)
+    meta = dict(sa.metadata_json or {})
+    meta["last_withdraw"] = str(parsed)
+    meta["last_withdraw_tx"] = proof["tx_hash"]
+    current = _as_decimal(meta.get("balance") or meta.get("last_deposit") or "0")
+    if current is not None:
+        meta["balance"] = str(max(current - parsed, Decimal("0")))
+    sa.metadata_json = meta
+    sa.save(update_fields=["metadata_json", "updated_at"])
+    try:
+        bal = get_balance(sa)
+    except SmartAccountError:
+        bal = {"tx_hash": proof["tx_hash"]}
+    logger.info(
+        "confirm_owner_withdraw user=%s sa=%s amount=%s tx=%s",
+        user.pk,
+        sa.pk,
+        parsed,
+        proof["tx_hash"],
+    )
+    return {
+        "smart_account": {
+            "id": sa.pk,
+            "address": sa.address,
+            "owner_address": sa.owner_address,
+            "status": sa.status,
+        },
+        "amount": str(parsed),
+        "destination": normalize_address(sa.owner_address),
+        "tx_hash": proof["tx_hash"],
+        "balance": bal,
+    }
 
 
 def grant_payload_for_ui(user, *, owner_address: str = "") -> dict[str, Any]:

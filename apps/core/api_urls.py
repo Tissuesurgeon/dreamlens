@@ -10,6 +10,7 @@ from apps.core.api.agents import (
     DreamAgentStatusView,
     SmartAccountDepositView,
     SmartAccountView,
+    SmartAccountWithdrawView,
 )
 from apps.core.api.copy import (
     CopyActivityView,
@@ -114,6 +115,11 @@ urlpatterns = [
         "smart-account/deposit/",
         SmartAccountDepositView.as_view(),
         name="api-smart-account-deposit",
+    ),
+    path(
+        "smart-account/withdraw/",
+        SmartAccountWithdrawView.as_view(),
+        name="api-smart-account-withdraw",
     ),
     path("agent/", DreamAgentStatusView.as_view(), name="api-agent-status"),
     path("agent/grant/", DreamAgentGrantView.as_view(), name="api-agent-grant"),

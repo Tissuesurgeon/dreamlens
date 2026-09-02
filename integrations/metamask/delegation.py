@@ -76,6 +76,7 @@ def _selector(signature: str) -> bytes:
 
 
 REDEEM_METHOD_SIGNATURE = "redeem(uint32,bytes32,bytes32,uint8,uint256)"
+TRANSFER_METHOD_SIGNATURE = "transfer(address,uint256)"
 ALLOWED_CALL_SELECTORS = (
     _selector(PLACE_BINARY_ORDER_SELECTOR),
     _selector("approve(address,uint256)"),
@@ -86,6 +87,7 @@ ALLOWED_CALL_SELECTORS = (
     _selector("syncSettlement(bytes32)"),
 )
 REDEEM_SELECTOR = ALLOWED_CALL_SELECTORS[3]
+TRANSFER_SELECTOR = _selector(TRANSFER_METHOD_SIGNATURE)
 GRANT_MISSING_REDEEM = (
     "This DreamAgent grant cannot claim winnings. "
     "Re-sign at /agent/activate/ so redeem is allowed, then try again."
@@ -204,6 +206,129 @@ def function_call_caveats(*, expires_at: int) -> list[dict[str, str]]:
             }
         )
     return caveats
+
+
+def owner_withdraw_caveats(*, expires_at: int, token: str) -> list[dict[str, str]]:
+    """USDC + transfer(address,uint256) + valueLte(0) + short timestamp.
+
+    Separate from the DreamAgent TRADE_EVENT_CONTRACT grant. Do not reuse
+    ``function_call_caveats`` — that grant must stay unable to transfer.
+    """
+    from django.conf import settings
+
+    methods = getattr(settings, "METAMASK_ALLOWED_METHODS_ENFORCER", "") or ""
+    targets = getattr(settings, "METAMASK_ALLOWED_TARGETS_ENFORCER", "") or ""
+    value_lte = getattr(settings, "METAMASK_VALUE_LTE_ENFORCER", "") or ""
+    timestamp = getattr(settings, "METAMASK_TIMESTAMP_ENFORCER", "") or ""
+    caveats: list[dict[str, str]] = []
+    if methods:
+        caveats.append(
+            {
+                "enforcer": to_checksum_address(methods),
+                "terms": "0x" + TRANSFER_SELECTOR.hex(),
+                "args": "0x",
+            }
+        )
+    if targets and token:
+        packed = bytes.fromhex(to_checksum_address(token)[2:])
+        caveats.append(
+            {
+                "enforcer": to_checksum_address(targets),
+                "terms": "0x" + packed.hex(),
+                "args": "0x",
+            }
+        )
+    if value_lte:
+        caveats.append(
+            {
+                "enforcer": to_checksum_address(value_lte),
+                "terms": "0x" + encode(["uint256"], [0]).hex(),
+                "args": "0x",
+            }
+        )
+    if timestamp:
+        before = max(int(expires_at), 0)
+        packed = (0).to_bytes(16, "big") + int(before).to_bytes(16, "big")
+        caveats.append(
+            {
+                "enforcer": to_checksum_address(timestamp),
+                "terms": "0x" + packed.hex(),
+                "args": "0x",
+            }
+        )
+    return caveats
+
+
+def encode_erc20_transfer(to: str, amount_raw: int) -> str:
+    """ERC-20 transfer(address,uint256) calldata."""
+    selector = TRANSFER_SELECTOR
+    encoded = encode(
+        ["address", "uint256"],
+        [to_checksum_address(to), int(amount_raw)],
+    )
+    return "0x" + (selector + encoded).hex()
+
+
+def build_withdraw_typed_data(
+    *,
+    chain_id: int,
+    delegator: str,
+    delegate: str,
+    verifying_contract: str,
+    expires_at: int,
+    salt: str | int,
+    token: str,
+) -> dict[str, Any]:
+    """EIP-712 payload the owner signs for a one-shot SA → MetaMask withdraw."""
+    caveats = owner_withdraw_caveats(expires_at=expires_at, token=token)
+    if isinstance(salt, int):
+        salt_value = int(salt)
+    elif str(salt).startswith("0x"):
+        salt_value = int(str(salt), 16)
+    else:
+        salt_value = int(salt)
+    return {
+        "types": {
+            "EIP712Domain": [
+                {"name": "name", "type": "string"},
+                {"name": "version", "type": "string"},
+                {"name": "chainId", "type": "uint256"},
+                {"name": "verifyingContract", "type": "address"},
+            ],
+            "Caveat": [
+                {"name": "enforcer", "type": "address"},
+                {"name": "terms", "type": "bytes"},
+            ],
+            "Delegation": [
+                {"name": "delegate", "type": "address"},
+                {"name": "delegator", "type": "address"},
+                {"name": "authority", "type": "bytes32"},
+                {"name": "caveats", "type": "Caveat[]"},
+                {"name": "salt", "type": "uint256"},
+            ],
+        },
+        "primaryType": "Delegation",
+        "domain": {
+            "name": "DelegationManager",
+            "version": "1",
+            "chainId": int(chain_id),
+            "verifyingContract": to_checksum_address(verifying_contract),
+        },
+        "message": {
+            "delegate": to_checksum_address(delegate),
+            "delegator": to_checksum_address(delegator),
+            "authority": ROOT_AUTHORITY,
+            "caveats": [
+                {"enforcer": c["enforcer"], "terms": c["terms"]} for c in caveats
+            ],
+            "salt": salt_value,
+        },
+        "dreamlens": {
+            "permission": "OWNER_WITHDRAW",
+            "expiresAt": int(expires_at),
+            "token": to_checksum_address(token) if token else "",
+        },
+    }
 
 
 def build_grant_typed_data(

@@ -524,6 +524,7 @@ def portfolio(request):
                 "pending_copy_count": 0,
                 "agent_can_auto_copy": False,
                 "grant_health": {"needs_resign": False, "reasons": []},
+                "book": None,
             },
         )
 
@@ -533,6 +534,7 @@ def portfolio(request):
         CLOSED_LOOKBACKS,
         annotate_positions,
         closed_lookback_cutoff,
+        get_portfolio_summary,
         get_wallet_balances_for_user,
         in_closed_lookback,
         list_recent_trades,
@@ -681,6 +683,7 @@ def portfolio(request):
             "pending_copy_count": pending_copy_count,
             "agent_can_auto_copy": agent_can_auto_copy,
             "grant_health": dream_agent_service.grant_health(request.user),
+            "book": get_portfolio_summary(request.user),
         },
     )
 

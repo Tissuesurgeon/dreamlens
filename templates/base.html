@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="{{ csrf_token }}">
-  <meta name="theme-color" content="#241b24">
+  <meta name="theme-color" content="#100c10">
   <title>{% block title %}DreamLens{% endblock %}</title>
   <link rel="icon" href="{% static 'brand/favicon.svg' %}" type="image/svg+xml">
   <link rel="icon" href="{% static 'brand/favicon.ico' %}" sizes="any">
@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{% static 'css/dreamlens.css' %}?v=20260901d">
+  <link rel="stylesheet" href="{% static 'css/dreamlens.css' %}?v=20260902a">
   {% block extra_head %}{% endblock %}
 </head>
 <body class="dl-body{% if start_flow %} dl-body--start{% endif %}{% if first_session.incomplete %} dl-body--first{% endif %}" data-view="simple"{% if user.is_authenticated %} data-authenticated="1"{% endif %}{% if start_flow %} data-onboarding="1"{% endif %}>
@@ -22,9 +22,9 @@
 
   <header class="dl-header">
     <div class="dl-header__inner">
-      <a href="{% url 'landing' %}" class="dl-brand">
+      <a href="{% url 'landing' %}" class="dl-brand" aria-label="DreamLens home">
         <img class="dl-brand__logo" src="{% static 'brand/dreamlens-mark.svg' %}" alt="" width="28" height="28">
-        Dream<span>Lens</span>
+        <span class="dl-brand__word">Dream<span class="dl-brand__word-accent">Lens</span></span>
       </a>
       <nav class="dl-nav" aria-label="Main">
         <a href="{% url 'home' %}" class="dl-nav__link{% if request.resolver_match.url_name == 'home' %} is-active{% endif %}"{% if request.resolver_match.url_name == 'home' %} aria-current="page"{% endif %}>Home</a>
@@ -86,8 +86,9 @@
   <script>
     window.DreamLensConfig = {{ dreamlens_network_json|safe }};
   </script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <script src="{% static 'js/dreamlens.js' %}?v=20260901d" defer></script>
+  <!-- Both deferred, so they still execute in order but no longer block parsing. -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
+  <script src="{% static 'js/dreamlens.js' %}?v=20260902a" defer></script>
   {% block extra_js %}{% endblock %}
 </body>
 </html>

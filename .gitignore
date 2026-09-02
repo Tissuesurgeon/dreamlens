@@ -23,3 +23,4 @@ celerybeat.pid
 !.env.example
 scripts/metamask/env.fragment
 scripts/metamask/node_modules/
+.gstack/

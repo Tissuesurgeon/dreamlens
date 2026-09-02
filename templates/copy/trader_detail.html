@@ -155,7 +155,7 @@
         <tbody>
           {% for fill in fills|slice:":40" %}
           <tr>
-            <td class="dl-muted">{{ fill.opened_at|timesince }} ago</td>
+            <td class="dl-muted">{{ fill.opened_at|since }}</td>
             <td>
               <a href="{% url 'event_detail' fill.event.pk %}">{{ fill.event|question_copy }}</a>
             </td>

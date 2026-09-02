@@ -568,7 +568,7 @@
         <tbody>
           {% for trade in recent_trades %}
           <tr>
-            <td class="dl-muted">{{ trade.opened_at|timesince }} ago</td>
+            <td class="dl-muted">{{ trade.opened_at|since }}</td>
             <td>
               <a href="{% url 'event_detail' trade.event.pk %}">{{ trade.event|question_copy }}</a>
             </td>

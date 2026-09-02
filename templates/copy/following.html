@@ -70,6 +70,7 @@
       <h2 id="people-heading" class="dl-section__title">People</h2>
       <p class="dl-section__count">{{ active_traders|length }} trader{{ active_traders|length|pluralize }}</p>
     </div>
+    <p class="dl-desk-note">Indexed from live DreamDEX fills. Past performance does not guarantee future results.</p>
     {% if active_traders %}
     <div class="dl-people-grid">
       {% for trader in active_traders %}
@@ -77,8 +78,8 @@
         <h3 class="dl-person-card__name">
           <a href="{% url 'trader_detail' trader.pk %}">{{ trader.display_name|default:trader.wallet_address|short_address }}</a>
         </h3>
-        <p class="dl-person-card__stat">{% widthratio trader.win_rate 1 100 %}% profitable trades · {{ trader.total_trades }} trades</p>
-        <p class="dl-muted">Past performance does not guarantee future results.</p>
+        <p class="dl-person-card__stat">{{ trader.total_volume|usd_plain }} volume · {{ trader.total_trades }} fill{{ trader.total_trades|pluralize }}</p>
+        <p class="dl-person-card__meta">{% if trader.last_active_at %}Last fill {{ trader.last_active_at|since }}{% else %}No fills indexed yet{% endif %}</p>
         <div class="dl-person-card__actions">
           <a href="{% url 'trader_detail' trader.pk %}" class="dl-btn dl-btn--ghost dl-btn--sm">See what they trade</a>
           {% if trader.pk in smart_copy_on_ids %}
@@ -115,7 +116,6 @@
               <th scope="col">Address</th>
               <th scope="col" class="dl-num">Volume</th>
               <th scope="col" class="dl-num">Fills</th>
-              <th scope="col" class="dl-num">Win rate</th>
               <th scope="col" class="dl-num">Score</th>
               <th scope="col">Last fill</th>
               <th scope="col"><span class="visually-hidden">Actions</span></th>
@@ -129,9 +129,8 @@
               </td>
               <td class="dl-num">{{ trader.total_volume|usd_amount }}</td>
               <td class="dl-num">{{ trader.total_trades }}</td>
-              <td class="dl-num">{% widthratio trader.win_rate 1 100 %}%</td>
               <td class="dl-num">{% widthratio trader.trader_score 1 100 %}</td>
-              <td class="dl-muted">{% if trader.last_active_at %}{{ trader.last_active_at|timesince }} ago{% else %}—{% endif %}</td>
+              <td class="dl-muted">{{ trader.last_active_at|since }}</td>
               <td class="dl-table-actions">
                 {% if trader.pk in followed_trader_ids %}
                 <span class="dl-followed-mark">Following</span>

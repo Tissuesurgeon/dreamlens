@@ -2134,6 +2134,54 @@
     }
   }
 
+  /* ── Chart theming ──
+     Chart.js draws to canvas, which cannot read CSS custom properties, and
+     @kurkle/color cannot parse oklch(). So resolve each token through a probe
+     canvas: the browser converts it to an rgb/rgba string Chart.js understands,
+     and the palette stays defined in one place (:root). */
+  let colorProbe = null;
+
+  function resolveColor(value, fallback) {
+    if (!value) return fallback;
+    if (!colorProbe) {
+      const c = document.createElement("canvas");
+      c.width = 1;
+      c.height = 1;
+      colorProbe = c.getContext("2d", { willReadFrequently: true });
+    }
+    // Assigning an unparseable value leaves fillStyle at the sentinel.
+    colorProbe.fillStyle = "#ff00ff";
+    colorProbe.fillStyle = value;
+    if (colorProbe.fillStyle === "#ff00ff") return fallback;
+    // Canvas keeps oklch() verbatim, so read back a pixel to get real channels.
+    colorProbe.clearRect(0, 0, 1, 1);
+    colorProbe.fillRect(0, 0, 1, 1);
+    const px = colorProbe.getImageData(0, 0, 1, 1).data;
+    return "rgba(" + px[0] + ", " + px[1] + ", " + px[2] + ", " + (px[3] / 255).toFixed(3) + ")";
+  }
+
+  function chartToken(name, fallback) {
+    const raw = getComputedStyle(document.documentElement).getPropertyValue(name);
+    return resolveColor(raw.trim(), fallback);
+  }
+
+  function chartTheme() {
+    const subtle = chartToken("--dl-subtle", "#9a8fa3");
+    const grid = chartToken("--dl-chart-grid", "rgba(255,255,255,0.06)");
+    return {
+      subtle,
+      grid,
+      ticks: { color: subtle, font: { size: 11 } },
+      tooltip: {
+        backgroundColor: chartToken("--dl-surface", "#1c1520"),
+        borderColor: chartToken("--dl-line", "rgba(255,255,255,0.08)"),
+        borderWidth: 1,
+        titleColor: chartToken("--dl-ink", "#ffffff"),
+        bodyColor: chartToken("--dl-muted", "#c9c2cc"),
+      },
+    };
+  }
+
   /* ── Chart.js price history ── */
   function initChart() {
     const canvas = document.getElementById("price-chart");
@@ -2144,10 +2192,12 @@
       prices: [0.4, 0.41, 0.42, 0.43, 0.43],
     };
 
+    const theme = chartTheme();
+    const yes = chartToken("--dl-yes", "#6ec8a0");
     const ctx = canvas.getContext("2d");
     const gradient = ctx.createLinearGradient(0, 0, 0, 220);
-    gradient.addColorStop(0, "rgba(110, 200, 160, 0.22)");
-    gradient.addColorStop(1, "rgba(110, 200, 160, 0)");
+    gradient.addColorStop(0, chartToken("--dl-chart-area", "rgba(110, 200, 160, 0.22)"));
+    gradient.addColorStop(1, chartToken("--dl-chart-area-fade", "rgba(110, 200, 160, 0)"));
 
     DreamLens.chart = new Chart(ctx, {
       type: "line",
@@ -2157,13 +2207,13 @@
           {
             label: "YES price",
             data: data.prices,
-            borderColor: "#6ec8a0",
+            borderColor: yes,
             backgroundColor: gradient,
             fill: true,
             tension: 0.35,
             pointRadius: 3,
             pointHoverRadius: 6,
-            pointBackgroundColor: "#6ec8a0",
+            pointBackgroundColor: yes,
           },
         ],
       },
@@ -2173,28 +2223,23 @@
         interaction: { mode: "index", intersect: false },
         plugins: {
           legend: { display: false },
-          tooltip: {
-            backgroundColor: "#1c1520",
-            borderColor: "rgba(255,255,255,0.08)",
-            borderWidth: 1,
-            titleColor: "#fff",
-            bodyColor: "#c9c2cc",
+          tooltip: Object.assign({}, theme.tooltip, {
             callbacks: {
               label: function (ctx) {
                 return " $" + Number(ctx.parsed.y).toFixed(2);
               },
             },
-          },
+          }),
         },
         scales: {
           x: {
-            grid: { color: "rgba(255,255,255,0.06)" },
-            ticks: { color: "#9a8fa3", font: { size: 11 } },
+            grid: { color: theme.grid },
+            ticks: theme.ticks,
           },
           y: {
-            grid: { color: "rgba(255,255,255,0.06)" },
+            grid: { color: theme.grid },
             ticks: {
-              color: "#9a8fa3",
+              color: theme.subtle,
               font: { size: 11 },
               callback: function (v) {
                 return "$" + Number(v).toFixed(2);
@@ -2221,7 +2266,7 @@
     if (!data || !data.labels || !data.labels.length) return;
 
     const ctx = canvas.getContext("2d");
-    const accent = "oklch(0.78 0.08 205)";
+    const theme = chartTheme();
     new Chart(ctx, {
       type: "bar",
       data: {
@@ -2230,8 +2275,8 @@
           {
             label: "Volume",
             data: data.volumes || [],
-            backgroundColor: "oklch(0.78 0.08 205 / 0.45)",
-            borderColor: accent,
+            backgroundColor: chartToken("--dl-chart-bar", "rgba(120, 190, 220, 0.45)"),
+            borderColor: chartToken("--dl-accent", "#78bedc"),
             borderWidth: 1,
             borderRadius: 4,
           },
@@ -2243,29 +2288,24 @@
         interaction: { mode: "index", intersect: false },
         plugins: {
           legend: { display: false },
-          tooltip: {
-            backgroundColor: "#1c1520",
-            borderColor: "rgba(255,255,255,0.08)",
-            borderWidth: 1,
-            titleColor: "#fff",
-            bodyColor: "#c9c2cc",
+          tooltip: Object.assign({}, theme.tooltip, {
             callbacks: {
               label: function (item) {
                 const n = Number(item.parsed.y) || 0;
                 return " $" + n.toLocaleString(undefined, { maximumFractionDigits: 0 });
               },
             },
-          },
+          }),
         },
         scales: {
           x: {
             grid: { display: false },
-            ticks: { color: "#9a8fa3", font: { size: 11 }, maxRotation: 0 },
+            ticks: { color: theme.subtle, font: { size: 11 }, maxRotation: 0 },
           },
           y: {
-            grid: { color: "rgba(255,255,255,0.06)" },
+            grid: { color: theme.grid },
             ticks: {
-              color: "#9a8fa3",
+              color: theme.subtle,
               font: { size: 11 },
               callback: function (v) {
                 return "$" + Number(v).toLocaleString(undefined, { maximumFractionDigits: 0 });

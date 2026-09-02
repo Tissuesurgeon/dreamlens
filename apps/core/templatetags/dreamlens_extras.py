@@ -1,6 +1,7 @@
 from decimal import Decimal, ROUND_HALF_UP
 
 from django import template
+from django.utils.timesince import timesince
 
 from services.event_copy import (
     CLAIM_JOB,
@@ -178,3 +179,14 @@ def short_address(address):
     if not address or len(address) < 10:
         return address or ""
     return f"{address[:6]}…{address[-4:]}"
+
+
+@register.filter
+def since(value):
+    """Relative age of a fill. `timesince` renders "0 minutes" under a minute."""
+    if not value:
+        return "—"
+    elapsed = timesince(value)
+    if not elapsed or elapsed.startswith("0 "):
+        return "just now"
+    return f"{elapsed} ago"

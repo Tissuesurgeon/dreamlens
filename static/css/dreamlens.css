@@ -41,6 +41,13 @@
   --dl-warn-soft: oklch(0.28 0.06 60);
   --dl-focus: oklch(0.82 0.09 205);
 
+  /* Canvas charts — read by dreamlens.js so Chart.js never drifts from the
+     palette. Kept as tokens rather than literals in JS. */
+  --dl-chart-grid: oklch(1 0 0 / 0.06);
+  --dl-chart-area: oklch(0.76 0.11 155 / 0.22);
+  --dl-chart-area-fade: oklch(0.76 0.11 155 / 0);
+  --dl-chart-bar: oklch(0.78 0.08 205 / 0.45);
+
   /* Type — fixed rem scale, ratio ~1.2 (product UI) */
   --dl-font: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
   --dl-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -190,16 +197,31 @@ body.dl-body {
   padding: 0 1.25rem;
 }
 
+/* Phones: the wallet + network controls are load-bearing, the wordmark is not.
+   Collapsing it to the mark keeps the row inside the viewport down to 320px,
+   which otherwise overflows and drags the fixed bottom nav off-screen with it. */
+@media (max-width: 420px) {
+  .dl-header__inner {
+    gap: var(--dl-s3);
+    padding: 0 1rem;
+  }
+  .dl-header__inner .dl-brand__word { display: none; }
+}
+
 .dl-brand {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
+  min-width: 0;
   font-size: var(--dl-t-md);
   font-weight: 800;
   color: var(--dl-ink);
   text-decoration: none;
   letter-spacing: -0.03em;
 }
+
+/* The wordmark is one flex item, so the row gap never splits "DreamLens". */
+.dl-brand__word { white-space: nowrap; }
 
 .dl-brand__mark,
 .dl-brand__logo {
@@ -213,7 +235,7 @@ body.dl-body {
 
 .dl-brand:hover .dl-brand__mark,
 .dl-brand:hover .dl-brand__logo { transform: scale(1.08); }
-.dl-brand span { color: var(--dl-primary); }
+.dl-brand__word-accent { color: var(--dl-primary); }
 
 .dl-nav { display: none; gap: var(--dl-s1); }
 
@@ -311,6 +333,20 @@ body.dl-body {
   min-height: 36px;
   padding: 0.4rem 0.85rem;
   font-size: var(--dl-t-sm);
+}
+
+/* The compact desktop density is deliberate, but a finger is not a cursor:
+   on a coarse pointer every control clears a 44px tap target. */
+@media (pointer: coarse) {
+  .dl-btn--sm,
+  .dl-btn--wallet,
+  .dl-view-toggle {
+    min-height: 44px;
+  }
+  .dl-icon-btn {
+    min-height: 44px;
+    min-width: 44px;
+  }
 }
 
 .dl-btn--block { width: 100%; }
@@ -874,7 +910,6 @@ body.dl-body {
 .dl-prob-bar__estimate {
   height: 100%;
   border-radius: var(--dl-radius-pill);
-  transition: width var(--dl-slow) var(--dl-ease);
 }
 
 .dl-prob-bar__yes { background: var(--dl-yes); }
@@ -1808,12 +1843,13 @@ body.dl-body {
   background: var(--dl-yes-soft);
 }
 .dl-pf-empty { margin-bottom: var(--dl-s6); }
+/* Two outlined sides you could take — never a filled split bar, which on an
+   empty book reads as "you are holding 50% YES / 50% NO". */
 .dl-pf-ghost {
   display: flex;
+  gap: var(--dl-s2);
   width: min(16rem, 100%);
-  margin: 0 auto var(--dl-s4);
-  border-radius: var(--dl-radius);
-  overflow: hidden;
+  margin: 0 auto var(--dl-s5);
   min-height: 3.25rem;
 }
 .dl-pf-ghost__yes,
@@ -1822,12 +1858,15 @@ body.dl-body {
   display: flex;
   align-items: center;
   justify-content: center;
+  border-radius: var(--dl-radius-sm);
+  border: 1px dashed currentColor;
+  background: transparent;
   font-size: var(--dl-t-sm);
   font-weight: 800;
   letter-spacing: 0.06em;
 }
-.dl-pf-ghost__yes { background: var(--dl-yes-soft); color: var(--dl-yes); }
-.dl-pf-ghost__no { background: var(--dl-no-soft); color: var(--dl-no); }
+.dl-pf-ghost__yes { color: var(--dl-yes-line); }
+.dl-pf-ghost__no { color: var(--dl-no-line); }
 .dl-pf-follow-empty {
   margin: 0;
   color: var(--dl-muted);
@@ -2081,7 +2120,7 @@ body.dl-body {
 .dl-result-pill--lost { background: var(--dl-no-soft); color: var(--dl-no); }
 .dl-result-pill--void,
 .dl-result-pill--settling,
-.dl-result-pill--closed { background: var(--dl-fill, rgba(255,255,255,0.06)); color: var(--dl-muted); }
+.dl-result-pill--closed { background: var(--dl-fill, oklch(1 0 0 / 0.06)); color: var(--dl-muted); }
 
 .dl-event-row__value {
   margin-left: auto;
@@ -2229,7 +2268,7 @@ body.dl-body {
   color: var(--dl-muted);
 }
 
-.dl-empty p { margin: 0 auto; max-width: 44ch; }
+.dl-empty p { margin: 0 auto; max-width: 44ch; text-wrap: pretty; }
 .dl-empty--large { padding: var(--dl-s7) var(--dl-s4); }
 
 .dl-empty__title {
@@ -2965,7 +3004,7 @@ dialog.dl-modal::backdrop {
   border: 1px solid var(--dl-line-strong);
   border-radius: var(--dl-radius-lg);
   background: var(--dl-surface);
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 18px 48px oklch(0 0 0 / 0.45);
   animation: dl-fade-up var(--dl-fast) var(--dl-ease) both;
 }
 
@@ -5016,6 +5055,7 @@ body[data-view="simple"] .dl-advanced { display: none !important; }
   align-items: center;
   gap: 0.5rem;
   margin-left: auto;
+  flex-shrink: 0;
 }
 
 .dl-testnet-pill {
@@ -5413,14 +5453,10 @@ body[data-view="simple"] .dl-advanced { display: none !important; }
 .dl-receipt {
   padding: 1.05rem 1.1rem;
   border: 1px solid var(--dl-line);
-  border-left: 3px solid var(--dl-primary);
   border-radius: 14px;
   background: var(--dl-surface);
 }
-.dl-landing-main .dl-receipt {
-  max-width: 40rem;
-  border: 1px solid var(--dl-line);
-}
+.dl-landing-main .dl-receipt { max-width: 40rem; }
 .dl-receipt-list { display: grid; gap: var(--dl-s4); }
 .dl-receipt__kicker {
   margin: 0;
@@ -5463,7 +5499,8 @@ body[data-view="simple"] .dl-advanced { display: none !important; }
 }
 .dl-person-card__name { margin: 0 0 0.35rem; }
 .dl-person-card__name a { color: inherit; text-decoration: none; }
-.dl-person-card__stat { font-weight: 650; margin: 0 0 0.35rem; }
+.dl-person-card__stat { font-weight: 650; margin: 0 0 0.2rem; font-variant-numeric: tabular-nums; }
+.dl-person-card__meta { margin: 0; color: var(--dl-subtle); font-size: var(--dl-t-sm); }
 .dl-person-card__actions { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-top: 0.75rem; }
 
 .dl-explain {
@@ -5483,8 +5520,8 @@ body[data-view="simple"] .dl-advanced { display: none !important; }
 .dl-explain__question {
   margin: 0;
   padding: 0.9rem 1.05rem;
-  border-left: 3px solid var(--dl-primary);
-  border-radius: 0 var(--dl-radius-sm) var(--dl-radius-sm) 0;
+  border: 1px solid var(--dl-line);
+  border-radius: var(--dl-radius-sm);
   background: var(--dl-surface-2);
   color: var(--dl-ink);
   font-size: var(--dl-t-md);

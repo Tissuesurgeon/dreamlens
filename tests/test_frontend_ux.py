@@ -362,9 +362,25 @@ def test_start_wizard_connect_step(client, sample_event):
     assert res.status_code == 200
     body = res.content.decode()
     assert "Connect MetaMask" in body
-    assert "Step 1 of 5" in body
+    assert "Step 1 of 5, current" in body
     assert "data-onboarding=\"1\"" in body
     assert "dl-body--start" in body
+    # labeled roadmap replaces the anonymous progress bars
+    for label in ("Connect", "Trading account", "Add money", "Allow", "First $1"):
+        assert label in body
+    assert 'aria-current="step"' in body
+    assert body.count("dl-start__step is-current") == 1
+    assert body.count("dl-start__step is-upcoming") == 4
+    assert "dl-start__progress" not in body
+    # context rail: what you end with, live market, time/testnet line, escape hatch
+    assert "What you end with" in body
+    assert "It can never withdraw your funds" in body
+    assert "Live on DreamDEX right now" in body
+    assert event_question(sample_event) in body
+    assert "About 2 minutes · Testnet only · no real money" in body
+    assert "Look around first" in body
+    assert 'href="/discover/"' in body
+    assert "data-start-connect" in body
     assert "YES = you think this happens" not in body or "Price is what you pay now" in body
     assert "Hybrid" not in body
     assert "EIP-712" not in body
@@ -481,6 +497,91 @@ def test_claim_js_uses_sdk_gas_ceiling():
     assert "DreamLens is placing this trade" in js
     assert "Creating your trading account" in js
     assert "order: data.unsigned_tx" not in js
+
+
+def test_no_native_popups_in_frontend_js():
+    """alert()/confirm()/prompt() must not creep back — use toast()/confirmDialog()."""
+    import re
+
+    js = Path("static/js/dreamlens.js").read_text()
+    native = re.findall(r"(?<![\w.])(?:window\.)?(alert|confirm|prompt)\(", js)
+    assert native == [], f"native popups found: {native}"
+    assert "function confirmDialog(" in js
+    assert "function initUnfollowButtons(" in js
+    assert '"/api/copy/" + encodeURIComponent(pk) + "/"' in js
+    assert 'method: "DELETE"' in js
+
+
+@pytest.mark.django_db
+def test_unfollow_button_everywhere_a_followed_trader_appears(
+    client, user, wallet, sample_event
+):
+    from django.core.cache import cache
+
+    from apps.dreamcopy.models import CopyRelationship, TraderProfile, TraderTrade
+
+    cache.clear()
+    followed = TraderProfile.objects.create(
+        wallet_address="0x6730d3a2a217108ab53ccfe60ffdad05d3c124e5",
+        display_name="FollowedTrader",
+        total_trades=4,
+        total_volume=Decimal("12"),
+    )
+    stranger = TraderProfile.objects.create(
+        wallet_address="0x1111111111111111111111111111111111111111",
+        display_name="Stranger",
+        total_trades=3,
+        total_volume=Decimal("9"),
+    )
+    yes = sample_event.outcomes.get(outcome_type="YES")
+    for i, t in enumerate((followed, stranger)):
+        TraderTrade.objects.create(
+            trader=t,
+            event=sample_event,
+            outcome=yes,
+            entry_price=Decimal("0.41"),
+            amount=Decimal("2"),
+            opened_at=sample_event.expiry_time,
+            external_trade_id=f"unf-fill-{i}",
+        )
+    rel = CopyRelationship.objects.create(
+        user=user,
+        trader=followed,
+        status=CopyRelationship.Status.ACTIVE,
+        copy_mode=CopyRelationship.CopyMode.SMART,
+        max_per_trade=Decimal("5"),
+        max_daily=Decimal("20"),
+    )
+    client.force_login(user)
+
+    body = client.get("/following/").content.decode()
+    unfollow = f'data-unfollow="{rel.pk}"'
+    # chip row + people card + advanced table row
+    assert body.count(unfollow) == 3
+    assert f'data-follow-rel="{rel.pk}"' in body
+    assert 'id="dl-confirm"' in body
+    assert 'id="dl-confirm-ok"' in body
+    # the stranger only gets Follow entry points
+    stranger_card = body.split("Stranger", 1)[1].split("</article>", 1)[0]
+    assert "data-unfollow" not in stranger_card
+    assert "Follow" in stranger_card
+
+    detail = client.get(reverse("trader_detail", args=[followed.pk])).content.decode()
+    assert unfollow in detail
+    assert 'data-unfollow-redirect="/following/"' in detail
+    stranger_detail = client.get(reverse("trader_detail", args=[stranger.pk])).content.decode()
+    assert "data-unfollow" not in stranger_detail
+
+    portfolio = client.get("/portfolio/").content.decode()
+    assert unfollow in portfolio
+    assert "data-follow-count" in portfolio
+    assert "data-follow-empty" in portfolio
+
+    res = client.delete(f"/api/copy/{rel.pk}/")
+    assert res.status_code in (200, 204)
+    rel.refresh_from_db()
+    assert rel.status == CopyRelationship.Status.STOPPED
+    assert "data-unfollow" not in client.get("/following/").content.decode()
 
 
 @pytest.mark.django_db

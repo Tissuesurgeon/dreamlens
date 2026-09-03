@@ -23,6 +23,29 @@ STEP_DONE = "done"
 
 STEPS = (STEP_CONNECT, STEP_CREATE, STEP_FUND, STEP_ALLOW, STEP_TRADE, STEP_DONE)
 
+# Short names for the wizard roadmap. Five real steps; "done" is the landing.
+STEP_LABELS = {
+    STEP_CONNECT: "Connect",
+    STEP_CREATE: "Trading account",
+    STEP_FUND: "Add money",
+    STEP_ALLOW: "Allow",
+    STEP_TRADE: "First $1",
+}
+
+
+def roadmap(step_index: int) -> list[dict[str, Any]]:
+    """Ordered roadmap entries with done / current / upcoming state."""
+    items = []
+    for n, key in enumerate(STEPS[:-1], start=1):
+        if step_index > n:
+            state = "done"
+        elif step_index == n:
+            state = "current"
+        else:
+            state = "upcoming"
+        items.append({"n": n, "key": key, "label": STEP_LABELS[key], "state": state})
+    return items
+
 STEP_COPY = {
     STEP_CONNECT: {
         "title": "Connect MetaMask",

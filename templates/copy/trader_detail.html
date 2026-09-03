@@ -26,8 +26,22 @@
     <div class="dl-ta-actions">
       {% if relationship and relationship.status == "ACTIVE" %}
       <a href="{% url 'copy_settings' relationship.pk %}" class="dl-btn dl-btn--ghost">Change permissions</a>
+      <button
+        type="button"
+        class="dl-btn dl-btn--ghost dl-btn--quiet-danger"
+        data-unfollow="{{ relationship.pk }}"
+        data-trader-name="{{ trader.display_name|default:trader.wallet_address|short_address }}"
+        data-unfollow-redirect="{% url 'following' %}"
+      >Unfollow</button>
       {% elif relationship %}
       <button type="button" class="dl-btn dl-btn--primary" data-copy-resume="{{ relationship.pk }}">Resume Smart Copy</button>
+      <button
+        type="button"
+        class="dl-btn dl-btn--ghost dl-btn--quiet-danger"
+        data-unfollow="{{ relationship.pk }}"
+        data-trader-name="{{ trader.display_name|default:trader.wallet_address|short_address }}"
+        data-unfollow-redirect="{% url 'following' %}"
+      >Unfollow</button>
       {% else %}
       <button
         type="button"

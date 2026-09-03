@@ -320,7 +320,7 @@
   <section class="dl-section" aria-labelledby="following-heading" data-agent-running="{% if agent_can_auto_copy %}1{% else %}0{% endif %}">
     <div class="dl-section-head dl-section-head--table">
       <h2 id="following-heading" class="dl-section__title">Following</h2>
-      <p class="dl-section__count">{{ copy_relationships|length }}</p>
+      <p class="dl-section__count" data-follow-count>{{ copy_relationships|length }}</p>
     </div>
     {% if pending_copy_count %}
     <p class="dl-follow-pending">
@@ -329,9 +329,9 @@
     </p>
     {% endif %}
     {% if copy_relationships %}
-    <div class="dl-event-rows">
+    <div class="dl-event-rows" data-follow-list>
       {% for rel in copy_relationships %}
-      <div class="dl-event-row dl-follow-row">
+      <div class="dl-event-row dl-follow-row" data-follow-rel="{{ rel.pk }}">
         <span class="dl-event-row__body">
           <a href="{% url 'trader_detail' rel.trader.pk %}" class="dl-event-row__title">
             {{ rel.trader.display_name|default:rel.trader.wallet_address|short_address }}
@@ -369,17 +369,22 @@
             <span>Notify me</span>
           </label>
         </fieldset>
+        <button
+          type="button"
+          class="dl-btn dl-btn--ghost dl-btn--sm dl-btn--quiet-danger"
+          data-unfollow="{{ rel.pk }}"
+          data-trader-name="{{ rel.trader.display_name|default:rel.trader.wallet_address|short_address }}"
+        >Unfollow</button>
       </div>
       {% endfor %}
     </div>
     <p class="dl-muted">Copy now needs an Active DreamAgent. Notify me sends a Telegram message and a DreamLens alert so you can decide.</p>
-    {% else %}
-    <p class="dl-pf-follow-empty">
+    {% endif %}
+    <p class="dl-pf-follow-empty" data-follow-empty{% if copy_relationships %} hidden{% endif %}>
       No one yet.
       Follow a trader, then choose whether DreamAgent copies immediately or only alerts you.
       <a href="{% url 'following' %}" class="dl-text-link">Find traders</a>
     </p>
-    {% endif %}
   </section>
 
   <div class="dl-agent-dash">

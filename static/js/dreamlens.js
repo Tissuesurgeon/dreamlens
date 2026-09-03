@@ -355,12 +355,10 @@
     } catch (err) {
       console.warn("Failed to switch to DreamLens network", err);
       if (!opts.silent) {
-        alert(
-          "Please switch your wallet to " +
-            cfg.chainName +
-            " (chain ID " +
-            cfg.chainId +
-            ") to use DreamLens."
+        toast(
+          "Switch your wallet to " + cfg.chainName + " (chain ID " + cfg.chainId + ") to use DreamLens.",
+          "error",
+          { title: "Wrong network", sticky: true }
         );
       }
       return false;
@@ -1512,7 +1510,7 @@
       if (traderId) {
         payload.trader_id = Number(traderId);
       } else {
-        alert("Pick a trader in the Traders lens, then start copying.");
+        toast("Pick a trader in the Traders lens, then start copying.", "info");
         activateLens("traders");
         return;
       }
@@ -1534,10 +1532,10 @@
         if (!res.ok) {
           throw new Error(data.detail || data.error || "Could not start copy.");
         }
-        alert("Smart Copy started — DreamLens will review trades before copying.");
-        window.location.href = "/following/";
+        toast("Smart Copy started — DreamLens will review trades before copying.", "success");
+        setTimeout(function () { window.location.href = "/following/"; }, 600);
       } catch (err) {
-        alert(err.message || "Could not start copy. Try again.");
+        toast(err.message || "Could not start copy. Try again.", "error");
       } finally {
         if (submitBtn) {
           submitBtn.disabled = false;
@@ -1570,13 +1568,111 @@
             window.location.reload();
             return;
           }
-          alert("Could not follow this trader. Try connecting your wallet again.");
+          toast("Could not follow this trader. Try connecting your wallet again.", "error");
         } catch (err) {
-          alert("Could not follow this trader. Please try again.");
+          toast("Could not follow this trader. Please try again.", "error");
         } finally {
           btn.disabled = false;
         }
       });
+    });
+  }
+
+  /* ── Unfollow ── */
+  function removeFollowElements(pk) {
+    const nodes = document.querySelectorAll('[data-follow-rel="' + pk + '"]');
+    nodes.forEach(function (node) {
+      const isTraderCard =
+        node.classList.contains("dl-person-card") || node.tagName === "TR";
+      if (isTraderCard) {
+        // The card describes the trader, not the follow — keep it, but swap
+        // the follow controls back to a single Follow entry point.
+        node.removeAttribute("data-follow-rel");
+        const mark = node.querySelector(".dl-followed-mark");
+        if (mark) mark.remove();
+        const actions =
+          node.querySelector(".dl-person-card__actions") ||
+          node.querySelector(".dl-table-actions");
+        const detail = node.querySelector("a[href]");
+        if (actions) {
+          actions
+            .querySelectorAll("[data-unfollow], [data-open-smart-copy], a.dl-btn")
+            .forEach(function (el) {
+              if (el.textContent.trim() !== "See what they trade") el.remove();
+            });
+          if (detail) {
+            const follow = document.createElement("a");
+            follow.className = "dl-btn dl-btn--primary dl-btn--sm";
+            follow.href = detail.getAttribute("href");
+            follow.textContent = "Follow";
+            actions.appendChild(follow);
+          }
+        }
+        return;
+      }
+      node.classList.add("is-leaving");
+      setTimeout(function () {
+        const section = node.closest(".dl-section");
+        node.remove();
+        if (!section) return;
+        const count = section.querySelector("[data-follow-count]");
+        const remaining = section.querySelectorAll("[data-follow-rel]").length;
+        if (count) count.textContent = String(remaining);
+        if (remaining === 0) {
+          const empty = section.querySelector("[data-follow-empty]");
+          const list = section.querySelector("[data-follow-list]");
+          if (list) list.hidden = true;
+          if (empty) empty.hidden = false;
+          else if (section.classList.contains("dl-section--follow-chips")) section.hidden = true;
+        }
+      }, 260);
+    });
+  }
+
+  function initUnfollowButtons() {
+    if (!document.querySelector("[data-unfollow]")) return;
+    document.addEventListener("click", async function (e) {
+      const btn = e.target.closest("[data-unfollow]");
+      if (!btn || btn.disabled) return;
+      e.preventDefault();
+      const pk = btn.getAttribute("data-unfollow");
+      const name = btn.getAttribute("data-trader-name") || "this trader";
+      const ok = await confirmDialog({
+        title: "Unfollow " + name + "?",
+        body:
+          "DreamLens stops watching their fills and DreamAgent will not copy them any more. Trades already copied are not affected.",
+        confirmLabel: "Unfollow",
+        danger: true,
+      });
+      if (!ok) return;
+      btn.disabled = true;
+      btn.setAttribute("aria-busy", "true");
+      try {
+        const res = await csrfFetch("/api/copy/" + encodeURIComponent(pk) + "/", {
+          method: "DELETE",
+        });
+        if (!res.ok) {
+          let detail = "";
+          try {
+            const data = await readJsonResponse(res);
+            detail = data.detail || "";
+          } catch (err) {
+            detail = err.message || "";
+          }
+          throw new Error(detail || "Could not unfollow. Try again.");
+        }
+        toast("Unfollowed " + name, "success");
+        const redirect = btn.getAttribute("data-unfollow-redirect");
+        if (redirect) {
+          setTimeout(function () { window.location.assign(redirect); }, 500);
+          return;
+        }
+        removeFollowElements(pk);
+      } catch (err) {
+        toast(err.message || "Could not unfollow. Try again.", "error");
+        btn.disabled = false;
+        btn.removeAttribute("aria-busy");
+      }
     });
   }
 
@@ -1752,7 +1848,7 @@
         (document.getElementById("scw-wallet-address") || {}).value || ""
       ).trim();
       if (!traderId && !isEvmAddress(walletAddress)) {
-        alert("Paste a wallet address or pick a trader.");
+        toast("Paste a wallet address or pick a trader.", "error");
         return;
       }
 
@@ -1817,7 +1913,7 @@
         closeWizard();
         window.location.reload();
       } catch (err) {
-        alert(err.message || "Could not start Smart Copy.");
+        toast(err.message || "Could not start Smart Copy.", "error");
       } finally {
         if (submitBtn) {
           submitBtn.disabled = false;
@@ -1926,7 +2022,7 @@
         shownIds[current.id] = true;
         hideAlert();
       } catch (err) {
-        alert(err.message || "Could not skip.");
+        toast(err.message || "Could not skip.", "error");
       } finally {
         btn.disabled = false;
       }
@@ -2009,7 +2105,7 @@
           if (!res.ok) throw new Error("Pause failed");
           window.location.reload();
         } catch (err) {
-          alert(err.message || "Could not pause.");
+          toast(err.message || "Could not pause.", "error");
           btn.disabled = false;
         }
       });
@@ -2032,7 +2128,7 @@
           if (!res.ok) throw new Error("Resume failed");
           window.location.reload();
         } catch (err) {
-          alert(err.message || "Could not resume.");
+          toast(err.message || "Could not resume.", "error");
           btn.disabled = false;
         }
       });
@@ -2124,9 +2220,9 @@
             return {};
           });
           if (!res.ok) throw new Error(data.detail || "Save failed");
-          alert("Settings saved.");
+          toast("Settings saved.", "success");
         } catch (err) {
-          alert(err.message || "Could not save settings.");
+          toast(err.message || "Could not save settings.", "error");
         } finally {
           if (submitBtn) submitBtn.disabled = false;
         }
@@ -2853,7 +2949,7 @@
       window.location.reload();
     } catch (err) {
       console.warn("Close failed", err);
-      alert(err.message || "Could not close this trade. Check MetaMask and try again.");
+      toast(err.message || "Could not close this trade. Check MetaMask and try again.", "error");
       btn.disabled = false;
       btn.textContent = original;
     }
@@ -3186,6 +3282,7 @@
     initTradeModal();
     initCopyForm();
     initFollowButtons();
+    initUnfollowButtons();
     initFollowWalletForm();
     initSmartCopyWizard();
     initSmartCopyAlert();
@@ -3216,19 +3313,122 @@
   DreamLens.walletTxParams = walletTxParams;
   DreamLens.getEthereumProvider = getEthereumProvider;
 
-  function toast(msg, kind) {
-    if (typeof DreamLens.showToast === "function") {
-      DreamLens.showToast(msg, kind);
-      return;
-    }
+  /**
+   * In-app notification. `kind` is one of success | ok | error | info.
+   * opts.sticky keeps the toast until the user dismisses it (for things the
+   * user has to act on, such as being on the wrong network).
+   */
+  function toast(msg, kind, opts) {
+    opts = opts || {};
+    const TOAST_ICONS = { success: "✓", ok: "✓", error: "!", info: "i" };
     const root = document.getElementById("dl-toasts");
-    if (!root) return;
+    if (!root || !msg) return null;
+    kind = kind || "info";
     const el = document.createElement("div");
-    el.className = "dl-toast" + (kind ? " dl-toast--" + kind : "");
-    el.textContent = msg;
+    el.className = "dl-toast dl-toast--" + kind;
+    el.setAttribute("role", kind === "error" ? "alert" : "status");
+
+    const icon = document.createElement("span");
+    icon.className = "dl-toast__icon";
+    icon.setAttribute("aria-hidden", "true");
+    icon.textContent = TOAST_ICONS[kind] || TOAST_ICONS.info;
+
+    const body = document.createElement("div");
+    body.className = "dl-toast__body";
+    if (opts.title) {
+      const title = document.createElement("span");
+      title.className = "dl-toast__title";
+      title.textContent = opts.title;
+      body.appendChild(title);
+      const text = document.createElement("span");
+      text.className = "dl-toast__text";
+      text.textContent = msg;
+      body.appendChild(text);
+    } else {
+      const title = document.createElement("span");
+      title.className = "dl-toast__title";
+      title.textContent = msg;
+      body.appendChild(title);
+    }
+    if (opts.href && opts.linkLabel) {
+      const link = document.createElement("a");
+      link.className = "dl-toast__link";
+      link.href = opts.href;
+      link.textContent = opts.linkLabel;
+      body.appendChild(link);
+    }
+
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "dl-toast__close";
+    close.setAttribute("aria-label", "Dismiss");
+    close.textContent = "×";
+
+    el.appendChild(icon);
+    el.appendChild(body);
+    el.appendChild(close);
     root.appendChild(el);
-    setTimeout(function () { el.remove(); }, 4000);
+
+    let timer = null;
+    function dismiss() {
+      if (timer) clearTimeout(timer);
+      if (el.classList.contains("is-leaving")) return;
+      el.classList.add("is-leaving");
+      setTimeout(function () { el.remove(); }, 260);
+    }
+    close.addEventListener("click", dismiss);
+    if (!opts.sticky) {
+      const ttl = opts.duration || (kind === "error" ? 6500 : 4200);
+      timer = setTimeout(dismiss, ttl);
+    }
+    return { el: el, dismiss: dismiss };
   }
+  DreamLens.toast = toast;
+
+  /**
+   * Styled replacement for the native confirm popup. Resolves true when the user
+   * confirms, false on cancel / Escape / backdrop. `danger: true` paints the
+   * confirm button with the NO colour for destructive actions.
+   */
+  function confirmDialog(options) {
+    options = options || {};
+    const dialog = document.getElementById("dl-confirm");
+    if (!dialog || typeof dialog.showModal !== "function") {
+      // Very old browser without <dialog>: fail closed rather than fall back
+      // to a native popup.
+      return Promise.resolve(false);
+    }
+    const titleEl = dialog.querySelector("#dl-confirm-title");
+    const bodyEl = dialog.querySelector("#dl-confirm-body");
+    const okBtn = dialog.querySelector("#dl-confirm-ok");
+    const cancelBtn = dialog.querySelector("#dl-confirm-cancel");
+    if (titleEl) titleEl.textContent = options.title || "Are you sure?";
+    if (bodyEl) {
+      bodyEl.textContent = options.body || "";
+      bodyEl.hidden = !options.body;
+    }
+    if (okBtn) {
+      okBtn.textContent = options.confirmLabel || "Confirm";
+      okBtn.classList.toggle("dl-btn--danger", !!options.danger);
+      okBtn.classList.toggle("dl-btn--primary", !options.danger);
+      okBtn.classList.toggle("dl-btn--ghost", !!options.danger);
+    }
+    if (cancelBtn) cancelBtn.textContent = options.cancelLabel || "Cancel";
+
+    return new Promise(function (resolve) {
+      function onClose() {
+        dialog.removeEventListener("close", onClose);
+        resolve(dialog.returnValue === "confirm");
+        dialog.returnValue = "";
+      }
+      dialog.addEventListener("close", onClose);
+      dialog.returnValue = "";
+      dialog.showModal();
+      if (options.danger && cancelBtn) cancelBtn.focus();
+      else if (okBtn) okBtn.focus();
+    });
+  }
+  DreamLens.confirmDialog = confirmDialog;
 
   function initOwnerWithdraw() {
     const withdrawBtn = document.getElementById("sa-withdraw");
@@ -3623,9 +3823,13 @@
           pauseModal.showModal();
           return;
         }
-        if (window.confirm("Pause Dream Agent? Your funds stay. No new autonomous trades.")) {
-          patchStatus("PAUSED").catch(function (e) { toast(e.message, "error"); });
-        }
+        confirmDialog({
+          title: "Pause Dream Agent?",
+          body: "Your funds stay in your Smart Account. No new autonomous trades.",
+          confirmLabel: "Pause Agent",
+        }).then(function (ok) {
+          if (ok) patchStatus("PAUSED").catch(function (e) { toast(e.message, "error"); });
+        });
       });
     }
     if (resumeBtn) {
@@ -3635,8 +3839,18 @@
     }
     if (revokeBtn && revokeModal) {
       revokeBtn.addEventListener("click", function () {
-        if (typeof revokeModal.showModal === "function") revokeModal.showModal();
-        else if (confirm("Revoke Dream Agent?")) doRevoke();
+        if (typeof revokeModal.showModal === "function") {
+          revokeModal.showModal();
+          return;
+        }
+        confirmDialog({
+          title: "Revoke Dream Agent?",
+          body: "DreamAgent immediately loses permission to place new trades. Your Smart Account stays yours.",
+          confirmLabel: "Revoke Agent",
+          danger: true,
+        }).then(function (ok) {
+          if (ok) doRevoke().catch(function (err) { toast(err.message, "error"); });
+        });
       });
     }
     async function doRevoke() {

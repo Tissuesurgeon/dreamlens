@@ -46,20 +46,30 @@
   </section>
 
   {% if copy_relationships %}
-  <section class="dl-section" aria-labelledby="your-copies-heading">
+  <section class="dl-section dl-section--follow-chips" aria-labelledby="your-copies-heading">
     <div class="dl-section-head">
       <h2 id="your-copies-heading" class="dl-section__title">Following</h2>
+      <p class="dl-section__count" data-follow-count>{{ copy_relationships|length }}</p>
     </div>
-    <div class="dl-copy-chip-row">
+    <div class="dl-copy-chip-row" data-follow-list>
       {% for rel in copy_relationships %}
-      <a href="{% url 'trader_detail' rel.trader.pk %}" class="dl-copy-chip">
-        <span class="dl-mono">{{ rel.trader.display_name|default:rel.trader.wallet_address|short_address }}</span>
-        {% if rel.auto_execute %}
-        <span class="dl-smart-pill{% if rel.is_smart_on %} is-on{% endif %}"><span class="dl-smart-pill__dot" aria-hidden="true"></span> Copy now</span>
-        {% else %}
-        <span class="dl-smart-pill{% if rel.is_smart_on %} is-on{% endif %}">Notify me</span>
-        {% endif %}
-      </a>
+      <span class="dl-copy-chip" data-follow-rel="{{ rel.pk }}">
+        <a href="{% url 'trader_detail' rel.trader.pk %}" class="dl-copy-chip__link">
+          <span class="dl-mono">{{ rel.trader.display_name|default:rel.trader.wallet_address|short_address }}</span>
+          {% if rel.auto_execute %}
+          <span class="dl-smart-pill{% if rel.is_smart_on %} is-on{% endif %}"><span class="dl-smart-pill__dot" aria-hidden="true"></span> Copy now</span>
+          {% else %}
+          <span class="dl-smart-pill{% if rel.is_smart_on %} is-on{% endif %}">Notify me</span>
+          {% endif %}
+        </a>
+        <button
+          type="button"
+          class="dl-copy-chip__remove"
+          data-unfollow="{{ rel.pk }}"
+          data-trader-name="{{ rel.trader.display_name|default:rel.trader.wallet_address|short_address }}"
+          aria-label="Unfollow {{ rel.trader.display_name|default:rel.trader.wallet_address|short_address }}"
+        >&times;</button>
+      </span>
       {% endfor %}
     </div>
   </section>
@@ -74,16 +84,23 @@
     {% if active_traders %}
     <div class="dl-people-grid">
       {% for trader in active_traders %}
-      <article class="dl-person-card">
+      <article class="dl-person-card"{% if trader.follow_rel %} data-follow-rel="{{ trader.follow_rel.pk }}"{% endif %}>
         <h3 class="dl-person-card__name">
           <a href="{% url 'trader_detail' trader.pk %}">{{ trader.display_name|default:trader.wallet_address|short_address }}</a>
+          {% if trader.follow_rel %}<span class="dl-followed-mark">Following</span>{% endif %}
         </h3>
         <p class="dl-person-card__stat">{{ trader.total_volume|usd_plain }} volume · {{ trader.total_trades }} fill{{ trader.total_trades|pluralize }}</p>
         <p class="dl-person-card__meta">{% if trader.last_active_at %}Last fill {{ trader.last_active_at|since }}{% else %}No fills indexed yet{% endif %}</p>
         <div class="dl-person-card__actions">
           <a href="{% url 'trader_detail' trader.pk %}" class="dl-btn dl-btn--ghost dl-btn--sm">See what they trade</a>
-          {% if trader.pk in smart_copy_on_ids %}
-          <a href="{% url 'trader_detail' trader.pk %}" class="dl-btn dl-btn--ghost dl-btn--sm">Manage</a>
+          {% if trader.follow_rel %}
+          <a href="{% url 'copy_settings' trader.follow_rel.pk %}" class="dl-btn dl-btn--ghost dl-btn--sm">Manage</a>
+          <button
+            type="button"
+            class="dl-btn dl-btn--ghost dl-btn--sm dl-btn--quiet-danger"
+            data-unfollow="{{ trader.follow_rel.pk }}"
+            data-trader-name="{{ trader.display_name|default:trader.wallet_address|short_address }}"
+          >Unfollow</button>
           {% else %}
           <button
             type="button"
@@ -123,7 +140,7 @@
           </thead>
           <tbody>
             {% for trader in active_traders %}
-            <tr data-trader-filter="{{ trader.wallet_address|lower }}">
+            <tr data-trader-filter="{{ trader.wallet_address|lower }}"{% if trader.follow_rel %} data-follow-rel="{{ trader.follow_rel.pk }}"{% endif %}>
               <td>
                 <a href="{% url 'trader_detail' trader.pk %}" class="dl-addr-link dl-mono">{{ trader.wallet_address|short_address }}</a>
               </td>
@@ -132,13 +149,18 @@
               <td class="dl-num">{% widthratio trader.trader_score 1 100 %}</td>
               <td class="dl-muted">{{ trader.last_active_at|since }}</td>
               <td class="dl-table-actions">
-                {% if trader.pk in followed_trader_ids %}
-                <span class="dl-followed-mark">Following</span>
+                {% if trader.follow_rel %}
+                <button
+                  type="button"
+                  class="dl-btn dl-btn--ghost dl-btn--sm dl-btn--quiet-danger"
+                  data-unfollow="{{ trader.follow_rel.pk }}"
+                  data-trader-name="{{ trader.wallet_address|short_address }}"
+                >Unfollow</button>
                 {% else %}
                 <button type="button" class="dl-btn dl-btn--ghost dl-btn--sm" data-follow-trader="{{ trader.pk }}">Follow</button>
                 {% endif %}
                 {% if trader.pk in smart_copy_on_ids %}
-                <a href="{% url 'trader_detail' trader.pk %}" class="dl-btn dl-btn--ghost dl-btn--sm">Manage</a>
+                <a href="{% url 'copy_settings' trader.follow_rel.pk %}" class="dl-btn dl-btn--ghost dl-btn--sm">Manage</a>
                 {% else %}
                 <button
                   type="button"

@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{% static 'css/dreamlens.css' %}?v=20260902a">
+  <link rel="stylesheet" href="{% static 'css/dreamlens.css' %}?v=20260903a">
   {% block extra_head %}{% endblock %}
 </head>
 <body class="dl-body{% if start_flow %} dl-body--start{% endif %}{% if first_session.incomplete %} dl-body--first{% endif %}" data-view="simple"{% if user.is_authenticated %} data-authenticated="1"{% endif %}{% if start_flow %} data-onboarding="1"{% endif %}>
@@ -83,12 +83,32 @@
 
   <div class="dl-toasts" id="dl-toasts" role="status" aria-live="polite"></div>
 
+  <dialog class="dl-modal dl-modal--confirm" id="dl-confirm" aria-labelledby="dl-confirm-title" aria-describedby="dl-confirm-body">
+    <form method="dialog" class="dl-modal__panel">
+      <header class="dl-modal__header">
+        <h2 class="dl-modal__title" id="dl-confirm-title">Are you sure?</h2>
+        <button type="submit" value="cancel" class="dl-modal__close" aria-label="Close">&times;</button>
+      </header>
+      <div class="dl-modal__body">
+        <p class="dl-modal__lede" id="dl-confirm-body"></p>
+      </div>
+      <footer class="dl-modal__footer">
+        <div class="dl-modal__footer-secondary">
+          <button type="submit" value="cancel" class="dl-btn dl-btn--ghost" id="dl-confirm-cancel">Cancel</button>
+        </div>
+        <div class="dl-modal__footer-primary">
+          <button type="submit" value="confirm" class="dl-btn dl-btn--primary" id="dl-confirm-ok">Confirm</button>
+        </div>
+      </footer>
+    </form>
+  </dialog>
+
   <script>
     window.DreamLensConfig = {{ dreamlens_network_json|safe }};
   </script>
   <!-- Both deferred, so they still execute in order but no longer block parsing. -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
-  <script src="{% static 'js/dreamlens.js' %}?v=20260902a" defer></script>
+  <script src="{% static 'js/dreamlens.js' %}?v=20260903a" defer></script>
   {% block extra_js %}{% endblock %}
 </body>
 </html>

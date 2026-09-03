@@ -5,19 +5,21 @@
 
 {% block content %}
 <div class="dl-container dl-start dl-animate-in" data-start-step="{{ first_session.step }}">
-  {% if first_session.step != "done" %}
-  <ol class="dl-start__progress" aria-label="Setup progress">
-    {% for n in "12345" %}
-    <li class="{% if first_session.step_index > forloop.counter %}is-done{% elif first_session.step_index == forloop.counter %}is-current{% endif %}">
-      <span class="visually-hidden">Step {{ forloop.counter }} of 5</span>
+  <ol class="dl-start__roadmap" aria-label="Setup progress">
+    {% for item in first_session.roadmap %}
+    <li class="dl-start__step is-{{ item.state }}"{% if item.state == "current" %} aria-current="step"{% endif %}>
+      <span class="dl-start__step-mark" aria-hidden="true">{% if item.state == "done" %}✓{% else %}{{ item.n }}{% endif %}</span>
+      <span class="dl-start__step-label">{{ item.label }}</span>
+      <span class="visually-hidden">Step {{ item.n }} of 5{% if item.state == "done" %}, done{% elif item.state == "current" %}, current{% endif %}</span>
     </li>
     {% endfor %}
   </ol>
-  {% endif %}
 
+  <div class="dl-start__shell{% if first_session.step == 'done' %} dl-start__shell--done{% endif %}">
+  <section class="dl-start__main" aria-labelledby="start-title">
   <header class="dl-start__head">
-    <p class="dl-start__kicker">{% if first_session.step == "done" %}On the book{% else %}Step {{ first_session.step_index }} of 5{% endif %}</p>
-    <h1 class="dl-start__title">{{ first_session.title }}</h1>
+    {% if first_session.step == "done" %}<p class="dl-start__kicker">On the book</p>{% endif %}
+    <h1 class="dl-start__title" id="start-title">{{ first_session.title }}</h1>
     <p class="dl-start__why">{{ first_session.why }}</p>
   </header>
 
@@ -26,7 +28,7 @@
     <button type="button" class="dl-btn dl-btn--primary dl-btn--block dl-start__cta" data-start-connect>
       Connect MetaMask
     </button>
-    <p class="dl-muted dl-start__hint">Testnet only. These trades have no real monetary value.</p>
+    <p class="dl-muted dl-start__hint">MetaMask opens once. DreamLens only reads your address.</p>
   </div>
 
   {% elif first_session.step == "create" %}
@@ -65,7 +67,6 @@
       ·
       <a href="{{ first_session.stt_faucet }}" target="_blank" rel="noopener">Get network fees</a>
     </p>
-    <p class="dl-muted dl-start__hint">Testnet only. No real monetary value.</p>
   </div>
 
   {% elif first_session.step == "allow" %}
@@ -171,5 +172,42 @@
     {% endif %}
   </div>
   {% endif %}
+  </section>
+
+  <aside class="dl-start__rail" aria-label="What you are setting up">
+    <section class="dl-start__rail-card" aria-labelledby="start-end-with">
+      <h2 class="dl-start__rail-title" id="start-end-with">What you end with</h2>
+      <ul class="dl-check-list dl-start__outcomes">
+        <li><span class="dl-start__tick dl-start__tick--yes" aria-hidden="true">✓</span> A trading account that your MetaMask owns</li>
+        <li><span class="dl-start__tick dl-start__tick--yes" aria-hidden="true">✓</span> DreamLens buys YES or NO within limits you set</li>
+        <li><span class="dl-start__tick dl-start__tick--yes" aria-hidden="true">✓</span> Winnings claimed back into that account</li>
+        <li><span class="dl-start__tick dl-start__tick--no" aria-hidden="true">✕</span> It can never withdraw your funds</li>
+      </ul>
+    </section>
+
+    {% if featured and first_session.step != "trade" and first_session.step != "done" %}
+    <section class="dl-start__rail-card dl-start__rail-card--market" aria-labelledby="start-live-now">
+      <p class="dl-start__rail-kicker" id="start-live-now">Live on DreamDEX right now</p>
+      <p class="dl-start__rail-question">{{ featured|question_copy }}</p>
+      <dl class="dl-start__rail-prices">
+        {% for o in featured.outcomes.all %}
+        {% if o.outcome_type == "YES" %}
+        <div class="dl-start__rail-price dl-start__rail-price--yes"><dt>YES</dt><dd>{{ o.current_price|as_cents }}</dd></div>
+        {% endif %}
+        {% endfor %}
+        {% for o in featured.outcomes.all %}
+        {% if o.outcome_type == "NO" %}
+        <div class="dl-start__rail-price dl-start__rail-price--no"><dt>NO</dt><dd>{{ o.current_price|as_cents }}</dd></div>
+        {% endif %}
+        {% endfor %}
+      </dl>
+      <p class="dl-start__rail-note">Step 5 is a $1 ticket on a market like this one.</p>
+    </section>
+    {% endif %}
+
+    <p class="dl-start__meta">About 2 minutes · Testnet only · no real money</p>
+    <a href="{% url 'discover' %}" class="dl-start__escape">Look around first <span aria-hidden="true">→</span></a>
+  </aside>
+  </div>
 </div>
 {% endblock %}

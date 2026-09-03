@@ -231,11 +231,12 @@ def _chart_data(event: EventContract) -> dict:
 def start(request):
     """First-session wizard: Connect → trading account → fund → allow → $1 YES/NO."""
     from services import dream_agent_service, smart_account_service
-    from services.onboarding_service import first_session_state
+    from services.onboarding_service import first_session_state, roadmap
 
     markets, _radar = _live_markets()
     featured, _watching = _featured_and_watching(markets)
     state = first_session_state(request.user)
+    state["roadmap"] = roadmap(state["step_index"])
     grant = {}
     health = {}
     if request.user.is_authenticated:
@@ -732,6 +733,11 @@ def following(request):
         for rel in copies
         if rel.status == CopyRelationship.Status.ACTIVE
     }
+    # Templates cannot index a dict by variable, so hang the relationship
+    # (and therefore the pk Unfollow needs) directly on each trader row.
+    rel_by_trader = {rel.trader_id: rel for rel in copies}
+    for trader in active_traders:
+        trader.follow_rel = rel_by_trader.get(trader.pk)
     return render(
         request,
         "copy/following.html",

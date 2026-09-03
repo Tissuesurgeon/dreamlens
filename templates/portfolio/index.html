@@ -6,7 +6,7 @@
 {% block content %}
 <div class="dl-container dl-container--agent dl-portfolio-page dl-animate-in">
   {% if first_session.incomplete %}
-  <a class="dl-next-step" href="{% url 'start' %}">
+  <a class="dl-next-step" href="{{ first_session.next_url }}">
     <span class="dl-next-step__kicker">Continue setup</span>
     <strong>{{ first_session.title }}</strong>
     <span class="dl-next-step__why">{{ first_session.why }}</span>

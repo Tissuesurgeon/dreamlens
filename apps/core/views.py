@@ -229,29 +229,20 @@ def _chart_data(event: EventContract) -> dict:
 
 
 def start(request):
-    """First-session wizard: Connect → trading account → fund → allow → $1 YES/NO."""
-    from services import dream_agent_service, smart_account_service
-    from services.onboarding_service import first_session_state, roadmap
+    """Info page: how to set up the Dream Agent. The controls live on /agent/activate/."""
+    from services.onboarding_service import (
+        STT_FAUCET_URL,
+        TEST_USDC_FAUCET_URL,
+        setup_guide,
+    )
 
-    markets, _radar = _live_markets()
-    featured, _watching = _featured_and_watching(markets)
-    state = first_session_state(request.user)
-    state["roadmap"] = roadmap(state["step_index"])
-    grant = {}
-    health = {}
-    if request.user.is_authenticated:
-        grant = smart_account_service.grant_payload_for_ui(request.user)
-        health = dream_agent_service.grant_health(request.user)
     return render(
         request,
         "onboarding/start.html",
         {
-            "first_session": state,
-            "featured": featured,
-            "grant": grant,
-            "grant_health": health,
-            "start_flow": True,
-            "score_disclaimer": SCORE_DISCLAIMER,
+            "guide": setup_guide(),
+            "stt_faucet": STT_FAUCET_URL,
+            "usdc_faucet": TEST_USDC_FAUCET_URL,
         },
     )
 

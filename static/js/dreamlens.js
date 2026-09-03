@@ -1262,11 +1262,7 @@
         }
         toast("Trade placed in your trading account.", "ok");
         closeTradeModal();
-        if (document.body.getAttribute("data-onboarding") === "1") {
-          window.location.href = "/start/";
-        } else {
-          window.location.reload();
-        }
+        window.location.reload();
         return;
       }
 
@@ -3297,17 +3293,7 @@
     initOwnerWithdraw();
     initAgentBalance();
     initClaimPositions();
-    initStartConnect();
   });
-
-  function initStartConnect() {
-    const btn = document.querySelector("[data-start-connect]");
-    if (!btn) return;
-    btn.addEventListener("click", function () {
-      const walletBtn = document.getElementById("wallet-connect");
-      if (walletBtn) walletBtn.click();
-    });
-  }
 
   DreamLens.toHexChainId = toHexChainId;
   DreamLens.walletTxParams = walletTxParams;
@@ -3686,9 +3672,6 @@
           const data = await res.json();
           if (!res.ok) throw new Error(data.detail || "Deposit failed");
           toast("Trading dollars sent.", "success");
-          if (document.body.getAttribute("data-onboarding") === "1") {
-            window.location.reload();
-          }
         } catch (err) {
           toast(err.message || "Deposit failed", "error");
         } finally {
@@ -3721,9 +3704,6 @@
             throw new Error("Network fee transfer did not go through.");
           }
           toast("Trading account funded for network fees", "success");
-          if (document.body.getAttribute("data-onboarding") === "1") {
-            window.location.reload();
-          }
         } catch (err) {
           toast(err.message || "Gas deposit failed", "error");
         } finally {
@@ -3788,8 +3768,7 @@
           const data = await res.json();
           if (!res.ok) throw new Error(data.detail || "Could not save permission");
           toast("DreamLens can trade for you now", "success");
-          window.location.href =
-            document.body.getAttribute("data-onboarding") === "1" ? "/start/" : "/agent/";
+          window.location.href = "/agent/";
         } catch (err) {
           toast(err.message || "Grant failed", "error");
         } finally {

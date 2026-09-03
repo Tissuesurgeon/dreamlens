@@ -23,7 +23,7 @@ STEP_DONE = "done"
 
 STEPS = (STEP_CONNECT, STEP_CREATE, STEP_FUND, STEP_ALLOW, STEP_TRADE, STEP_DONE)
 
-# Short names for the wizard roadmap. Five real steps; "done" is the landing.
+# Short names for the five setup steps; "done" is the landing.
 STEP_LABELS = {
     STEP_CONNECT: "Connect",
     STEP_CREATE: "Trading account",
@@ -32,19 +32,39 @@ STEP_LABELS = {
     STEP_TRADE: "First $1",
 }
 
+# Where each step actually happens in the app. The /start/ page only explains;
+# the controls live on these pages.
+STEP_WHERE = {
+    STEP_CONNECT: "Use the Connect button in the top bar. MetaMask opens once; DreamLens only reads your address.",
+    STEP_CREATE: "On the Dream Agent page, confirm once in MetaMask. The account is a smart account that your wallet owns.",
+    STEP_FUND: "Still on the Dream Agent page: send test dollars, then a small amount of STT for network fees. Both come from the Somnia faucet.",
+    STEP_ALLOW: "Sign one permission with your limits: max per trade, max per day, minimum DreamLens Score, expiry. You can pause or revoke any time.",
+    STEP_TRADE: "Open Discover, pick a live Event Contract and buy $1 of YES or NO. DreamLens places it from your trading account — no MetaMask popup.",
+}
 
-def roadmap(step_index: int) -> list[dict[str, Any]]:
-    """Ordered roadmap entries with done / current / upcoming state."""
-    items = []
-    for n, key in enumerate(STEPS[:-1], start=1):
-        if step_index > n:
-            state = "done"
-        elif step_index == n:
-            state = "current"
-        else:
-            state = "upcoming"
-        items.append({"n": n, "key": key, "label": STEP_LABELS[key], "state": state})
-    return items
+
+def setup_guide() -> list[dict[str, Any]]:
+    """Static, ordered explanation of the five setup steps for the info page."""
+    return [
+        {
+            "n": n,
+            "key": key,
+            "label": STEP_LABELS[key],
+            "title": STEP_COPY[key]["title"],
+            "why": STEP_COPY[key]["why"],
+            "where": STEP_WHERE[key],
+        }
+        for n, key in enumerate(STEPS[:-1], start=1)
+    ]
+
+
+def next_step_url(step: str) -> str:
+    """Where a signed-in user should go to finish the step they are on."""
+    if step == STEP_TRADE:
+        return "/discover/"
+    if step == STEP_DONE:
+        return "/portfolio/"
+    return "/agent/activate/"
 
 STEP_COPY = {
     STEP_CONNECT: {
@@ -163,6 +183,7 @@ def first_session_state(user) -> dict[str, Any]:
         "title": copy["title"],
         "why": copy["why"],
         "cta": copy["cta"],
+        "next_url": next_step_url(step),
         "stt_faucet": STT_FAUCET_URL,
         "usdc_faucet": TEST_USDC_FAUCET_URL,
     }

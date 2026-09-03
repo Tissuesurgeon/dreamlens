@@ -6,7 +6,7 @@
 {% block content %}
 <div class="dl-container dl-container--home dl-home dl-animate-in">
   {% if first_session.incomplete %}
-  <a class="dl-next-step" href="{% url 'start' %}">
+  <a class="dl-next-step" href="{{ first_session.next_url }}">
     <span class="dl-next-step__kicker">Continue setup</span>
     <strong>{{ first_session.title }}</strong>
     <span class="dl-next-step__why">{{ first_session.why }}</span>
@@ -101,7 +101,7 @@
       </div>
       {% endif %}
 
-      {% if watching and not first_session.incomplete %}
+      {% if watching %}
       <section class="dl-home-more" aria-labelledby="watching-heading">
         <h2 id="watching-heading" class="dl-section__title">Also watching</h2>
         <div class="dl-event-list dl-event-list--stack">
@@ -127,7 +127,6 @@
       {% endif %}
     </div>
 
-    {% if not first_session.incomplete %}
     <aside class="dl-home-desk__rail">
       {% include "components/market_feed.html" with feed_heading_id="home-feed-heading" feed_class="dl-feed--rail" feed_limit=6 %}
 
@@ -148,7 +147,6 @@
       </section>
       {% endif %}
     </aside>
-    {% endif %}
   </div>
 </div>
 {% endblock %}

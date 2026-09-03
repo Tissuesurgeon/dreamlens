@@ -11,9 +11,7 @@ from django.urls import reverse
 from apps.dreamcopy.models import CopyExecution
 from apps.events.models import EventContract
 from services.event_copy import (
-    CLAIM_JOB,
     CLAIM_VS_CLOSE,
-    CLOSE_JOB,
     SCORE_DISCLAIMER,
     as_cents,
     event_question,
@@ -357,39 +355,54 @@ def test_landing_tells_the_product_story(client):
 
 
 @pytest.mark.django_db
-def test_start_wizard_connect_step(client, sample_event):
-    res = client.get("/start/")
-    assert res.status_code == 200
-    body = res.content.decode()
-    assert "Connect MetaMask" in body
-    assert "Step 1 of 5, current" in body
-    assert "data-onboarding=\"1\"" in body
-    assert "dl-body--start" in body
-    # labeled roadmap replaces the anonymous progress bars
-    for label in ("Connect", "Trading account", "Add money", "Allow", "First $1"):
-        assert label in body
-    assert 'aria-current="step"' in body
-    assert body.count("dl-start__step is-current") == 1
-    assert body.count("dl-start__step is-upcoming") == 4
-    assert "dl-start__progress" not in body
-    # context rail: what you end with, live market, time/testnet line, escape hatch
-    assert "What you end with" in body
-    assert "It can never withdraw your funds" in body
-    assert "Live on DreamDEX right now" in body
-    assert event_question(sample_event) in body
-    assert "About 2 minutes · Testnet only · no real money" in body
-    assert "Look around first" in body
-    assert 'href="/discover/"' in body
-    assert "data-start-connect" in body
-    assert "YES = you think this happens" not in body or "Price is what you pay now" in body
-    assert "Hybrid" not in body
-    assert "EIP-712" not in body
-    assert "session key" not in body.lower()
+def test_start_is_a_setup_info_page(client, user, sample_event):
+    """/start/ explains the five steps; it no longer hosts the wizard controls."""
+    for signed_in in (False, True):
+        if signed_in:
+            client.force_login(user)
+        res = client.get("/start/")
+        assert res.status_code == 200
+        body = res.content.decode()
+        assert "How to set up your Dream Agent" in body
+        for label in ("Connect", "Trading account", "Add money", "Allow", "First $1"):
+            assert label in body
+        for title in (
+            "Connect MetaMask",
+            "Create your trading account",
+            "Add money",
+            "Allow DreamLens to trade for you",
+            "Place a $1 YES or NO",
+        ):
+            assert title in body
+        assert body.count('class="dl-setup__step"') == 5
+        assert "Withdrawal: Never" in body
+        assert "What you need" in body
+        assert "Still your money" in body
+        assert 'href="/agent/activate/"' in body
+        assert 'href="/discover/"' in body
+        assert "Look around first" in body
+        # no wizard mechanics left on this page or in the shell
+        for gone in (
+            "data-onboarding",
+            "dl-body--start",
+            "data-start-connect",
+            'id="sa-create"',
+            'id="sa-deposit"',
+            'id="grant-permission"',
+            'data-amount="1"',
+            "dl-start__",
+        ):
+            assert gone not in body, gone
+        assert "Hybrid" not in body
+        assert "EIP-712" not in body
+        assert "session key" not in body.lower()
+        # the normal app chrome stays visible on the info page
+        assert "dl-nav" in body
     assert 'href="/start/"' in client.get("/").content.decode()
 
 
 @pytest.mark.django_db
-def test_start_wizard_done_names_the_ticket_and_splits_claim_vs_close(
+def test_first_session_done_names_the_ticket_and_stops_nudging(
     client, user, wallet, sample_event, settings
 ):
     settings.MOCK_SMART_ACCOUNT = True
@@ -436,22 +449,17 @@ def test_start_wizard_done_names_the_ticket_and_splits_claim_vs_close(
     assert "You're in" not in state["title"]
     assert "This trade is open" not in state["why"]
     assert state["why"].count("Claim") == 0
+    assert state["incomplete"] is False
+    assert state["next_url"] == "/portfolio/"
 
     client.force_login(user)
+    home = client.get("/home/").content.decode()
+    assert "Continue setup" not in home
+    assert "dl-next-step" not in home
+    # the info page is the same for everyone — no per-user wizard state
     body = client.get("/start/").content.decode()
-    assert "You bought YES." in body
-    assert event_question(sample_event) in body
-    assert CLAIM_JOB in body
-    assert CLOSE_JOB in body
-    assert CLAIM_VS_CLOSE not in body
-    assert body.count(CLAIM_JOB) == 1
-    assert body.count(CLOSE_JOB) == 1
-    assert body.count("You're in") == 0
-    assert "This trade is open" not in body
-    assert "When the event ends you claim winnings" not in body
-    assert "chance of winning" not in body.lower()
-    assert "See your trade" in body
-    assert "On the book" in body
+    assert "How to set up your Dream Agent" in body
+    assert "You bought YES." not in body
 
 
 @pytest.mark.django_db
@@ -476,9 +484,11 @@ def test_home_next_step_when_setup_incomplete(client, user, settings):
     body = res.content.decode()
     assert "Continue setup" in body
     assert "Create your trading account" in body
-    assert "Also watching" not in body
-    assert 'href="/start/"' in body
+    assert 'href="/agent/activate/"' in body
     assert "dl-nav-next" in body
+    # Setup no longer hides the rest of Home — the nudge sits above a full page.
+    assert "dl-home-desk__rail" in body
+    assert 'href="/start/"' not in body
 
 
 def test_claim_js_uses_sdk_gas_ceiling():

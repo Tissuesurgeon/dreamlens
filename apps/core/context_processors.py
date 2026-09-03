@@ -33,6 +33,7 @@ def dreamlens(request):
             "can_trade": False,
             "step": "connect",
             "step_index": 1,
+            "next_url": "/agent/activate/",
         }
     network_cfg = {
         "chainId": chain_id,
@@ -45,12 +46,10 @@ def dreamlens(request):
         "collateralSymbol": ticker,
         "agentCanTrade": bool(state.get("can_trade")),
     }
-    path = getattr(request, "path", "") or ""
     return {
         "dreamlens_network": network_cfg,
         "dreamlens_network_json": json.dumps(network_cfg),
         "collateral_symbol": ticker,
         "telegram_bot_url": bot_url(),
         "first_session": state,
-        "start_flow": path.startswith("/start"),
     }

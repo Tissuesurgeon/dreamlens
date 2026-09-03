@@ -499,7 +499,7 @@ def execute_agent_manual_trade(
     if not agent:
         if origin == "web":
             raise DreamAgentError(
-                "Finish setup at /start/ so DreamLens can place this trade."
+                "Finish setup on the Dream Agent page (/agent/activate/) so DreamLens can place this trade."
             )
         raise DreamAgentError(
             "Activate DreamAgent on /agent/activate/ — Telegram cannot sign MetaMask."

@@ -215,14 +215,16 @@ def test_authorized_grant_is_tradable_without_autonomous_copy(
 
 
 @pytest.mark.django_db
-def test_start_wizard_trade_step_when_granted(client, user, running_agent, sample_event):
+def test_granted_agent_is_nudged_to_first_trade_on_discover(client, user, running_agent, sample_event):
+    from services.onboarding_service import first_session_state
+
+    state = first_session_state(user)
+    assert state["step"] == "trade"
+    assert state["next_url"] == "/discover/"
     client.force_login(user)
-    res = client.get("/start/")
-    assert res.status_code == 200
-    body = res.content.decode()
+    body = client.get("/home/").content.decode()
     assert "Place a $1 YES or NO" in body
-    assert "YES means you think this happens" in body
-    assert 'data-amount="1"' in body
+    assert 'class="dl-next-step" href="/discover/"' in body
 
 
 @pytest.mark.django_db
@@ -258,13 +260,10 @@ def test_web_agent_trade_api(client, user, running_agent, sample_event, settings
     from services.event_copy import event_question as eq
 
     assert eq(sample_event) in state["why"]
-    done = client.get("/start/")
-    assert done.status_code == 200
-    done_body = done.content.decode()
-    assert "You bought YES." in done_body
-    assert done_body.count("<h2>Claim</h2>") == 1
-    assert done_body.count("<h2>Close</h2>") == 1
-    assert "When the event ends you claim winnings" not in done_body
+    assert state["next_url"] == "/portfolio/"
+    home = client.get("/home/")
+    assert home.status_code == 200
+    assert "Continue setup" not in home.content.decode()
 
 
 def test_grant_typed_data_is_delegation_manager_payload():

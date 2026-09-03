@@ -1,213 +1,102 @@
 {% extends "base.html" %}
 {% load dreamlens_extras %}
 
-{% block title %}Start trading — DreamLens{% endblock %}
+{% block title %}How to set up your Dream Agent — DreamLens{% endblock %}
 
 {% block content %}
-<div class="dl-container dl-start dl-animate-in" data-start-step="{{ first_session.step }}">
-  <ol class="dl-start__roadmap" aria-label="Setup progress">
-    {% for item in first_session.roadmap %}
-    <li class="dl-start__step is-{{ item.state }}"{% if item.state == "current" %} aria-current="step"{% endif %}>
-      <span class="dl-start__step-mark" aria-hidden="true">{% if item.state == "done" %}✓{% else %}{{ item.n }}{% endif %}</span>
-      <span class="dl-start__step-label">{{ item.label }}</span>
-      <span class="visually-hidden">Step {{ item.n }} of 5{% if item.state == "done" %}, done{% elif item.state == "current" %}, current{% endif %}</span>
-    </li>
-    {% endfor %}
-  </ol>
-
-  <div class="dl-start__shell{% if first_session.step == 'done' %} dl-start__shell--done{% endif %}">
-  <section class="dl-start__main" aria-labelledby="start-title">
-  <header class="dl-start__head">
-    {% if first_session.step == "done" %}<p class="dl-start__kicker">On the book</p>{% endif %}
-    <h1 class="dl-start__title" id="start-title">{{ first_session.title }}</h1>
-    <p class="dl-start__why">{{ first_session.why }}</p>
+<div class="dl-container dl-setup dl-animate-in">
+  <header class="dl-page-header dl-setup__head">
+    <p class="dl-setup__kicker">Dream Agent</p>
+    <h1 class="dl-page-header__title">How to set up your Dream Agent</h1>
+    <p class="dl-page-header__subtitle dl-setup__lede">
+      Five steps, about two minutes. You end with a trading account that your MetaMask owns
+      and a DreamLens agent that buys YES or NO within limits you set — and can never withdraw.
+    </p>
+    <div class="dl-setup__actions">
+      <a href="{% url 'dream_agent_activate' %}" class="dl-btn dl-btn--primary">Set up on the Agent page</a>
+      <a href="{% url 'discover' %}" class="dl-btn dl-btn--ghost">Look around first</a>
+    </div>
+    <p class="dl-setup__meta">Testnet only · no real money · nothing here places a trade</p>
   </header>
 
-  {% if first_session.step == "connect" %}
-  <div class="dl-start__panel">
-    <button type="button" class="dl-btn dl-btn--primary dl-btn--block dl-start__cta" data-start-connect>
-      Connect MetaMask
-    </button>
-    <p class="dl-muted dl-start__hint">MetaMask opens once. DreamLens only reads your address.</p>
-  </div>
-
-  {% elif first_session.step == "create" %}
-  <div class="dl-start__panel">
-    {% if grant.configured == False %}
-    <div class="dl-empty">
-      <p class="dl-empty__title">Trading accounts are not available yet</p>
-      <p>{{ grant.config_error|default:"DreamLens cannot create a trading account on this network right now." }}</p>
-    </div>
-    {% else %}
-    <button type="button" class="dl-btn dl-btn--primary dl-btn--block dl-start__cta" id="sa-create">
-      Create your trading account
-    </button>
-    <p class="dl-muted dl-start__hint">Confirm once in MetaMask. You stay the owner.</p>
-    {% endif %}
-  </div>
-
-  {% elif first_session.step == "fund" %}
-  <div class="dl-start__panel">
-    {% if first_session.account_address %}
-    <p class="dl-start__addr">
-      <span class="dl-mono">{{ first_session.account_address }}</span>
-      <button type="button" class="dl-icon-btn" data-copy-text="{{ first_session.account_address }}" aria-label="Copy trading account address">Copy</button>
-    </p>
-    {% endif %}
-    <label class="dl-start__label" for="sa-deposit-amount">Trading dollars ($)</label>
-    <input id="sa-deposit-amount" type="number" min="1" step="1" value="10" class="dl-input">
-    <button type="button" class="dl-btn dl-btn--primary dl-btn--block dl-start__cta" id="sa-deposit">Add trading dollars</button>
-    <p class="dl-start__split">Then a small network fee</p>
-    <label class="dl-start__label" for="sa-gas-amount">Network fee</label>
-    <input id="sa-gas-amount" type="number" min="0" step="0.01" value="0.2" class="dl-input">
-    <button type="button" class="dl-btn dl-btn--ghost dl-btn--block" id="sa-deposit-gas">Add network fee</button>
-    <p class="dl-start__faucets">
-      Need test funds?
-      <a href="{{ first_session.usdc_faucet }}" target="_blank" rel="noopener">Get test dollars</a>
-      ·
-      <a href="{{ first_session.stt_faucet }}" target="_blank" rel="noopener">Get network fees</a>
-    </p>
-  </div>
-
-  {% elif first_session.step == "allow" %}
-  <div class="dl-start__panel">
-    <ul class="dl-check-list">
-      <li>✓ Buy YES or NO</li>
-      <li>✓ Claim winnings into this account</li>
-      <li>✕ Withdraw your funds</li>
-    </ul>
-    <p class="dl-can-card__never">Withdrawal: Never</p>
-    <input type="hidden" id="grant-max-trade" value="10">
-    <input type="hidden" id="grant-max-daily" value="50">
-    <input type="hidden" id="grant-min-score" value="75">
-    <input type="hidden" id="grant-expires" value="30">
-    <details class="dl-start__advanced">
-      <summary>Advanced limits</summary>
-      <p class="dl-muted">Max $10 per trade, $50 per day, 30 days. Change these later on Activate.</p>
-    </details>
-    {% if grant_health.needs_resign %}
-    <article class="dl-agent-callout" role="status">
-      <h2 class="dl-agent-callout__title">Sign again to continue</h2>
-      <p class="dl-agent-callout__copy">Your last permission cannot place or claim trades yet.</p>
-    </article>
-    {% endif %}
-    <button type="button" class="dl-btn dl-btn--primary dl-btn--block dl-start__cta" id="grant-permission">
-      Allow DreamLens to trade
-    </button>
-    <p class="dl-muted dl-start__hint">One signature. After this, Buy YES does not need MetaMask each time.</p>
-  </div>
-
-  {% elif first_session.step == "trade" %}
-  <div class="dl-start__panel dl-start__panel--trade">
-    {% if featured %}
-    <p class="dl-start__question">{{ featured|question_copy }}</p>
-    <p class="dl-muted">{{ first_session.why }}</p>
-    <div class="dl-event-card__prices dl-start__prices">
-      {% for o in featured.outcomes.all %}
-        {% if o.outcome_type == "YES" %}
-        <button
-          type="button"
-          class="dl-event-card__price dl-event-card__price--yes"
-          data-trade
-          data-event-id="{{ featured.pk }}"
-          data-event-title="{{ featured|question_copy }}"
-          data-event-expiry="{{ featured.expiry_time|date:'c' }}"
-          data-outcome="YES"
-          data-price="{{ o.current_price }}"
-          data-amount="1"
-          aria-label="Buy Yes at {{ o.current_price|as_cents }}"
-        >
-          <span class="dl-event-card__side">YES</span>
-          <span class="dl-event-card__num">{{ o.current_price|as_cents }}</span>
-          <span class="dl-event-card__hint">{{ o.current_price|put_one }}</span>
-        </button>
-        {% endif %}
+  <div class="dl-setup__grid">
+    <ol class="dl-setup__steps" aria-label="Setup steps">
+      {% for step in guide %}
+      <li class="dl-setup__step">
+        <span class="dl-setup__n" aria-hidden="true">{{ step.n }}</span>
+        <div class="dl-setup__body">
+          <p class="dl-setup__label">{{ step.label }}</p>
+          <h2 class="dl-setup__title">{{ step.title }}</h2>
+          <p class="dl-setup__why">{{ step.why }}</p>
+          <p class="dl-setup__where">{{ step.where }}</p>
+          {% if step.key == "fund" %}
+          <p class="dl-setup__links">
+            <a href="{{ usdc_faucet }}" target="_blank" rel="noopener">Get test dollars</a>
+            ·
+            <a href="{{ stt_faucet }}" target="_blank" rel="noopener">Get STT for network fees</a>
+          </p>
+          {% elif step.key == "allow" %}
+          <p class="dl-setup__links">
+            <a href="{% url 'dream_agent_activate' %}">Open the permission form</a>
+          </p>
+          {% elif step.key == "trade" %}
+          <p class="dl-setup__links">
+            <a href="{% url 'discover' %}">Browse live Event Contracts</a>
+          </p>
+          {% endif %}
+        </div>
+      </li>
       {% endfor %}
-      {% for o in featured.outcomes.all %}
-        {% if o.outcome_type == "NO" %}
-        <button
-          type="button"
-          class="dl-event-card__price dl-event-card__price--no"
-          data-trade
-          data-event-id="{{ featured.pk }}"
-          data-event-title="{{ featured|question_copy }}"
-          data-event-expiry="{{ featured.expiry_time|date:'c' }}"
-          data-outcome="NO"
-          data-price="{{ o.current_price }}"
-          data-amount="1"
-          aria-label="Buy No at {{ o.current_price|as_cents }}"
-        >
-          <span class="dl-event-card__side">NO</span>
-          <span class="dl-event-card__num">{{ o.current_price|as_cents }}</span>
-          <span class="dl-event-card__hint">{{ o.current_price|put_one }}</span>
-        </button>
-        {% endif %}
-      {% endfor %}
-    </div>
-    <p class="dl-score-why__note">{{ score_disclaimer }}</p>
-    {% else %}
-    <div class="dl-empty">
-      <p class="dl-empty__title">No live events right now</p>
-      <p>Come back when a market is open — your trading account is ready.</p>
-    </div>
-    {% endif %}
+    </ol>
+
+    <aside class="dl-setup__rail" aria-label="What the agent can and cannot do">
+      <article class="dl-can-card">
+        <h2>Your Dream Agent</h2>
+        <div class="dl-can-grid">
+          <section>
+            <h3>Can</h3>
+            <ul class="dl-check-list">
+              <li>✓ Buy YES or NO</li>
+              <li>✓ Copy traders you follow</li>
+              <li>✓ Claim winnings into your account</li>
+            </ul>
+          </section>
+          <section>
+            <h3>Cannot</h3>
+            <ul class="dl-check-list dl-check-list--no">
+              <li>✕ Withdraw your funds</li>
+              <li>✕ Change your permissions</li>
+              <li>✕ Exceed your limits</li>
+            </ul>
+          </section>
+        </div>
+        <p class="dl-can-card__never">Withdrawal: Never</p>
+      </article>
+
+      <section class="dl-setup__card" aria-labelledby="setup-need">
+        <h2 class="dl-setup__card-title" id="setup-need">What you need</h2>
+        <ul class="dl-setup__list">
+          <li>MetaMask in your browser.</li>
+          <li>The Somnia Shannon testnet — DreamLens offers to add it when you connect.</li>
+          <li>Test dollars and a little STT from the <a href="{{ stt_faucet }}" target="_blank" rel="noopener">Somnia faucet</a>.</li>
+        </ul>
+      </section>
+
+      <section class="dl-setup__card" aria-labelledby="setup-yours">
+        <h2 class="dl-setup__card-title" id="setup-yours">Still your money</h2>
+        <p class="dl-setup__card-copy">
+          Your MetaMask owns the trading account. You can pause or revoke the agent on the Agent page,
+          and withdraw everything back to MetaMask from Portfolio at any time.
+        </p>
+      </section>
+    </aside>
   </div>
 
-  {% else %}
-  <div class="dl-start__panel">
-    <div class="dl-start__jobs" role="group" aria-label="Claim versus Close">
-      <article class="dl-start__job dl-start__job--claim">
-        <h2>Claim</h2>
-        <p>{% claim_job %}</p>
-      </article>
-      <article class="dl-start__job dl-start__job--close">
-        <h2>Close</h2>
-        <p>{% close_job %}</p>
-      </article>
-    </div>
-    <a href="{% url 'portfolio' %}" class="dl-btn dl-btn--primary dl-btn--block dl-start__cta">See your trade</a>
-    <a href="{% url 'home' %}" class="dl-btn dl-btn--ghost dl-btn--block">Go to Home</a>
+  <footer class="dl-setup__foot">
+    <a href="{% url 'dream_agent_activate' %}" class="dl-btn dl-btn--primary">Set up on the Agent page</a>
     {% if telegram_bot_url %}
-    <p class="dl-muted dl-start__hint">Same ticket from <a href="{{ telegram_bot_url }}">the DreamLens bot</a>. Telegram is an interface, not a wallet.</p>
+    <p class="dl-setup__meta">Once set up, the same agent trades from <a href="{{ telegram_bot_url }}">the DreamLens Telegram bot</a>. Telegram is an interface, not a wallet.</p>
     {% endif %}
-  </div>
-  {% endif %}
-  </section>
-
-  <aside class="dl-start__rail" aria-label="What you are setting up">
-    <section class="dl-start__rail-card" aria-labelledby="start-end-with">
-      <h2 class="dl-start__rail-title" id="start-end-with">What you end with</h2>
-      <ul class="dl-check-list dl-start__outcomes">
-        <li><span class="dl-start__tick dl-start__tick--yes" aria-hidden="true">✓</span> A trading account that your MetaMask owns</li>
-        <li><span class="dl-start__tick dl-start__tick--yes" aria-hidden="true">✓</span> DreamLens buys YES or NO within limits you set</li>
-        <li><span class="dl-start__tick dl-start__tick--yes" aria-hidden="true">✓</span> Winnings claimed back into that account</li>
-        <li><span class="dl-start__tick dl-start__tick--no" aria-hidden="true">✕</span> It can never withdraw your funds</li>
-      </ul>
-    </section>
-
-    {% if featured and first_session.step != "trade" and first_session.step != "done" %}
-    <section class="dl-start__rail-card dl-start__rail-card--market" aria-labelledby="start-live-now">
-      <p class="dl-start__rail-kicker" id="start-live-now">Live on DreamDEX right now</p>
-      <p class="dl-start__rail-question">{{ featured|question_copy }}</p>
-      <dl class="dl-start__rail-prices">
-        {% for o in featured.outcomes.all %}
-        {% if o.outcome_type == "YES" %}
-        <div class="dl-start__rail-price dl-start__rail-price--yes"><dt>YES</dt><dd>{{ o.current_price|as_cents }}</dd></div>
-        {% endif %}
-        {% endfor %}
-        {% for o in featured.outcomes.all %}
-        {% if o.outcome_type == "NO" %}
-        <div class="dl-start__rail-price dl-start__rail-price--no"><dt>NO</dt><dd>{{ o.current_price|as_cents }}</dd></div>
-        {% endif %}
-        {% endfor %}
-      </dl>
-      <p class="dl-start__rail-note">Step 5 is a $1 ticket on a market like this one.</p>
-    </section>
-    {% endif %}
-
-    <p class="dl-start__meta">About 2 minutes · Testnet only · no real money</p>
-    <a href="{% url 'discover' %}" class="dl-start__escape">Look around first <span aria-hidden="true">→</span></a>
-  </aside>
-  </div>
+  </footer>
 </div>
 {% endblock %}

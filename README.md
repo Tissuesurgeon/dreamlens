@@ -1,112 +1,234 @@
 # DreamLens
 
-**See the event differently.**
+**Making DreamDEX Event Contracts easier to understand, trade, and automate.**
 
-DreamLens is an AI-native consumer interface on top of **DreamDEX Event Contracts** on Somnia. It helps people discover, understand, trade, and copy binary event markets — without replacing DreamDEX as the execution layer.
+DreamLens is an intelligent trading layer built on top of DreamDEX Event Contracts on Somnia. It helps people discover live YES/NO markets, understand what they are buying and what they can lose, decide with AI-generated context instead of guesswork, trade in a few clicks, follow other traders under strict caps, and hand execution to a **DreamAgent** that can only act inside rules the user signs.
+
+DreamDEX is the venue. DreamLens is the intelligent experience around it.
+
+> Testnet only (Somnia Shannon). No real monetary value.
 
 ---
 
-## Overview
+## Contents
 
-DreamDEX provides on-chain Event Contracts (binary YES/NO markets). DreamLens wraps that infrastructure with a polished web experience, structured AI analysis, trader consensus, Event Radar, and DreamCopy (Smart Copy).
+- [What DreamLens is](#what-dreamlens-is)
+- [The problem](#the-problem)
+- [Discover → Understand → Decide → Trade → Learn](#discover--understand--decide--trade--learn)
+- [AI that explains instead of predicting](#ai-that-explains-instead-of-predicting)
+- [Smart Copy](#smart-copy)
+- [DreamAgent](#dreamagent)
+- [Trade check and Agent check](#trade-check-and-agent-check)
+- [Decision Receipts](#decision-receipts)
+- [Simple and Advanced](#simple-and-advanced)
+- [Telegram](#telegram)
+- [Why this matters](#why-this-matters)
+- [Hackathon](#hackathon)
+- [Architecture and authority model](#architecture-and-authority-model)
+- [Stack](#stack)
+- [Running locally](#running-locally)
+- [Environment variables](#environment-variables)
+- [Syncing live DreamDEX data](#syncing-live-dreamdex-data)
+- [Shannon Delegation Framework](#shannon-delegation-framework)
+- [Testing](#testing)
+- [Further reading](#further-reading)
 
-## Problem
+---
 
-Event Contracts are powerful but hard for mainstream users:
+## What DreamLens is
 
-- Markets are spread across indexer APIs and on-chain contracts
-- Raw prices and fills do not explain *why* a market matters
-- Copying successful traders requires manual monitoring and discipline
-- AI chatbots can suggest trades but should not bypass risk or sign transactions
+DreamDEX provides Event Contracts: on-chain binary markets where a YES share and a NO share on the same question always add up to $1.00, and the winning side pays $1.00 at expiry. DreamLens does not replace that. It wraps it.
 
-## Solution
+A user on DreamLens can:
 
-DreamLens adds an intelligence and UX layer:
+- **Discover** live Event Contracts that people are already pricing
+- **Understand** the question, the price, the payout, and the maximum loss in plain words
+- **Decide** with AI context — why this market deserves attention, not a promise about the outcome
+- **Trade** directly, copy a trader with caps, or let DreamAgent execute inside signed limits
+- **Learn** from Decision Receipts and Somnia transactions for every fill
 
-| Lens | What it does |
+DreamLens is an application layer, not another exchange.
+
+## The problem
+
+Prediction markets are a useful way to express a view on a real-world outcome, but participation has friction. Before anything happens a person has to understand what the contract means, read the price, weigh the outcome, decide how much to risk, work a trading interface, and execute.
+
+Take one question on the DreamDEX book:
+
+> **Will Bitcoin be above $118,500 at expiry?** — YES $0.41 · NO $0.59
+
+A new user immediately asks:
+
+- What exactly am I buying?
+- What does YES mean?
+- What does $0.41 represent?
+- How much can I lose? How much can I receive?
+- When does the contract expire? Is it still active?
+- What are other traders doing?
+- Should I trade it at all?
+
+These are not blockchain problems. They are decision-making and user-experience problems. When a user must understand all of this before they can participate, many simply leave. DreamLens was built to solve that on top of DreamDEX Event Contracts.
+
+## Discover → Understand → Decide → Trade → Learn
+
+The objective is simple: **users should know what they are trading before they trade it.**
+
+| Step | What DreamLens shows |
 | --- | --- |
-| **Market** | Live prices, volume, expiry, order book context |
-| **AI** | Structured DreamLens estimate (probability, signal, risks) |
-| **Trader** | Indexed fills, consensus, top traders |
-| **Copy** | Follow traders with SMART / CONSENSUS / BLIND modes |
-| **Trade** | Prepare → sign → confirm flow with risk gates |
-| **Dream Agent** | Optional autonomous Smart Copy via MetaMask Smart Account + delegated authority |
+| **Discover** | Live Event Contracts with the information that matters first: question, YES/NO price, time left, activity |
+| **Understand** | The question in plain words; YES and NO in dollars; what $1, $5, $10 or $25 pays and what it can lose |
+| **Decide** | A DreamLens Score plus a plain-language explanation of why the market is worth attention |
+| **Trade** | Buy a side yourself, follow a trader under caps, or let DreamAgent act inside your rules — executed on DreamDEX, settled on Somnia |
+| **Learn** | Every fill and agent decision comes back with a receipt you can read and a transaction you can look up |
 
-DreamDEX remains the source of truth for markets and execution. DreamLens never replaces the exchange.
+The payout math is shown before funds are committed. $5 on YES at $0.41 buys 12.2 shares: maximum payout **$12.20**, potential profit **$7.20**, maximum loss **$5.00**.
 
-**Authority model:** Your MetaMask wallet owns a DreamLens Smart Account. You grant DreamAgent limited `TRADE_EVENT_CONTRACT` permission (max per trade, daily cap, expiry). The agent cannot withdraw. See [`docs/SMART_ACCOUNT_INVESTIGATION.md`](docs/SMART_ACCOUNT_INVESTIGATION.md) and [`docs/architecture.md`](docs/architecture.md).
+## AI that explains instead of predicting
 
-## What DreamLens adds on top of DreamDEX
+DreamLens does **not** tell users "YES has an 82% chance of winning." It explains why a market is worth paying attention to, using signals such as:
 
-- **Event Radar** — scored signals (consensus, momentum, volume, expiry)
-- **Structured AI analysis** — JSON estimates with disclaimers, not open-ended guarantees
-- **DreamCopy** — copy relationships with per-trade and daily limits
-- **DreamAgent** — autonomous copy within delegated Smart Account limits
-- **Risk Engine + Policy Engine** — deterministic checks AI cannot override
-- **Unified UI** — browse, analyze, trade, copy, and manage the agent
+- Market activity
+- Available liquidity
+- Time remaining
+- Recent price movement
+- Trader activity (observed fills)
+- Contract state (trading, closed, settled)
+
+These combine into a **DreamLens Score** out of 100. The Score is an analysis signal that says "look here" — never a guaranteed probability, never a prediction of the outcome. Users can also ask questions in plain language ("Why is this trending?", "What happens if Bitcoin drops below the strike?") and get an explanation grounded in the live market.
+
+**AI provides context. The user makes the decision.**
+
+## Smart Copy
+
+Not everyone wants to analyze markets themselves. Smart Copy lets users learn from other traders without blindly following a leaderboard. A trader profile shows what can actually be observed on-chain:
+
+- Observed Event Contract fills and recency
+- Consistency, trading frequency, sample size
+- YES / NO split and preferred markets (BTC, ETH, other)
+
+Copying is never unlimited. The user sets:
+
+- **Maximum per trade** (for example $5)
+- **Maximum daily allocation** (for example $20)
+- **Minimum DreamLens Score** the copied market must meet (for example 75)
+
+The result is controlled participation, not blind following. Copy-now requires an active DreamAgent; "Notify me" is a ping, not a fill. Users can unfollow a trader anywhere that trader appears.
+
+## DreamAgent
+
+DreamAgent moves DreamLens from assisted trading to autonomous execution. It monitors Event Contracts and executes eligible trades according to rules the user predefines, and it never has unrestricted access to the user's funds.
+
+| DreamAgent **can** | DreamAgent **cannot** |
+| --- | --- |
+| Trade DreamDEX Event Contracts | Withdraw your funds |
+| Copy selected traders | Change its own permissions |
+| Execute trades within your limits | Exceed your trading limits |
+
+The permission is scoped: maximum per trade, daily maximum, and an expiry (for example 30 days). In one sentence: *"You can trade for me, but only within these rules."*
+
+## Trade check and Agent check
+
+Automation raises an obvious question — *why did the system execute this trade?* — so DreamLens answers it before anything is sent.
+
+**Trade check** (before a manual trade):
+
+- Event is still active
+- User has seen what the event means
+- Amount is within the user's limit
+- Maximum loss is shown
+- Trading account is funded
+- Executes through DreamDEX
+
+**Agent check** (before DreamAgent acts):
+
+- Followed trader is still eligible
+- Event Contract is active
+- Trade satisfies the user's limits
+- DreamLens Score is above the user's threshold
+- Daily allocation remaining
+- Smart Account is funded
+
+The agent can make decisions. The user's policies make the final rules. These checks are deterministic and live in the Policy and Risk engine; the AI cannot override them.
+
+## Decision Receipts
+
+Whenever DreamAgent executes — or intentionally skips — a trade, DreamLens records the reasoning and connects it to the position and the Somnia transaction. Not "the AI traded," but **"the AI traded because these conditions were satisfied."**
+
+A receipt names the copied trader, the event, the side and price, each rule that passed (trader matched, event active, Score met the minimum, amount under the per-trade cap, daily limit remaining), the result, and the transaction hash. It is an auditable history of autonomous behavior.
+
+## Simple and Advanced
+
+DreamLens hides blockchain complexity, never trading consequences.
+
+Users should not need contract addresses, transaction parameters, or order-book mechanics to participate. They should always be able to see what they are buying, how much they risk, the potential payout, the expiry, their position, the transaction, and what their agent did.
+
+- **Simple mode** — the question, the prices, the risk, the decision
+- **Advanced mode** — order books, liquidity, spreads, contract and transaction details, per-fill explorer links on trader and portfolio desks
+
+## Telegram
+
+The same desk is available on Telegram. Users can discover events, check prices, review outcomes, place trades, and monitor their agent from chat — same words, same risk information. Telegram is an interface, not a wallet: signing still happens in MetaMask, and the agent still runs inside the user's signed limits.
+
+## Why this matters
+
+DreamDEX provides the markets. Somnia provides the blockchain. DreamLens provides the intelligence, usability, and controlled automation that turn a complex market into a simple decision. Intelligence on top. On-chain execution underneath.
+
+## Hackathon
+
+Built for the **Somnia × DreamDEX Event Contracts Hackathon**. DreamLens syncs real Shannon testnet Event Contracts from the DreamDEX indexer and RPC (`MOCK_DREAMDEX=false` by default), places real `placeBinaryOrder` transactions through DreamDEX, and uses the MetaMask Delegation Framework deployed on Shannon for DreamAgent. There is no demo seed: an empty UI means `sync_dreamdex` has not run or the venue has no trading markets.
+
+**An intelligent interface between people and on-chain prediction markets.**
 
 ---
 
-## Architecture summary
+## Architecture and authority model
 
 ```
-User (MetaMask owner)
-  → DreamLens Smart Account
-  → DreamAgent (delegated session key)
-  → Policy + Risk
-  → DreamDEX Adapter → Event Contracts → Somnia
-
-Manual trades still: prepare → user sign → confirm
+User (MetaMask)
+  → DreamLens (web + Telegram)
+  → Policy & Risk Engine
+  → Smart Account (MetaMask Hybrid DeleGator, owned by the user's MetaMask)
+  → DreamDEX Event Contract
+  → Somnia
 ```
 
-Full diagrams: [`docs/architecture.md`](docs/architecture.md)
+- The user's MetaMask **owns** a Hybrid Smart Account. DreamLens never holds the user's private key.
+- The user signs an **ERC-7710 delegation** that lets a backend session key redeem trades against DreamDEX only, capped by per-trade / daily limits and an expiry. Caveats are enforced on-chain by the Delegation Manager.
+- The **agent cannot withdraw**. Only the owner can, via a one-shot owner-withdraw delegation signed in MetaMask (`POST /api/smart-account/withdraw/`, surfaced on the Portfolio and Agent pages).
+- Manual trades still follow prepare → user signs → confirm.
+- `MOCK_SMART_ACCOUNT` must stay `false` at runtime; the app refuses to create a mock account, grant, or broadcast when the live framework is not configured. Tests force it to `true` in `tests/conftest.py`.
 
-DreamDEX integration: [`docs/DREAMDEX_INTEGRATION.md`](docs/DREAMDEX_INTEGRATION.md)
-
-Smart Account investigation: [`docs/SMART_ACCOUNT_INVESTIGATION.md`](docs/SMART_ACCOUNT_INVESTIGATION.md)
-
----
+Details: [`docs/architecture.md`](docs/architecture.md), [`docs/DREAMDEX_INTEGRATION.md`](docs/DREAMDEX_INTEGRATION.md), [`docs/SMART_ACCOUNT_INVESTIGATION.md`](docs/SMART_ACCOUNT_INVESTIGATION.md).
 
 ## Stack
 
-- **Backend:** Python 3.12+, Django 5, DRF, Celery, Redis
-- **Database:** PostgreSQL (Docker) or SQLite (local dev)
-- **Frontend:** Django templates, Bootstrap 5, vanilla JS
-- **Chain:** DreamDEX Event Contracts on Somnia (Shannon testnet for MVP)
-- **Integration:** `integrations/dreamdex/` live GraphQL indexer + on-chain adapter (`MOCK_DREAMDEX=false` by default)
+- **Backend:** Python 3.12, Django 5, Django REST Framework, Celery, Redis
+- **Database:** PostgreSQL via `DATABASE_URL` (Supabase session pooler in the reference deployment; any Postgres works). Tests use SQLite through `config.settings.test`.
+- **Frontend:** Django templates, one hand-written CSS file (`static/css/dreamlens.css`, OKLCH design tokens), vanilla JS (`static/js/dreamlens.js`), Chart.js for the trader and portfolio desks. No CSS framework.
+- **Chain:** DreamDEX Event Contracts on Somnia Shannon testnet (chain id `50312`); `web3.py` for reads, calldata and receipts; MetaMask Delegation Framework for DreamAgent
+- **AI:** Cursor `composer-2.5` via `cursor-sdk` as primary; OpenRouter, Google, or a local OpenAI-compatible model (Ollama) as fallbacks
+- **Integration code:** `integrations/dreamdex/` (GraphQL indexer + on-chain adapter), `integrations/metamask/` (delegation encoding, Smart Account deploy)
 
----
+## Running locally
 
-## Installation
-
-### Prerequisites
-
-- Python 3.12+
-- Optional: Docker & Docker Compose (PostgreSQL + Redis + workers)
-
-### Local (Neon Postgres)
+Prerequisites: Python 3.12+, a reachable Postgres (`DATABASE_URL`), Redis if you want Celery workers, and network access to the DreamDEX indexer and Somnia RPC.
 
 ```bash
-cd /path/to/dreamlens
+git clone <this repo> dreamlens && cd dreamlens
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
 cp .env.example .env
-# Set DATABASE_URL to your Neon connection string (sslmode=require)
+# Required: DATABASE_URL (sslmode=require), SECRET_KEY
+# Recommended: CURSOR_API_KEY for AI explanations (falls back to local LLM / rules otherwise)
 
 python manage.py migrate
-python manage.py sync_dreamdex
-python manage.py runserver --noreload
+python manage.py sync_dreamdex          # pull live Shannon Event Contracts
+python manage.py runserver --noreload   # http://127.0.0.1:8000/
 ```
 
-Open http://127.0.0.1:8000/
-
-> Use `--noreload` if the dev autoreloader conflicts with your environment (e.g. certain file watchers or CI).
-
-Offline SQLite is opt-in: `USE_SQLITE=1 python manage.py migrate`. Tests always use SQLite via `config.settings.test`.
-
-Live data requires network access to `DREAMDEX_INDEXER_URL` and `DREAMDEX_RPC_URL`. Set `MOCK_DREAMDEX=true` only for offline unit tests.
+`--noreload` avoids the dev autoreloader fighting with file watchers; it also means you must restart after template changes.
 
 ### Docker Compose
 
@@ -114,44 +236,47 @@ Live data requires network access to `DREAMDEX_INDEXER_URL` and `DREAMDEX_RPC_UR
 docker compose up --build
 ```
 
-Services: `web` (8000), `redis`, `worker`, `beat`. Postgres defaults to `DATABASE_URL` (Neon). The local `db` service is optional.
+Services: `web` (gunicorn on 8000), `redis`, `worker` (Celery), `beat` (periodic `sync_dreamdex` and agent runs), `telegram` (long-polling bot for local dev), and an optional local `db` (Postgres 16). `web`, `worker`, `beat` and `telegram` read `.env`; Compose overrides `REDIS_URL` to the `redis` service.
 
-For Docker, set `USE_SQLITE=0` and your Neon `DATABASE_URL` in `.env`.
+### Telegram bot (optional)
 
----
+Set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_BOT_USERNAME`. Locally run `python manage.py telegram_poll`; in production point the BotFather webhook at the app and set `TELEGRAM_WEBHOOK_SECRET`.
 
 ## Environment variables
 
-| Variable | Default | Description |
-| --- | --- | --- |
-| `MOCK_DREAMDEX` | **`false`** | `true` = offline mock (tests only); `false` = live indexer/RPC |
-| `USE_SQLITE` | **`0`** | `1` = local SQLite; default uses `DATABASE_URL` |
-| `DATABASE_URL` | Neon Postgres | Default database (`sslmode=require`) |
-| `SECRET_KEY` | (dev default) | Django secret key |
-| `DEBUG` | `True` (local) | Debug mode |
-| `REDIS_URL` | `redis://localhost:6379/0` | Celery broker / cache |
-| `DREAMDEX_CHAIN_ID` | `50312` | Somnia Shannon testnet |
-| `DREAMDEX_VENUE_ID` | (see settings) | DreamDEX venue identifier |
-| `DREAMDEX_INDEXER_URL` | GraphQL endpoint | Live adapter indexer |
-| `DREAMDEX_RPC_URL` | Somnia RPC | On-chain reads / tx prep |
-| `CURSOR_API_KEY` | (empty) | Cursor user API key (`crsr_…`) from Dashboard → API Keys |
-| `LLM_PROVIDER` | `cursor` | `cursor` (primary), `openrouter`, `google`, or `ollama` |
-| `LLM_MODEL` | `composer-2.5` | Cursor model id (`composer-2.5` or `auto`) |
-| `LLM_API_KEY` | (empty) | Optional; Cursor key can live in `CURSOR_API_KEY` instead |
-| `OPENROUTER_API_KEY` | (empty) | Used when `LLM_PROVIDER=openrouter` |
-| `GEMINI_API_KEY` | (empty) | Google AI Studio fallback when `LLM_PROVIDER=google` |
-| `LLM_REASONING` | `false` | OpenRouter-only `reasoning: {enabled: true}` flag |
-| `LOCAL_LLM_ENABLED` | `true` | Fall back to Ollama if Cursor fails |
-| `LOCAL_LLM_BASE_URL` | `http://192.168.0.110:11434/v1` | OpenAI-compatible Ollama endpoint |
-| `LOCAL_LLM_MODEL` | `llama3.2` | Local model id (`ollama pull llama3.2`) |
-| `MOCK_SMART_ACCOUNT` | **`false`** | `true` = pytest only; runtime refuses mock SA / grant / broadcast |
-| `METAMASK_DELEGATION_MANAGER` | (from deploy) | Delegation Manager on Shannon |
-| `METAMASK_SIMPLE_FACTORY` | (from deploy) | SimpleFactory (`0x4766…b317` deployed) |
-| `METAMASK_HYBRID_IMPL` | (from deploy) | Hybrid DeleGator `0xed13…dd92` |
-| `METAMASK_ENTRY_POINT` | (from deploy) | EntryPoint used by Hybrid constructor |
-| `DREAM_AGENT_SESSION_KEY` | (session EOA) | Backend key for `redeemDelegations` — never the user's MetaMask key |
+Mirrors [`.env.example`](.env.example).
 
----
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `SECRET_KEY` | — | Django secret key |
+| `DEBUG` | `True` (local) | Debug mode; keep `False` in production |
+| `ALLOWED_HOSTS` | `localhost,127.0.0.1,0.0.0.0` | Comma-separated hosts |
+| `DJANGO_SETTINGS_MODULE` | `config.settings.local` | Local only; hosted platforms should use `config.settings.production` |
+| `DATABASE_URL` | Postgres | ORM database. Supabase session pooler URL with `sslmode=require` in the reference deployment |
+| `SUPABASE_URL` / `SUPABASE_KEY` | — | Optional Supabase Data API (not a Django DB backend) |
+| `REDIS_URL` | `redis://127.0.0.1:6379/0` | Celery broker / cache |
+| `CSRF_TRUSTED_ORIGINS`, `CSRF_COOKIE_SECURE`, `SESSION_COOKIE_SECURE`, `SECURE_SSL_REDIRECT` | — / `False` | Production hardening |
+| `LOG_LEVEL`, `DJANGO_LOG_LEVEL`, `DREAMLENS_LOG_LEVEL`, `CELERY_LOG_LEVEL` | `INFO` | Logging |
+| `MOCK_DREAMDEX` | **`false`** | `true` = offline mock adapter (tests only) |
+| `DREAMDEX_NETWORK` / `DREAMDEX_CHAIN_ID` | `testnet` / `50312` | Somnia Shannon |
+| `DREAMDEX_RPC_URL` / `DREAMDEX_WS_RPC_URL` | Somnia infra RPC | On-chain reads, tx prep, receipts |
+| `DREAMDEX_INDEXER_URL` | DreamDEX GraphQL | Markets, fills, trader activity |
+| `DREAMDEX_VENUE_ID` | Shannon venue | Venue to sync; read `venueId` from a live Market row if markets come back empty |
+| `DREAMDEX_EVENT_SYNC_INTERVAL` | `60` | Seconds between beat syncs |
+| `DREAMDEX_COLLATERAL_DECIMALS`, `DREAMDEX_TICK`, `DREAMDEX_LOT` | `6`, `1000`, `1000` | Order encoding parameters |
+| `DREAMDEX_BINARY_MODULE`, `DREAMDEX_COLLATERAL` | — | Optional contract overrides |
+| `LLM_PROVIDER` / `LLM_MODEL` / `LLM_BASE_URL` | `cursor` / `composer-2.5` / Cursor API | Primary explanation model |
+| `CURSOR_API_KEY` | — | Cursor user API key (`crsr_…`) |
+| `LLM_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `LLM_REASONING` | — | Alternative providers |
+| `LOCAL_LLM_ENABLED` / `LOCAL_LLM_BASE_URL` / `LOCAL_LLM_API_KEY` / `LOCAL_LLM_MODEL` | `true` / Ollama / `local` / `llama3.2` | OpenAI-compatible fallback |
+| `MOCK_SMART_ACCOUNT` | **`false`** | `true` = pytest only; runtime refuses mock accounts and grants |
+| `METAMASK_DELEGATION_MANAGER`, `METAMASK_SIMPLE_FACTORY`, `METAMASK_HYBRID_IMPL`, `METAMASK_ENTRY_POINT` | from deploy | Delegation Framework addresses on Shannon |
+| `DREAM_AGENT_SESSION_KEY` | — | Backend session EOA that redeems delegations — **never** the user's MetaMask key |
+| `DREAM_AGENT_GAS_LIMIT` | `800000` | Gas limit per redeem |
+| `DREAM_AGENT_SA_PAYS_GAS`, `DREAM_AGENT_GAS_BUFFER_BPS`, `DREAM_AGENT_MAX_GAS_PAYMENT_WEI` | `true`, `2500`, `0.05 STT` | Smart Account reimburses session-key gas in STT, capped |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET` | — | Telegram bot; leave empty to disable |
+
+Never put a user's MetaMask private key in `.env`.
 
 ## Syncing live DreamDEX data
 
@@ -159,16 +284,16 @@ For Docker, set `USE_SQLITE=0` and your Neon `DATABASE_URL` in `.env`.
 python manage.py sync_dreamdex
 ```
 
-This runs:
+1. Pulls binary markets for `DREAMDEX_VENUE_ID` from the DreamDEX GraphQL indexer and upserts `Event` rows by `external_id`
+2. Indexes trader fills from the on-chain fill tape into `TraderProfile` / `TraderTrade`
+3. Generates Event Radar signals (activity, liquidity, time left, price movement) that feed the DreamLens Score
+4. Computes consensus snapshots from indexed trader activity
 
-1. `sync_events` — pull binary markets from the DreamDEX GraphQL indexer
-2. Index trader fills from on-chain fill tape
-3. Generate Event Radar signals from live metrics
-4. Compute consensus snapshots from indexed trader activity
+Celery beat repeats this every `DREAMDEX_EVENT_SYNC_INTERVAL` seconds (`workers.event_sync.full_event_sync_task`: events, prices, radar, then fill and copy processing). `python manage.py simulate_copy_alert` exercises the copy-alert path locally.
 
-There is **no demo seed**. Empty UI means sync has not run or the venue has no Trading markets.
+## Shannon Delegation Framework
 
-### Delegation Framework (Shannon)
+DreamAgent needs the MetaMask Delegation Framework addresses on Shannon. Deploy or locate them once and merge the result into `.env`:
 
 ```bash
 cd scripts/metamask
@@ -178,61 +303,31 @@ SKIP_TRADE=1 MINIMAL_FRAMEWORK=1 node spike_deploy_and_trade.mjs
 # merge scripts/metamask/env.fragment into .env (do not commit)
 ```
 
-See [`docs/SMART_ACCOUNT_INVESTIGATION.md`](docs/SMART_ACCOUNT_INVESTIGATION.md).
----
+Until `METAMASK_*` and `DREAM_AGENT_SESSION_KEY` are set, "Activate DreamAgent" fails closed rather than falling back to a mock. See [`docs/SMART_ACCOUNT_INVESTIGATION.md`](docs/SMART_ACCOUNT_INVESTIGATION.md) for the delegation shape, caveats, and the owner-withdraw path.
 
 ## Testing
 
 ```bash
-cd /path/to/dreamlens
 source .venv/bin/activate
 pytest -q
 ```
 
-Tests use pytest-django with `config.settings.test` and SQLite.
+Tests run with pytest-django on `config.settings.test` (SQLite, `MOCK_DREAMDEX=true`, `MOCK_SMART_ACCOUNT=true`). The suite covers:
 
-Coverage includes:
+- Risk engine and policy gates (expiry, limits, the AI cannot bypass them) — `test_risk_engine.py`, `test_live_fail_closed.py`
+- Trade state machine and DreamDEX order encoding — `test_trading_state.py`, `test_dreamdex_order_encoding.py`
+- Event sync upsert and market stats — `test_event_sync.py`, `test_market_stats.py`, `test_market_news.py`
+- Copy relationships, dedup, suggested traders — `test_copy.py`, `test_suggested_traders.py`
+- DreamAgent activation, gas reimbursement, Hybrid deploy, owner withdraw — `test_dream_agent.py`, `test_agent_gas.py`, `test_hybrid_deploy.py`, `test_owner_withdraw.py`
+- AI structured output, intent parsing, Lens explanations — `test_ai_parse.py`, `test_lens.py`, `test_radar.py`
+- Portfolio, wallet auth, Telegram bot, hosted runtime, Supabase client — `test_portfolio.py`, `test_wallet_auth.py`, `test_telegram_bot.py`, `test_hosted_runtime.py`, `test_supabase_client.py`
+- Frontend copy and UX contracts (landing story, no `41¢`, no "chance of winning", no native popups, unfollow everywhere, setup info page) — `test_frontend_ux.py`
 
-- Risk engine (expiry, limits, AI cannot bypass)
-- Trading state machine and fake external IDs
-- Copy deduplication
-- Radar scoring and signal generation
-- AI structured output and intent parsing
-- Event sync upsert and unique `external_id`
+## Further reading
 
----
-
-## Demo flow (10-step hackathon script)
-
-1. **Start app** — `sync_dreamdex` + `runserver`; confirm home page loads with live events.
-2. **Browse Event Radar** — highlight signals (consensus, volume, expiring soon).
-3. **Open a BTC event** — Market lens shows YES/NO prices and volume.
-4. **AI Lens** — run analysis; show estimate vs market probability and disclaimer.
-5. **Trader Lens** — view indexed fills and consensus (YES/NO skew).
-6. **Prepare trade** — enter amount, get unsigned `placeBinaryOrder` calldata; trade → AWAITING_CONFIRMATION.
-7. **Confirm trade** — user wallet signs; trade → CONFIRMED after receipt.
-8. **Follow a trader** — create CopyRelationship (SMART mode, limits).
-9. **Trigger copy** — new TraderTrade → CopyExecution (risk + AI gate).
-10. **Portfolio** — show positions, PnL summary, and copy history.
-
----
-
-## Hackathon submission notes
-
-- **DreamDEX integration:** Live GraphQL indexer + RPC adapter documented in [`docs/DREAMDEX_INTEGRATION.md`](docs/DREAMDEX_INTEGRATION.md). Mock adapter remains available for offline tests only (`MOCK_DREAMDEX=true`).
-- **MOCK_DREAMDEX=false** is the default — the app syncs real Shannon testnet Event Contracts.
-- **AI safety:** Estimates only; Risk Engine blocks expired events, bad outcomes, and low-confidence SMART copies.
-- **No custodial keys:** Users sign transactions in their wallet; backend stores addresses only. The session EOA can only redeem a signed delegation.
-- **MOCK_SMART_ACCOUNT=false** is the default — Activate Agent hard-errors until the Shannon Delegation Framework addresses are set.
-- **Differentiation:** Lenses + Radar + DreamCopy on top of official DreamDEX Event Contracts — not a new exchange.
-
----
-
-## Repository
-
-DreamLens lives at `/home/richy/Desktop/dreamlens` as a sibling to the ADMIQ Consult site. ADMIQ is intentionally untouched.
-
----
+- [`docs/architecture.md`](docs/architecture.md) — component and sequence diagrams
+- [`docs/DREAMDEX_INTEGRATION.md`](docs/DREAMDEX_INTEGRATION.md) — indexer queries, order encoding, receipts
+- [`docs/SMART_ACCOUNT_INVESTIGATION.md`](docs/SMART_ACCOUNT_INVESTIGATION.md) — MetaMask Smart Accounts, ERC-7710 delegation, owner withdraw
 
 ## License
 

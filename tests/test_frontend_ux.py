@@ -332,20 +332,59 @@ def test_landing_tells_the_product_story(client):
     res = client.get("/")
     assert res.status_code == 200
     body = res.content.decode()
-    assert "Understand. Decide. Trade with Confidence." in body
+    # Hero: what DreamLens is, and that DreamDEX stays the venue.
+    assert "Built on DreamDEX Event Contracts" in body
+    assert "Making Event Contracts easier to understand, trade, and automate." in body
+    assert "DreamDEX stays the execution venue. You stay the owner." in body
+    # Problem: the questions a new user asks, framed as UX not blockchain problems.
+    assert "Prediction markets can be difficult to navigate." in body
+    for q in ("What exactly am I buying?", "What does YES mean?", "How much can I lose?", "What are other traders doing?"):
+        assert q in body
+    assert "These are not blockchain problems" in body
+    # Flow
     assert "How it works" in body
-    assert "From looking to a Decision Receipt." in body
+    assert "Discover → Understand → Decide → Trade → Learn" in body
+    assert "Users should know what they are trading before they trade it." in body
+    for step in ("Discover", "Understand", "Decide", "Trade", "Learn"):
+        assert f'<span class="dl-landing-flow__name">{step}</span>' in body
+    # Prices and payout math stay in dollars.
     assert "$0.41" in body
     assert "41¢" not in body
+    assert "$12.20" in body
+    # AI explains; the Score is a signal, not a probability.
     assert "82 / 100" in body
     assert SCORE_DISCLAIMER in body
-    assert "chance of winning" not in body.lower()
+    assert "82% chance of winning" in body  # quoted as the thing we do NOT say
+    assert body.lower().count("chance of winning") == 1
+    assert "AI provides context. The user makes the decision." in body
+    # Smart Copy with caps
+    assert "Smart Copy" in body
+    assert "Controlled participation, not blind following." in body
+    for cap in ("Maximum per trade", "Maximum daily allocation", "Minimum DreamLens Score"):
+        assert cap in body
+    # DreamAgent can / cannot
+    assert "DreamAgent can" in body
+    assert "DreamAgent cannot" in body
+    assert "Withdraw your funds" in body
+    assert "You can trade for me, but only within these rules." in body
+    # Trade check + Agent check
+    assert "Trade check" in body
+    assert "Agent check" in body
+    assert "The agent can make decisions. Your policies make the final rules." in body
+    # Decision Receipt
+    assert "The AI traded because these conditions were satisfied." in body
+    assert "Decision Receipt" in body
+    # Complexity, Telegram, architecture
+    assert "Hide blockchain complexity. Never hide trading consequences." in body
+    assert "Telegram is an interface, not a wallet." in body
+    assert "Policy &amp; Risk Engine" in body
+    assert "Intelligence on top. On-chain execution underneath." in body
+    # Close
+    assert "Understand. Decide. Trade. Automate." in body
     assert "Testnet only. No real monetary value." in body
     assert "Will Bitcoin be above $118,500 at expiry?" in body
-    assert "DreamAgent cannot" in body
-    assert "Intelligence on top. On-chain execution underneath." in body
     assert "Start trading" in body
-    assert "yes-or-no question" in body.lower() or "yes-or-no" in body.lower()
+    assert "yes-or-no" in body.lower()
     assert "ticker soup" not in body.lower()
     assert "watches the tape" not in body.lower()
     assert "Trading account" in body

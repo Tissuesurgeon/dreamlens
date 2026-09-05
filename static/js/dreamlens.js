@@ -2465,7 +2465,6 @@
     if (!root) return;
 
     const gated = document.getElementById("portfolio-balance-gated");
-    const grid = document.getElementById("portfolio-balance-grid");
     const meta = document.getElementById("portfolio-balance-meta");
     const refreshBtn = document.getElementById("portfolio-balance-refresh");
     const collEl = document.getElementById("bal-collateral");
@@ -2492,7 +2491,6 @@
 
     function showConnected(connected) {
       if (gated) gated.hidden = connected;
-      if (grid) grid.hidden = !connected;
       if (refreshBtn) refreshBtn.hidden = !connected;
       if (meta) meta.hidden = !connected;
     }
@@ -2576,6 +2574,9 @@
     setTimeout(loadBalances, 400);
     document.getElementById("wallet-connect")?.addEventListener("click", function () {
       setTimeout(loadBalances, 1200);
+    });
+    document.getElementById("portfolio-connect")?.addEventListener("click", function () {
+      walletButton()?.click();
     });
   }
 

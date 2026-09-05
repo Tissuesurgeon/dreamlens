@@ -1621,8 +1621,9 @@ body.dl-body {
 
 .dl-wallet-balance__gated {
   padding: var(--dl-s5) var(--dl-s4);
-  border: 1px dashed var(--dl-line);
+  border: 1px solid var(--dl-line);
   border-radius: var(--dl-radius);
+  background: var(--dl-surface);
   color: var(--dl-muted);
   font-size: var(--dl-t-base);
 }
@@ -1660,13 +1661,6 @@ body.dl-body {
   justify-content: space-between;
   gap: var(--dl-s4);
 }
-.dl-pf-head__tally {
-  margin: 0;
-  color: var(--dl-subtle);
-  font-size: var(--dl-t-sm);
-  font-weight: 650;
-  text-align: right;
-}
 
 .dl-pf-money__grid {
   display: grid;
@@ -1676,19 +1670,83 @@ body.dl-body {
   border-radius: var(--dl-radius-lg);
   background: var(--dl-surface);
 }
+.dl-pf-money__grid .dl-wallet-balance__gated {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--dl-s3) var(--dl-s4);
+  padding: 0 0 var(--dl-s4);
+  margin: 0;
+  border: 0;
+  border-bottom: 1px solid var(--dl-line);
+  border-radius: 0;
+  background: transparent;
+}
+.dl-pf-money__grid .dl-wallet-balance__gated p { max-width: 46ch; }
 .dl-pf-money__lead,
 .dl-pf-money__today {
   display: grid;
   gap: var(--dl-s1);
   min-width: 0;
 }
+.dl-pf-bookstrip {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--dl-s4) var(--dl-s3);
+  margin: 0;
+  padding-top: var(--dl-s4);
+  border-top: 1px solid var(--dl-line);
+  background: transparent;
+}
+.dl-pf-bookstrip__label {
+  display: block;
+  color: var(--dl-muted);
+  font-size: var(--dl-t-xs);
+  font-weight: 650;
+}
+.dl-pf-bookstrip__value {
+  display: block;
+  margin-top: 0.2rem;
+  font-family: var(--dl-font-mono);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.dl-pf-bookstrip__note {
+  grid-column: 1 / -1;
+  margin: 0;
+  max-width: none;
+}
+.dl-pf-money__grid .dl-wallet-balance__meta {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding-top: var(--dl-s3);
+  border-top: 1px solid var(--dl-line);
+}
+.dl-pf-money__grid .dl-owner-withdraw {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: var(--dl-s4) 0 0;
+}
 @media (min-width: 640px) {
   .dl-pf-money__grid {
     grid-template-columns: 1fr 1fr;
     align-items: end;
   }
-  .dl-pf-money__facts {
+  .dl-pf-money__facts,
+  .dl-pf-bookstrip,
+  .dl-pf-bookstrip__note {
     grid-column: 1 / -1;
+  }
+  .dl-pf-bookstrip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (min-width: 800px) {
+  .dl-pf-bookstrip {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
   }
 }
 .dl-pf-money__label {
@@ -1732,6 +1790,11 @@ body.dl-body {
   margin: 0;
   padding-top: var(--dl-s4);
   border-top: 1px solid var(--dl-line);
+}
+@media (min-width: 800px) {
+  body:not([data-view="simple"]) .dl-pf-money__facts {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
 }
 .dl-pf-money__facts dt {
   color: var(--dl-muted);
@@ -1842,8 +1905,12 @@ body.dl-body {
   border-color: var(--dl-yes-line);
   background: var(--dl-yes-soft);
 }
-.dl-pf-empty { margin-bottom: var(--dl-s6); }
-/* Two outlined sides you could take — never a filled split bar, which on an
+.dl-pf-empty {
+  margin-bottom: var(--dl-s6);
+  border-style: solid;
+  background: var(--dl-surface);
+}
+/* Two separate side chips — never a filled split bar, which on an
    empty book reads as "you are holding 50% YES / 50% NO". */
 .dl-pf-ghost {
   display: flex;
@@ -1859,14 +1926,21 @@ body.dl-body {
   align-items: center;
   justify-content: center;
   border-radius: var(--dl-radius-sm);
-  border: 1px dashed currentColor;
-  background: transparent;
+  border: 1px solid var(--dl-line);
   font-size: var(--dl-t-sm);
   font-weight: 800;
   letter-spacing: 0.06em;
 }
-.dl-pf-ghost__yes { color: var(--dl-yes-line); }
-.dl-pf-ghost__no { color: var(--dl-no-line); }
+.dl-pf-ghost__yes {
+  color: var(--dl-yes);
+  background: var(--dl-yes-soft);
+  border-color: var(--dl-yes-line);
+}
+.dl-pf-ghost__no {
+  color: var(--dl-no);
+  background: var(--dl-no-soft);
+  border-color: var(--dl-no-line);
+}
 .dl-pf-follow-empty {
   margin: 0;
   color: var(--dl-muted);
@@ -1891,6 +1965,54 @@ body.dl-body {
   text-decoration: none;
 }
 
+.dl-portfolio-page .dl-follow-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--dl-s3);
+}
+.dl-portfolio-page .dl-follow-row .dl-event-row__body { flex: unset; }
+.dl-portfolio-page .dl-follow-action { margin-left: 0; }
+.dl-portfolio-page .dl-follow-row .dl-btn--quiet-danger { margin-left: 0; }
+
+.dl-portfolio-page .dl-lookback {
+  padding: 0.2rem;
+  border: 1px solid var(--dl-line);
+  border-radius: var(--dl-radius-pill);
+  background: var(--dl-surface);
+  width: fit-content;
+  max-width: 100%;
+}
+.dl-portfolio-page .dl-lookback .dl-chip {
+  border: 0;
+  background: transparent;
+}
+.dl-portfolio-page .dl-lookback .dl-chip.is-active {
+  background: var(--dl-primary-soft);
+  color: var(--dl-ink);
+}
+
+.dl-portfolio-page .dl-data-table {
+  font-size: var(--dl-t-sm);
+}
+.dl-portfolio-page .dl-section {
+  margin: var(--dl-s6) 0;
+}
+.dl-portfolio-page .dl-section-head--table {
+  align-items: baseline;
+}
+.dl-portfolio-page .dl-pf-book .dl-section__subtitle {
+  margin: 0 0 var(--dl-s4);
+  max-width: 62ch;
+}
+.dl-portfolio-page .dl-pf-follow-empty {
+  padding: var(--dl-s4);
+  border: 1px solid var(--dl-line);
+  border-radius: var(--dl-radius);
+  background: var(--dl-surface);
+  max-width: none;
+}
+
 @media (max-width: 639px) {
   .dl-pf-ticket {
     grid-template-columns: 1fr;
@@ -1907,6 +2029,19 @@ body.dl-body {
     padding: 0 var(--dl-s4) var(--dl-s4);
   }
   .dl-pf-ticket__math { grid-template-columns: 1fr 1fr 1fr; }
+  .dl-portfolio-page .dl-follow-row {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+  .dl-portfolio-page .dl-follow-action { justify-self: start; }
+  .dl-pf-money .dl-owner-withdraw__controls {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+  .dl-pf-money .dl-owner-withdraw__controls .dl-input,
+  .dl-pf-money .dl-owner-withdraw__controls .dl-btn {
+    width: 100%;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1941,9 +2076,6 @@ body.dl-body {
 .dl-pf-money .dl-owner-withdraw {
   margin-left: 0;
   margin-right: 0;
-  padding-left: var(--dl-s5);
-  padding-right: var(--dl-s5);
-  padding-bottom: var(--dl-s5);
 }
 .dl-agent-hero .dl-owner-withdraw,
 .dl-agent-deposit .dl-owner-withdraw {
@@ -2279,6 +2411,11 @@ body.dl-body {
 }
 
 .dl-empty .dl-btn { margin-top: var(--dl-s4); }
+
+.dl-empty.dl-pf-empty {
+  border: 1px solid var(--dl-line);
+  background: var(--dl-surface);
+}
 
 .dl-breadcrumb {
   display: flex;

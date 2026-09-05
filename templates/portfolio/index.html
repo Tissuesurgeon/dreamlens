@@ -4,7 +4,7 @@
 {% block title %}Portfolio — DreamLens{% endblock %}
 
 {% block content %}
-<div class="dl-container dl-container--agent dl-portfolio-page dl-animate-in">
+<div class="dl-container dl-container--analytics dl-portfolio-page dl-animate-in">
   {% if first_session.incomplete %}
   <a class="dl-next-step" href="{{ first_session.next_url }}">
     <span class="dl-next-step__kicker">Continue setup</span>
@@ -18,45 +18,7 @@
       <h1 class="dl-page-header__title">Portfolio</h1>
       <p class="dl-page-header__subtitle">What you have, what's in play, and today's result.</p>
     </div>
-    {% if has_positions %}
-    <p class="dl-pf-head__tally">
-      {{ open_positions|length }} open
-      {% if settling_positions %} · {{ settling_positions|length }} settling{% endif %}
-      {% if won_count %} · {{ won_count }} won{% endif %}
-      {% if lost_count %} · {{ lost_count }} lost{% endif %}
-    </p>
-    {% endif %}
   </header>
-
-  {% if is_authenticated %}
-  <div class="dl-ta-kpis" role="group" aria-label="This book">
-    <div class="dl-ta-kpi">
-      <span class="dl-ta-kpi__label">Open</span>
-      <span class="dl-ta-kpi__value">{{ open_positions|length }}</span>
-    </div>
-    <div class="dl-ta-kpi">
-      <span class="dl-ta-kpi__label">Settling</span>
-      <span class="dl-ta-kpi__value">{{ settling_positions|length }}</span>
-    </div>
-    <div class="dl-ta-kpi">
-      <span class="dl-ta-kpi__label">Won</span>
-      <span class="dl-ta-kpi__value">{{ won_count|default:0 }}</span>
-    </div>
-    <div class="dl-ta-kpi">
-      <span class="dl-ta-kpi__label">Lost</span>
-      <span class="dl-ta-kpi__value">{{ lost_count|default:0 }}</span>
-    </div>
-    <div class="dl-ta-kpi">
-      <span class="dl-ta-kpi__label">Trades</span>
-      <span class="dl-ta-kpi__value">{{ book.trade_count|default:0 }}</span>
-    </div>
-    <div class="dl-ta-kpi">
-      <span class="dl-ta-kpi__label">Wins in this book</span>
-      <span class="dl-ta-kpi__value">{% if book.trade_count %}{{ book.win_rate|pct_of }}%{% else %}—{% endif %}</span>
-      <p class="dl-desk-note">Confirmed trades on this wallet — not a prediction.</p>
-    </div>
-  </div>
-  {% endif %}
 
   <section class="dl-wallet-balance dl-pf-money" id="portfolio-wallet-balance" data-authenticated="{% if is_authenticated %}1{% else %}0{% endif %}" aria-labelledby="wallet-balance-heading">
     <div class="dl-wallet-balance__head">
@@ -64,11 +26,11 @@
       <button type="button" class="dl-btn dl-btn--ghost dl-btn--sm" id="portfolio-balance-refresh" {% if not is_authenticated %}hidden{% endif %}>Refresh</button>
     </div>
 
-    <div class="dl-wallet-balance__gated" id="portfolio-balance-gated" {% if is_authenticated %}hidden{% endif %}>
-      <p>Connect MetaMask to load available funds and positions for this wallet.</p>
-    </div>
-
-    <div class="dl-pf-money__grid" id="portfolio-balance-grid" role="group" aria-label="Wallet and portfolio" {% if not is_authenticated %}hidden{% endif %}>
+    <div class="dl-pf-money__grid" id="portfolio-balance-grid" role="group" aria-label="Wallet and portfolio">
+      <div class="dl-wallet-balance__gated" id="portfolio-balance-gated" {% if is_authenticated %}hidden{% endif %}>
+        <p>Connect MetaMask to load available funds and positions for this wallet.</p>
+        <button type="button" class="dl-btn dl-btn--primary dl-btn--sm" id="portfolio-connect">Connect MetaMask</button>
+      </div>
       <div class="dl-pf-money__lead">
         <span class="dl-pf-money__label">Available</span>
         <span class="dl-pf-money__avail" id="bal-collateral">
@@ -78,17 +40,17 @@
       </div>
       <div class="dl-pf-money__today">
         <span class="dl-pf-money__label">Today's result</span>
-        <span class="dl-pf-money__result{% if today_result < 0 %} is-neg{% elif today_result > 0 %} is-pos{% endif %}">{{ today_result|default:0|usd_plain }}</span>
+        <span class="dl-pf-money__result{% if is_authenticated and today_result < 0 %} is-neg{% elif is_authenticated and today_result > 0 %} is-pos{% endif %}">{% if is_authenticated %}{{ today_result|default:0|usd_plain }}{% else %}—{% endif %}</span>
         <span class="dl-pf-money__today-hint">Open marks plus anything that settled today</span>
       </div>
       <dl class="dl-pf-money__facts">
         <div>
           <dt>In active events</dt>
-          <dd>{{ in_active_events|default:0|usd_plain }}</dd>
+          <dd>{% if is_authenticated %}{{ in_active_events|default:0|usd_plain }}{% else %}—{% endif %}</dd>
         </div>
         <div>
           <dt>Potential payout</dt>
-          <dd>{{ potential_payout|default:0|usd_plain }}</dd>
+          <dd>{% if is_authenticated %}{{ potential_payout|default:0|usd_plain }}{% else %}—{% endif %}</dd>
         </div>
         <div class="dl-advanced">
           <dt>Gas</dt>
@@ -102,20 +64,49 @@
           <dd class="{% if total_pnl < 0 %}is-neg{% elif total_pnl > 0 %}is-pos{% endif %}">{{ total_pnl|usd_plain }}</dd>
         </div>
       </dl>
-    </div>
-
-    <p class="dl-wallet-balance__meta dl-advanced" id="portfolio-balance-meta" {% if not wallet_balances or not wallet_balances.address %}hidden{% endif %}>
-      <span class="dl-mono" id="bal-address">{% if wallet_balances and wallet_balances.address %}{{ wallet_balances.address|short_address }}{% endif %}</span>
-      <button type="button" class="dl-icon-btn" data-copy-wallet data-copy-text="{% if wallet_balances and wallet_balances.address %}{{ wallet_balances.address }}{% endif %}" aria-label="Copy wallet address">Copy</button>
-      {% if dreamlens_network.explorerUrl %}
-      <a class="dl-icon-btn" id="bal-explorer" href="{% if wallet_balances and wallet_balances.address %}{{ dreamlens_network.explorerUrl }}/address/{{ wallet_balances.address }}{% else %}#{% endif %}" target="_blank" rel="noopener noreferrer" {% if not wallet_balances or not wallet_balances.address %}hidden{% endif %}>Explorer</a>
+      {% if is_authenticated %}
+      <div class="dl-pf-bookstrip" role="group" aria-label="This book">
+        <div>
+          <span class="dl-pf-bookstrip__label">Open</span>
+          <span class="dl-pf-bookstrip__value">{{ open_positions|length }}</span>
+        </div>
+        <div>
+          <span class="dl-pf-bookstrip__label">Settling</span>
+          <span class="dl-pf-bookstrip__value">{{ settling_positions|length }}</span>
+        </div>
+        <div>
+          <span class="dl-pf-bookstrip__label">Won</span>
+          <span class="dl-pf-bookstrip__value">{{ won_count|default:0 }}</span>
+        </div>
+        <div>
+          <span class="dl-pf-bookstrip__label">Lost</span>
+          <span class="dl-pf-bookstrip__value">{{ lost_count|default:0 }}</span>
+        </div>
+        <div>
+          <span class="dl-pf-bookstrip__label">Trades</span>
+          <span class="dl-pf-bookstrip__value">{{ book.trade_count|default:0 }}</span>
+        </div>
+        <div>
+          <span class="dl-pf-bookstrip__label">Wins in this book</span>
+          <span class="dl-pf-bookstrip__value">{% if book.trade_count %}{{ book.win_rate|pct_of }}%{% else %}—{% endif %}</span>
+        </div>
+      </div>
+      <p class="dl-desk-note dl-pf-bookstrip__note">Confirmed trades on this wallet — not a prediction.</p>
       {% endif %}
-      <span id="bal-status">{% if wallet_balances and wallet_balances.error %}{{ wallet_balances.error }}{% endif %}</span>
-    </p>
 
-    {% if is_authenticated and smart_account %}
-    {% include "components/owner_withdraw.html" with withdraw_account=smart_account withdraw_available=agent_balance.collateral %}
-    {% endif %}
+      <p class="dl-wallet-balance__meta dl-advanced" id="portfolio-balance-meta" {% if not wallet_balances or not wallet_balances.address %}hidden{% endif %}>
+        <span class="dl-mono" id="bal-address">{% if wallet_balances and wallet_balances.address %}{{ wallet_balances.address|short_address }}{% endif %}</span>
+        <button type="button" class="dl-icon-btn" data-copy-wallet data-copy-text="{% if wallet_balances and wallet_balances.address %}{{ wallet_balances.address }}{% endif %}" aria-label="Copy wallet address">Copy</button>
+        {% if dreamlens_network.explorerUrl %}
+        <a class="dl-icon-btn" id="bal-explorer" href="{% if wallet_balances and wallet_balances.address %}{{ dreamlens_network.explorerUrl }}/address/{{ wallet_balances.address }}{% else %}#{% endif %}" target="_blank" rel="noopener noreferrer" {% if not wallet_balances or not wallet_balances.address %}hidden{% endif %}>Explorer</a>
+        {% endif %}
+        <span id="bal-status">{% if wallet_balances and wallet_balances.error %}{{ wallet_balances.error }}{% endif %}</span>
+      </p>
+
+      {% if is_authenticated and smart_account %}
+      {% include "components/owner_withdraw.html" with withdraw_account=smart_account withdraw_available=agent_balance.collateral %}
+      {% endif %}
+    </div>
   </section>
 
   {% if is_authenticated %}
